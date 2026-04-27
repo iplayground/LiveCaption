@@ -25,6 +25,12 @@ Portal 的責任：
 
 - 以 macOS App 的使用情境為主。
 - 保留 `Portal` 作為操作端名稱。
+- Portal 目前需求系統為 macOS 26。
+- 調整 macOS App UI 時，可依實際情況調整視窗最小尺寸，但不得超出使用者螢幕大小。
+- 目前 Portal 的語音輸入支援國語與英語；字幕輸出需一律產生台灣繁體中文、日文與英文三種語言，並傳送給 Relay。
+- App 介面在地化目前只支援 `zh-TW` 與 `en-US`，且需清楚區分語音輸入語言、字幕輸出語言與 App 介面在地化語言。
+- Portal 一台電腦同時間只允許一個 App 實例，且同一個 App 同時間只允許一個主視窗；主視窗關閉時 App 應結束。
+- Portal 沒有對外散佈需求時，Xcode 專案應使用本機 ad-hoc 簽署，不設定 `DEVELOPMENT_TEAM` 或個人 Apple ID 相關資訊。
 - 避免把後端發布、連線廣播、Azure Web PubSub 細節放進 Portal，除非是呼叫 Relay 所需的最小整合。
 - Xcode 產物、使用者設定、DerivedData 與本機建置輸出不應提交。
 
