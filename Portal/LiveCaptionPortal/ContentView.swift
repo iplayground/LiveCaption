@@ -20,7 +20,7 @@ struct ContentView: View {
     @State private var shouldVerifySpeechAuthorizationOnLaunch: Bool
     @State private var isLogDrawerExpanded = false
     @State private var selectedLogLevel = LogLevel.all
-    @State private var logEntries = sampleLogEntries
+    @State private var logEntries: [LogEntry] = []
     private let windowMinimumSize = WindowLayout.minimumSize
 
     init() {
@@ -1111,13 +1111,6 @@ private enum LogClock {
     }
 }
 
-private let sampleLogEntries = [
-    LogEntry(time: "00:00", level: .info, title: "Portal 已啟動", detail: "等待音訊來源與 Relay 設定"),
-    LogEntry(time: "00:00", level: .info, title: "字幕輸出已載入", detail: "預設繁體中文、English、日本語"),
-    LogEntry(time: "00:00", level: .warning, title: "Relay 未連線", detail: "字幕事件尚未送出"),
-    LogEntry(time: "00:00", level: .info, title: "工作階段待機", detail: "尚未開始收音")
-]
-
 private struct HeaderView: View {
     var body: some View {
         HStack(spacing: 16) {
@@ -1826,35 +1819,99 @@ private struct LogDrawerHeader: View {
     @Binding var isExpanded: Bool
     @Binding var selectedLevel: LogLevel
     let entryCount: Int
+    @State private var isLevelPickerHidden = true
 
     var body: some View {
         HStack(spacing: 14) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.toggle()
+            HStack(spacing: 14) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.up")
+                        .font(.subheadline.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .animation(.easeInOut(duration: 0.18), value: isExpanded)
+                        .frame(width: 14, height: 14)
+
+                    Text("事件紀錄")
                 }
-            } label: {
-                Label("事件紀錄", systemImage: isExpanded ? "chevron.down" : "chevron.up")
+                .font(.headline)
+
+                Text("最近 \(entryCount) 筆")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
-            .font(.headline)
+            .frame(maxWidth: .infinity)
 
-            Text("最近 \(entryCount) 筆")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Picker("Log Level", selection: $selectedLevel) {
-                ForEach(LogLevel.allCases) { level in
-                    Text(level.rawValue).tag(level)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 320)
+            levelPicker
+                .opacity(isExpanded ? 1 : 0)
+                .animation(.easeInOut(duration: 0.18), value: isExpanded)
+                .disabled(!isExpanded)
+                .accessibilityHidden(!isExpanded)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            toggleLogDrawer()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            toggleLogDrawer()
+        }
+        .onAppear {
+            isLevelPickerHidden = !isExpanded
+        }
+        .onChange(of: isExpanded) { _, newValue in
+            if newValue {
+                return
+            }
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(180))
+                guard !isExpanded else {
+                    return
+                }
+
+                isLevelPickerHidden = true
+            }
+        }
+    }
+
+    private func toggleLogDrawer() {
+        if isExpanded {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isExpanded = false
+            }
+            return
+        }
+
+        isLevelPickerHidden = false
+
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isExpanded = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var levelPicker: some View {
+        let picker = Picker("Log Level", selection: $selectedLevel) {
+            ForEach(LogLevel.allCases) { level in
+                Text(level.rawValue).tag(level)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 320)
+
+        if isLevelPickerHidden {
+            picker.hidden()
+        } else {
+            picker
+        }
     }
 }
 
@@ -1866,17 +1923,23 @@ private struct LogDrawerContent: View {
             Divider()
 
             ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(entries) { entry in
-                        LogEntryRow(entry: entry)
+                if entries.isEmpty {
+                    ContentUnavailableView("尚無事件紀錄", systemImage: "list.bullet.rectangle")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 56)
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(entries) { entry in
+                            LogEntryRow(entry: entry)
 
-                        if entry.id != entries.last?.id {
-                            Divider()
+                            if entry.id != entries.last?.id {
+                                Divider()
+                            }
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
             }
         }
         .frame(height: 220)
