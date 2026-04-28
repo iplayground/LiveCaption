@@ -1,0 +1,57 @@
+import Foundation
+
+enum InputLanguage: String, CaseIterable, Identifiable {
+    case mandarin = "zh-TW"
+    case english = "en-US"
+
+    var id: String { rawValue }
+
+    var speechLocale: String {
+        rawValue
+    }
+
+    var matchingOutputLanguageID: String {
+        switch self {
+        case .mandarin:
+            "zh-Hant"
+        case .english:
+            "en"
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .mandarin:
+            "Chinese Traditional"
+        case .english:
+            "English"
+        }
+    }
+
+    var nativeName: String {
+        switch self {
+        case .mandarin:
+            "繁體中文"
+        case .english:
+            "English"
+        }
+    }
+
+    var transcriptNativeName: String {
+        switch self {
+        case .mandarin:
+            "繁體中文"
+        case .english:
+            "English"
+        }
+    }
+}
+
+struct SpeechOutputLanguage: Identifiable {
+    let code: String
+    let name: String
+    let nativeName: String
+    let previewText: String
+
+    var id: String { code }
+}
