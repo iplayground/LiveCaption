@@ -140,6 +140,15 @@ private enum InputLanguage: String, CaseIterable, Identifiable {
         rawValue
     }
 
+    var matchingOutputLanguageID: String {
+        switch self {
+        case .mandarin:
+            "zh-Hant"
+        case .english:
+            "en"
+        }
+    }
+
     var name: String {
         switch self {
         case .mandarin:
@@ -516,6 +525,12 @@ private struct CaptionWorkspace: View {
     @Binding var inputLanguage: InputLanguage
     let outputLanguages: [SpeechOutputLanguage]
 
+    private var previewLanguages: [SpeechOutputLanguage] {
+        outputLanguages.filter { language in
+            language.id != inputLanguage.matchingOutputLanguageID
+        }
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
@@ -562,7 +577,7 @@ private struct CaptionWorkspace: View {
                         SectionLabel(title: "預覽", systemImage: "captions.bubble")
 
                         VStack(spacing: 12) {
-                            ForEach(outputLanguages) { language in
+                            ForEach(previewLanguages) { language in
                                 CaptionCard(
                                     languageName: language.name,
                                     languageNativeName: language.nativeName,
