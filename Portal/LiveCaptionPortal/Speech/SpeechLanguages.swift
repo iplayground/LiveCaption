@@ -45,6 +45,12 @@ enum InputLanguage: String, CaseIterable, Identifiable {
             "English"
         }
     }
+
+    var previewText: String {
+        availableSpeechOutputLanguages.first {
+            $0.id == matchingOutputLanguageID
+        }?.previewText ?? ""
+    }
 }
 
 struct SpeechOutputLanguage: Identifiable {

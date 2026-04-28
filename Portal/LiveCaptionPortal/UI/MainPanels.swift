@@ -169,7 +169,7 @@ struct CaptionWorkspace: View {
                         LiveTranscriptCard(
                             languageName: inputLanguage.name,
                             languageNativeName: inputLanguage.transcriptNativeName,
-                            text: speechRecognitionController.displayTranscript
+                            text: speechRecognitionController.displayTranscript(for: inputLanguage)
                         )
 
                         if case let .failed(message) = speechRecognitionController.state {
@@ -188,7 +188,10 @@ struct CaptionWorkspace: View {
                                 CaptionCard(
                                     languageName: language.name,
                                     languageNativeName: language.nativeName,
-                                    text: language.previewText
+                                    text: speechRecognitionController.captionText(
+                                        for: language,
+                                        inputLanguage: inputLanguage
+                                    )
                                 )
                             }
                         }

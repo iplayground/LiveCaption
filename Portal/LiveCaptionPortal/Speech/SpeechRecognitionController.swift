@@ -57,6 +57,7 @@ struct SpeechRecognitionRequest: Equatable {
     let speechKey: String
     let inputLocale: String
     let audioDeviceID: String
+    let outputLanguageIDs: [String]
 }
 
 @MainActor
@@ -64,12 +65,21 @@ final class SpeechRecognitionController: ObservableObject {
     @Published private(set) var state = SpeechRecognitionState.idle
     @Published private(set) var interimTranscript = ""
     @Published private(set) var finalTranscript = ""
+    @Published private(set) var finalTranslations: [String: String] = [:]
     @Published private(set) var recognizedCaptionCount = 0
 
-    private var recognizer: SPXSpeechRecognizer?
+    private var recognizer: SPXTranslationRecognizer?
     private var activeRequest: SpeechRecognitionRequest?
 
-    var displayTranscript: String {
+    private var shouldShowWelcomeText: Bool {
+        if case .idle = state {
+            return true
+        }
+
+        return false
+    }
+
+    func displayTranscript(for inputLanguage: InputLanguage) -> String {
         if !interimTranscript.isEmpty {
             return interimTranscript
         }
@@ -78,7 +88,19 @@ final class SpeechRecognitionController: ObservableObject {
             return finalTranscript
         }
 
-        return "等待來源語音辨識結果。"
+        return shouldShowWelcomeText ? inputLanguage.previewText : ""
+    }
+
+    func captionText(for language: SpeechOutputLanguage, inputLanguage: InputLanguage) -> String {
+        if language.id == inputLanguage.matchingOutputLanguageID {
+            return displayTranscript(for: inputLanguage)
+        }
+
+        if let text = finalTranslations[language.id], !text.isEmpty {
+            return text
+        }
+
+        return shouldShowWelcomeText ? language.previewText : ""
     }
 
     func startRecognition(
@@ -108,11 +130,16 @@ final class SpeechRecognitionController: ObservableObject {
             return
         }
 
+        let outputLanguageIDs = settings.selectedOutputLanguages
+            .map(\.id)
+            .sorted()
+
         let request = SpeechRecognitionRequest(
             region: region,
             speechKey: speechKey,
             inputLocale: inputLanguage.speechLocale,
-            audioDeviceID: audioDeviceID
+            audioDeviceID: audioDeviceID,
+            outputLanguageIDs: outputLanguageIDs
         )
 
         guard request != activeRequest || recognizer == nil else {
@@ -123,28 +150,30 @@ final class SpeechRecognitionController: ObservableObject {
         activeRequest = request
 
         do {
-            let speechConfiguration = try SPXSpeechConfiguration(
+            let translationConfiguration = try SPXSpeechTranslationConfiguration(
                 subscription: speechKey,
                 region: region
             )
 
-            speechConfiguration.speechRecognitionLanguage = inputLanguage.speechLocale
+            translationConfiguration.speechRecognitionLanguage = inputLanguage.speechLocale
+            outputLanguageIDs
+                .filter { $0 != inputLanguage.matchingOutputLanguageID }
+                .forEach { translationConfiguration.addTargetLanguage($0) }
 
             guard let audioConfiguration = SPXAudioConfiguration(microphone: audioDeviceID) else {
                 throw SpeechRecognitionError.audioConfigurationFailed
             }
 
-            let speechRecognizer = try SPXSpeechRecognizer(
-                speechConfiguration: speechConfiguration,
-                language: inputLanguage.speechLocale,
+            let translationRecognizer = try SPXTranslationRecognizer(
+                speechTranslationConfiguration: translationConfiguration,
                 audioConfiguration: audioConfiguration
             )
 
-            configureEventHandlers(for: speechRecognizer)
+            configureEventHandlers(for: translationRecognizer)
 
-            try speechRecognizer.startContinuousRecognition()
+            try translationRecognizer.startContinuousRecognition()
 
-            recognizer = speechRecognizer
+            recognizer = translationRecognizer
             state = .listening
         } catch {
             activeRequest = nil
@@ -169,11 +198,12 @@ final class SpeechRecognitionController: ObservableObject {
         if resetTranscript {
             interimTranscript = ""
             finalTranscript = ""
+            finalTranslations = [:]
             recognizedCaptionCount = 0
         }
     }
 
-    private func configureEventHandlers(for recognizer: SPXSpeechRecognizer) {
+    private func configureEventHandlers(for recognizer: SPXTranslationRecognizer) {
         recognizer.addRecognizingEventHandler { [weak self] _, event in
             guard let text = event.result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty
@@ -189,7 +219,7 @@ final class SpeechRecognitionController: ObservableObject {
 
         recognizer.addRecognizedEventHandler { [weak self] _, event in
             let result = event.result
-            guard result.reason == .recognizedSpeech,
+            guard result.reason == .translatedSpeech,
                   let text = result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty
             else {
@@ -199,6 +229,7 @@ final class SpeechRecognitionController: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.interimTranscript = ""
                 self?.finalTranscript = text
+                self?.finalTranslations = Self.normalizedTranslations(from: result.translations)
                 self?.recognizedCaptionCount += 1
                 self?.state = .listening
             }
@@ -207,9 +238,28 @@ final class SpeechRecognitionController: ObservableObject {
         recognizer.addCanceledEventHandler { [weak self] _, event in
             let message = event.errorDetails?.trimmingCharacters(in: .whitespacesAndNewlines)
             Task { @MainActor [weak self] in
-                self?.state = .failed(message?.isEmpty == false ? message! : "Speech 來源語音辨識已取消")
+                self?.state = .failed(message?.isEmpty == false ? message! : "Speech Translation 已取消")
             }
         }
+    }
+
+    private static func normalizedTranslations(from translations: [AnyHashable: Any]) -> [String: String] {
+        var normalizedTranslations: [String: String] = [:]
+
+        for (language, value) in translations {
+            guard let language = language as? String,
+                  let text = value as? String
+            else {
+                continue
+            }
+
+            let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalizedText.isEmpty {
+                normalizedTranslations[language] = normalizedText
+            }
+        }
+
+        return normalizedTranslations
     }
 }
 
