@@ -15,6 +15,8 @@ import MicrosoftCognitiveServicesSpeech
 struct ContentView: View {
     @State private var inputLanguage = InputLanguage.mandarin
     @StateObject private var audioInputController = AudioInputController()
+    @StateObject private var speechRecognitionController = SpeechRecognitionController()
+    @State private var isCaptionSessionActive = false
     @State private var speechSettings: SpeechSettings
     @State private var speechAuthorizationStatus: SpeechAuthorizationStatus
     @State private var shouldVerifySpeechAuthorizationOnLaunch: Bool
@@ -75,21 +77,27 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                HeaderView()
+                HeaderView(
+                    isCaptionSessionActive: isCaptionSessionActive,
+                    canToggleCaptionSession: audioInputController.isCapturing,
+                    onToggleCaptionSession: toggleCaptionSession
+                )
 
                 Divider()
 
                 HStack(alignment: .top, spacing: 0) {
                     ControlSidebar(
                         audioInputController: audioInputController,
-                        speechAuthorizationStatus: speechAuthorizationStatus
+                        speechAuthorizationStatus: speechAuthorizationStatus,
+                        recognizedCaptionCount: speechRecognitionController.recognizedCaptionCount
                     )
 
                     Divider()
 
                     CaptionWorkspace(
                         inputLanguage: $inputLanguage,
-                        outputLanguages: speechSettings.selectedOutputLanguages
+                        outputLanguages: speechSettings.selectedOutputLanguages,
+                        speechRecognitionController: speechRecognitionController
                     )
 
                     Divider()
@@ -121,7 +129,53 @@ struct ContentView: View {
         }
         .onDisappear {
             audioInputController.stopCapture()
+            speechRecognitionController.stopRecognition()
         }
+        .onChange(of: isCaptionSessionActive) {
+            updateSpeechRecognition()
+        }
+        .onChange(of: audioInputController.isCapturing) {
+            if !audioInputController.isCapturing {
+                isCaptionSessionActive = false
+            } else {
+                updateSpeechRecognition()
+            }
+        }
+        .onChange(of: audioInputController.selectedDeviceID) {
+            updateSpeechRecognition()
+        }
+        .onChange(of: inputLanguage) {
+            updateSpeechRecognition()
+        }
+        .onChange(of: speechSettings) {
+            updateSpeechRecognition()
+        }
+        .onChange(of: speechAuthorizationStatus) {
+            updateSpeechRecognition()
+        }
+    }
+
+    private func updateSpeechRecognition() {
+        guard isCaptionSessionActive else {
+            speechRecognitionController.stopRecognition(keepsCurrentTranscript: true)
+            return
+        }
+
+        guard audioInputController.isCapturing else {
+            speechRecognitionController.stopRecognition(keepsCurrentTranscript: true)
+            return
+        }
+
+        speechRecognitionController.startRecognition(
+            settings: speechSettings,
+            inputLanguage: inputLanguage,
+            audioDeviceID: audioInputController.selectedDeviceID,
+            authorizationStatus: speechAuthorizationStatus
+        )
+    }
+
+    private func toggleCaptionSession() {
+        isCaptionSessionActive.toggle()
     }
 }
 
@@ -206,6 +260,224 @@ private struct SpeechOutputLanguage: Identifiable {
 
 private struct SpeechConnectionTestResult {
     let region: String
+}
+
+private enum SpeechRecognitionState {
+    case idle
+    case listening
+    case recognizing
+    case failed(String)
+
+    var title: String {
+        switch self {
+        case .idle:
+            "等待語音"
+        case .listening:
+            "聆聽中"
+        case .recognizing:
+            "辨識中"
+        case .failed:
+            "辨識失敗"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .idle:
+            "pause.circle"
+        case .listening:
+            "ear"
+        case .recognizing:
+            "waveform.badge.magnifyingglass"
+        case .failed:
+            "exclamationmark.triangle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .idle:
+            .secondary
+        case .listening:
+            .blue
+        case .recognizing:
+            .green
+        case .failed:
+            .red
+        }
+    }
+}
+
+private struct SpeechRecognitionRequest: Equatable {
+    let region: String
+    let speechKey: String
+    let inputLocale: String
+    let audioDeviceID: String
+}
+
+@MainActor
+private final class SpeechRecognitionController: ObservableObject {
+    @Published private(set) var state = SpeechRecognitionState.idle
+    @Published private(set) var interimTranscript = ""
+    @Published private(set) var finalTranscript = ""
+    @Published private(set) var recognizedCaptionCount = 0
+
+    private var recognizer: SPXSpeechRecognizer?
+    private var activeRequest: SpeechRecognitionRequest?
+
+    var displayTranscript: String {
+        if !interimTranscript.isEmpty {
+            return interimTranscript
+        }
+
+        if !finalTranscript.isEmpty {
+            return finalTranscript
+        }
+
+        return "等待來源語音辨識結果。"
+    }
+
+    func startRecognition(
+        settings: SpeechSettings,
+        inputLanguage: InputLanguage,
+        audioDeviceID: String?,
+        authorizationStatus: SpeechAuthorizationStatus
+    ) {
+        let region = settings.region.trimmingCharacters(in: .whitespacesAndNewlines)
+        let speechKey = settings.speechKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard authorizationStatus == .authorized else {
+            stopRecognition(resetTranscript: false)
+            state = .failed("Speech 尚未授權")
+            return
+        }
+
+        guard !region.isEmpty, !speechKey.isEmpty else {
+            stopRecognition(resetTranscript: false)
+            state = .failed("缺少 Speech Region 或 Key")
+            return
+        }
+
+        guard let audioDeviceID, !audioDeviceID.isEmpty else {
+            stopRecognition(resetTranscript: false)
+            state = .failed("尚未選擇音訊來源")
+            return
+        }
+
+        let request = SpeechRecognitionRequest(
+            region: region,
+            speechKey: speechKey,
+            inputLocale: inputLanguage.speechLocale,
+            audioDeviceID: audioDeviceID
+        )
+
+        guard request != activeRequest || recognizer == nil else {
+            return
+        }
+
+        stopRecognition(resetTranscript: false)
+        activeRequest = request
+
+        do {
+            let speechConfiguration = try SPXSpeechConfiguration(
+                subscription: speechKey,
+                region: region
+            )
+
+            speechConfiguration.speechRecognitionLanguage = inputLanguage.speechLocale
+
+            guard let audioConfiguration = SPXAudioConfiguration(microphone: audioDeviceID) else {
+                throw SpeechRecognitionError.audioConfigurationFailed
+            }
+
+            let speechRecognizer = try SPXSpeechRecognizer(
+                speechConfiguration: speechConfiguration,
+                language: inputLanguage.speechLocale,
+                audioConfiguration: audioConfiguration
+            )
+
+            configureEventHandlers(for: speechRecognizer)
+
+            try speechRecognizer.startContinuousRecognition()
+
+            recognizer = speechRecognizer
+            state = .listening
+        } catch {
+            activeRequest = nil
+            recognizer = nil
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func stopRecognition(keepsCurrentTranscript: Bool = false) {
+        stopRecognition(resetTranscript: !keepsCurrentTranscript)
+    }
+
+    private func stopRecognition(resetTranscript: Bool) {
+        if let recognizer {
+            try? recognizer.stopContinuousRecognition()
+        }
+
+        recognizer = nil
+        activeRequest = nil
+        state = .idle
+
+        if resetTranscript {
+            interimTranscript = ""
+            finalTranscript = ""
+            recognizedCaptionCount = 0
+        }
+    }
+
+    private func configureEventHandlers(for recognizer: SPXSpeechRecognizer) {
+        recognizer.addRecognizingEventHandler { [weak self] _, event in
+            guard let text = event.result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty
+            else {
+                return
+            }
+
+            Task { @MainActor [weak self] in
+                self?.interimTranscript = text
+                self?.state = .recognizing
+            }
+        }
+
+        recognizer.addRecognizedEventHandler { [weak self] _, event in
+            let result = event.result
+            guard result.reason == .recognizedSpeech,
+                  let text = result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty
+            else {
+                return
+            }
+
+            Task { @MainActor [weak self] in
+                self?.interimTranscript = ""
+                self?.finalTranscript = text
+                self?.recognizedCaptionCount += 1
+                self?.state = .listening
+            }
+        }
+
+        recognizer.addCanceledEventHandler { [weak self] _, event in
+            let message = event.errorDetails?.trimmingCharacters(in: .whitespacesAndNewlines)
+            Task { @MainActor [weak self] in
+                self?.state = .failed(message?.isEmpty == false ? message! : "Speech 來源語音辨識已取消")
+            }
+        }
+    }
+}
+
+private enum SpeechRecognitionError: LocalizedError {
+    case audioConfigurationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .audioConfigurationFailed:
+            "無法建立音訊輸入設定"
+        }
+    }
 }
 
 private struct AudioInputDevice: Identifiable, Hashable {
@@ -869,7 +1141,7 @@ private enum SpeechSettingsValidationError: LocalizedError {
     }
 }
 
-private struct SpeechSettings {
+private struct SpeechSettings: Equatable {
     static let requiredOutputLanguageIDs: Set<String> = ["zh-Hant", "en"]
     static let defaultOutputLanguageIDs: Set<String> = ["zh-Hant", "en", "ja"]
     private static let userDefaults = UserDefaults.standard
@@ -1112,6 +1384,18 @@ private enum LogClock {
 }
 
 private struct HeaderView: View {
+    let isCaptionSessionActive: Bool
+    let canToggleCaptionSession: Bool
+    let onToggleCaptionSession: () -> Void
+
+    private var captionButtonTitle: String {
+        isCaptionSessionActive ? "停止字幕" : "開始字幕"
+    }
+
+    private var captionButtonSystemImage: String {
+        isCaptionSessionActive ? "stop.fill" : "play.fill"
+    }
+
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
@@ -1124,25 +1408,78 @@ private struct HeaderView: View {
 
             Spacer()
 
-            StatusPill(title: "待機", systemImage: "circle.fill", tint: .secondary)
             StatusPill(title: "Relay 未連線", systemImage: "antenna.radiowaves.left.and.right.slash", tint: .orange)
 
             Button {
+                onToggleCaptionSession()
             } label: {
-                Label("開始字幕", systemImage: "play.fill")
+                Label(captionButtonTitle, systemImage: captionButtonSystemImage)
                     .frame(minWidth: 104)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(
+                CaptionSessionButtonStyle(
+                    isEnabled: canToggleCaptionSession,
+                    role: isCaptionSessionActive ? .stop : .start
+                )
+            )
             .controlSize(.large)
+            .disabled(!canToggleCaptionSession)
+            .help(canToggleCaptionSession ? captionButtonTitle : "請先開啟收音")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)
     }
 }
 
+private struct CaptionSessionButtonStyle: ButtonStyle {
+    enum Role {
+        case start
+        case stop
+    }
+
+    let isEnabled: Bool
+    let role: Role
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .foregroundStyle(isEnabled ? Color.white : Color.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(backgroundColor(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(borderColor, lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.72)
+    }
+
+    private var activeColor: Color {
+        switch role {
+        case .start:
+            Color.accentColor
+        case .stop:
+            Color.red
+        }
+    }
+
+    private var borderColor: Color {
+        isEnabled ? activeColor.opacity(0.35) : Color.secondary.opacity(0.28)
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        guard isEnabled else {
+            return Color(nsColor: .controlBackgroundColor)
+        }
+
+        return isPressed ? activeColor.opacity(0.78) : activeColor
+    }
+}
+
 private struct ControlSidebar: View {
     @ObservedObject var audioInputController: AudioInputController
     let speechAuthorizationStatus: SpeechAuthorizationStatus
+    let recognizedCaptionCount: Int
 
     private var captureBinding: Binding<Bool> {
         Binding(
@@ -1165,7 +1502,7 @@ private struct ControlSidebar: View {
                     SessionStatusValue()
                     SessionCaptureValue(isCapturing: audioInputController.isCapturing)
                     SpeechAuthorizationValue(status: speechAuthorizationStatus)
-                    SessionMetricValue(label: "字幕事件", value: "0")
+                    SessionMetricValue(label: "字幕事件", value: "\(recognizedCaptionCount)")
                 }
             }
 
@@ -1258,6 +1595,7 @@ private struct ControlSidebar: View {
 private struct CaptionWorkspace: View {
     @Binding var inputLanguage: InputLanguage
     let outputLanguages: [SpeechOutputLanguage]
+    @ObservedObject var speechRecognitionController: SpeechRecognitionController
 
     private var previewLanguages: [SpeechOutputLanguage] {
         outputLanguages.filter { language in
@@ -1274,7 +1612,11 @@ private struct CaptionWorkspace: View {
                             Text("字幕預覽")
                                 .font(.title2.weight(.semibold))
 
-                            StatusPill(title: "等待語音", systemImage: "pause.circle", tint: .secondary)
+                            StatusPill(
+                                title: speechRecognitionController.state.title,
+                                systemImage: speechRecognitionController.state.systemImage,
+                                tint: speechRecognitionController.state.tint
+                            )
                         }
 
                         Spacer()
@@ -1303,8 +1645,15 @@ private struct CaptionWorkspace: View {
                         LiveTranscriptCard(
                             languageName: inputLanguage.name,
                             languageNativeName: inputLanguage.transcriptNativeName,
-                            text: "歡迎來到今天的活動，字幕系統準備就緒。"
+                            text: speechRecognitionController.displayTranscript
                         )
+
+                        if case let .failed(message) = speechRecognitionController.state {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
