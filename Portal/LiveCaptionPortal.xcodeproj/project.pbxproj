@@ -6,7 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FB8A96975B9F1D0FE6092ECB /* Pods_LiveCaptionPortal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3812E4688DD4861C8727DE8E /* Pods_LiveCaptionPortal.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		28AF6D1F38D5A0439E58D543 /* Pods-LiveCaptionPortal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LiveCaptionPortal.release.xcconfig"; path = "Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal.release.xcconfig"; sourceTree = "<group>"; };
+		3812E4688DD4861C8727DE8E /* Pods_LiveCaptionPortal.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_LiveCaptionPortal.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		E22015917B69319FACCA9E34 /* Pods-LiveCaptionPortal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LiveCaptionPortal.debug.xcconfig"; path = "Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal.debug.xcconfig"; sourceTree = "<group>"; };
 		F28BC4CF2F9E030B008AD6B2 /* LiveCaptionPortal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiveCaptionPortal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -23,17 +30,37 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FB8A96975B9F1D0FE6092ECB /* Pods_LiveCaptionPortal.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		40CF37170DD0A482EC4EA7AD /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				E22015917B69319FACCA9E34 /* Pods-LiveCaptionPortal.debug.xcconfig */,
+				28AF6D1F38D5A0439E58D543 /* Pods-LiveCaptionPortal.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		565DC944261444D0201731C5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3812E4688DD4861C8727DE8E /* Pods_LiveCaptionPortal.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		F28BC4C62F9E030B008AD6B2 = {
 			isa = PBXGroup;
 			children = (
 				F28BC4D12F9E030B008AD6B2 /* LiveCaptionPortal */,
 				F28BC4D02F9E030B008AD6B2 /* Products */,
+				40CF37170DD0A482EC4EA7AD /* Pods */,
+				565DC944261444D0201731C5 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -52,9 +79,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = F28BC4DA2F9E030F008AD6B2 /* Build configuration list for PBXNativeTarget "LiveCaptionPortal" */;
 			buildPhases = (
+				7A4C6DD64E9B06EC42595043 /* [CP] Check Pods Manifest.lock */,
 				F28BC4CB2F9E030B008AD6B2 /* Sources */,
 				F28BC4CC2F9E030B008AD6B2 /* Frameworks */,
 				F28BC4CD2F9E030B008AD6B2 /* Resources */,
+				575D7436B0DAC9077DA5F7CC /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -64,8 +93,6 @@
 				F28BC4D12F9E030B008AD6B2 /* LiveCaptionPortal */,
 			);
 			name = LiveCaptionPortal;
-			packageProductDependencies = (
-			);
 			productName = LiveCaptionPortal;
 			productReference = F28BC4CF2F9E030B008AD6B2 /* LiveCaptionPortal.app */;
 			productType = "com.apple.product-type.application";
@@ -113,6 +140,52 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		575D7436B0DAC9077DA5F7CC /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		7A4C6DD64E9B06EC42595043 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-LiveCaptionPortal-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		F28BC4CB2F9E030B008AD6B2 /* Sources */ = {
@@ -162,7 +235,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -225,7 +298,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -245,6 +318,7 @@
 		};
 		F28BC4DB2F9E030F008AD6B2 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = E22015917B69319FACCA9E34 /* Pods-LiveCaptionPortal.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -255,6 +329,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -280,6 +355,7 @@
 		};
 		F28BC4DC2F9E030F008AD6B2 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 28AF6D1F38D5A0439E58D543 /* Pods-LiveCaptionPortal.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -290,6 +366,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
