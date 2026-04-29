@@ -49,6 +49,8 @@ Relay 的責任：
 
 - 以 Python 3.13 為主要實作語言。
 - Azure、本機 secrets、連線字串與 `local.settings.json` 不應提交。
+- 本機驗證 Azure Functions 時固定使用 port `7071`。
+- 需要重啟本機 Azure Functions 時，必須先確認目標行程使用的是 port `7071`；只能停止該 port 對應的 `func` 行程，不得用寬鬆條件關閉其他 `func` 行程。
 - 後端應保持清楚的事件輸入與發布邊界，避免把 macOS App 專屬邏輯放進 Relay。
 - Azure 中的主要設定不應依賴手動 Portal 設定作為配置來源，應優先使用可版本化的檔案或自動化部署流程；只有 GitHub 綁定等外部整合必要操作才允許手動處理。
 
