@@ -41,11 +41,11 @@ struct LogDrawerHeader: View {
                         .animation(.easeInOut(duration: 0.18), value: isExpanded)
                         .frame(width: 14, height: 14)
 
-                    Text("事件紀錄")
+                    Text(L10n.text("log.events"))
                 }
                 .font(.headline)
 
-                Text("最近 \(entryCount) 筆")
+                Text(L10n.text("log.recentCount", entryCount))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -109,9 +109,9 @@ struct LogDrawerHeader: View {
 
     @ViewBuilder
     private var levelPicker: some View {
-        let picker = Picker("Log Level", selection: $selectedLevel) {
+        let picker = Picker(L10n.text("log.level"), selection: $selectedLevel) {
             ForEach(LogLevel.allCases) { level in
-                Text(level.rawValue).tag(level)
+                Text(level.title).tag(level)
             }
         }
         .pickerStyle(.segmented)
@@ -134,7 +134,7 @@ struct LogDrawerContent: View {
 
             ScrollView {
                 if entries.isEmpty {
-                    ContentUnavailableView("尚無事件紀錄", systemImage: "list.bullet.rectangle")
+                    ContentUnavailableView(L10n.text("log.noEvents"), systemImage: "list.bullet.rectangle")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 56)
                 } else {
@@ -168,7 +168,7 @@ struct LogEntryRow: View {
                 .frame(width: 52, alignment: .leading)
                 .padding(.top, 1)
 
-            Text(entry.level.rawValue)
+            Text(entry.level.title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(entry.level.tint)
                 .frame(width: 64, alignment: .leading)

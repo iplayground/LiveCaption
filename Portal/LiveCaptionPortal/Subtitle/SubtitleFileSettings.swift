@@ -6,7 +6,7 @@ struct SubtitleFileSettings: Equatable {
     var storageDirectoryURL: URL?
 
     var storageDirectorySummary: String {
-        storageDirectoryURL?.path(percentEncoded: false) ?? "尚未設定"
+        storageDirectoryURL?.path(percentEncoded: false) ?? L10n.text("common.notConfigured")
     }
 
     static func load() -> SubtitleFileSettings {

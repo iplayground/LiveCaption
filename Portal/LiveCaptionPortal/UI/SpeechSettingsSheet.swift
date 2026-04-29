@@ -25,10 +25,10 @@ struct SpeechSettingsSheet: View {
         }
 
         guard !missingItems.isEmpty else {
-            return "設定完整，可測試 Azure Speech 連線。"
+            return L10n.text("speechSettings.requirements.ready")
         }
 
-        return "補齊 \(missingItems.joined(separator: "、")) 後可測試。"
+        return L10n.text("speechSettings.requirements.missing", missingItems.joined(separator: L10n.text("list.separator")))
     }
 
     private var connectionHintMessage: String {
@@ -93,23 +93,23 @@ struct SpeechSettingsSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    SpeechSettingsSection(title: "認證", systemImage: "key.horizontal") {
+                    SpeechSettingsSection(title: L10n.text("speechSettings.section.authentication"), systemImage: "key.horizontal") {
                         VStack(alignment: .leading, spacing: 14) {
                             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
                                 SpeechSettingsFieldRow(label: "Region") {
-                                    TextField("例如：japaneast", text: $settings.region)
+                                    TextField(L10n.text("speechSettings.region.placeholder"), text: $settings.region)
                                         .textFieldStyle(.roundedBorder)
                                 }
 
                                 SpeechSettingsFieldRow(label: "Speech Key") {
-                                    SecureField("只保存在本機設定中", text: $settings.speechKey)
+                                    SecureField(L10n.text("speechSettings.speechKey.placeholder"), text: $settings.speechKey)
                                         .textFieldStyle(.roundedBorder)
                                 }
                             }
                         }
                     }
 
-                    SpeechSettingsSection(title: "字幕輸出", systemImage: "captions.bubble") {
+                    SpeechSettingsSection(title: L10n.text("speechSettings.section.captionOutput"), systemImage: "captions.bubble") {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(availableSpeechOutputLanguages) { language in
                                 OutputLanguageToggleRow(
@@ -121,10 +121,10 @@ struct SpeechSettingsSheet: View {
                         }
                     }
 
-                    SpeechSettingsSection(title: "檢查", systemImage: "checkmark.seal") {
+                    SpeechSettingsSection(title: L10n.text("speechSettings.section.check"), systemImage: "checkmark.seal") {
                         VStack(alignment: .leading, spacing: 12) {
                             SpeechSettingsStatusRow(
-                                title: "連線測試",
+                                title: L10n.text("speechSettings.connectionTest"),
                                 state: connectionTestStatus.title,
                                 tint: connectionTestStatus.tint
                             )
@@ -154,7 +154,7 @@ struct SpeechSettingsSheet: View {
             HStack {
                 Spacer()
 
-                Button("完成") {
+                Button(L10n.text("common.done")) {
                     saveSettings()
                     isPresented = false
                 }
@@ -184,13 +184,13 @@ enum SpeechConnectionTestStatus {
     var title: String {
         switch self {
         case .idle:
-            "尚未測試"
+            L10n.text("speechConnection.idle")
         case .testing:
-            "測試中"
+            L10n.text("speechConnection.testing")
         case .success:
-            "可連線"
+            L10n.text("speechConnection.success")
         case .failure:
-            "測試失敗"
+            L10n.text("speechConnection.failure")
         }
     }
 
@@ -199,9 +199,9 @@ enum SpeechConnectionTestStatus {
         case .idle:
             ""
         case .testing:
-            "正在測試 Azure Speech 認證與區域設定。"
+            L10n.text("speechConnection.message.testing")
         case .success:
-            "Azure Speech 測試成功。"
+            L10n.text("speechConnection.message.success")
         case .failure(let message):
             message
         }
@@ -238,9 +238,9 @@ struct SpeechSettingsHeader: View {
                 .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Speech 設定")
+                Text(L10n.text("speechSettings.title"))
                     .font(.title3.weight(.semibold))
-                Text("Azure Speech SDK 連線與認證設定")
+                Text(L10n.text("speechSettings.subtitle"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -295,7 +295,7 @@ struct SpeechConnectionTestButton: View {
 
             action()
         } label: {
-            Label("測試連線", systemImage: "network")
+            Label(L10n.text("speechSettings.testConnection"), systemImage: "network")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isEnabled ? Color.white : Color.secondary)
                 .padding(.horizontal, 14)
@@ -315,7 +315,7 @@ struct SpeechConnectionTestButton: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.62)
-        .accessibilityHint(isEnabled ? "測試 Azure Speech 設定" : "需要補齊 Region 與 Speech Key")
+        .accessibilityHint(isEnabled ? L10n.text("speechSettings.testConnection.hint") : L10n.text("speechSettings.testConnection.disabledHint"))
     }
 }
 
@@ -352,7 +352,7 @@ struct OutputLanguageToggleRow: View {
                 Spacer()
 
                 if isRequired {
-                    Text("必選")
+                    Text(L10n.text("speechSettings.outputLanguage.required"))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }

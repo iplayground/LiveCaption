@@ -160,7 +160,7 @@ struct AudioSourceMenu: View {
     var body: some View {
         Menu {
             if devices.isEmpty {
-                Text("未偵測到音訊來源")
+                Text(L10n.text("audio.noSourcesDetected"))
             } else {
                 ForEach(devices) { device in
                     Button {
@@ -199,7 +199,7 @@ struct AudioSourceMenu: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.55 : 1)
-        .accessibilityLabel("音訊來源")
+        .accessibilityLabel(L10n.text("audio.source"))
         .accessibilityValue(selectedDeviceName)
     }
 }
@@ -237,7 +237,7 @@ struct AudioLevelMeter: View {
                 }
             }
             .frame(height: 12)
-            .accessibilityLabel("音訊輸入音量")
+            .accessibilityLabel(L10n.text("audio.inputLevel.accessibilityLabel"))
             .accessibilityValue(decibelText)
 
             Text(decibelText)
@@ -287,12 +287,12 @@ struct LabeledValue: View {
 struct SessionStatusValue: View {
     var body: some View {
         HStack {
-            Text("狀態")
+            Text(L10n.text("session.status"))
                 .foregroundStyle(.secondary)
 
             Spacer()
 
-            SessionStatusBadge(title: "尚未開始", systemImage: "pause.circle.fill", tint: .secondary)
+            SessionStatusBadge(title: L10n.text("session.notStarted"), systemImage: "pause.circle.fill", tint: .secondary)
         }
         .font(.subheadline)
     }
@@ -302,7 +302,7 @@ struct SessionCaptureValue: View {
     let isCapturing: Bool
 
     private var title: String {
-        isCapturing ? "收音中" : "未收音"
+        isCapturing ? L10n.text("audio.capturing") : L10n.text("audio.notCapturing")
     }
 
     private var tint: Color {
@@ -315,7 +315,7 @@ struct SessionCaptureValue: View {
 
     var body: some View {
         HStack {
-            Text("收音")
+            Text(L10n.text("audio.capture"))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -396,7 +396,7 @@ struct SpeechAuthorizationValue: View {
 
     var body: some View {
         HStack {
-            Text("Speech 授權")
+            Text(L10n.text("speech"))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -415,7 +415,11 @@ struct RelayConnectionValue: View {
 
             Spacer()
 
-            SessionStatusBadge(title: "未連線", systemImage: "antenna.radiowaves.left.and.right.slash", tint: .orange)
+            SessionStatusBadge(
+                title: L10n.text("relay.connection.notConnected"),
+                systemImage: "antenna.radiowaves.left.and.right.slash",
+                tint: .orange
+            )
         }
         .font(.subheadline)
     }
@@ -429,11 +433,11 @@ enum SubtitleFileAccessStatus {
     var title: String {
         switch self {
         case .notConfigured:
-            "未設定"
+            L10n.text("common.notConfigured")
         case .authorized:
-            "已授權"
+            L10n.text("subtitle.fileAccess.authorized")
         case .unavailable:
-            "無法存取"
+            L10n.text("subtitle.fileAccess.unavailable")
         }
     }
 
@@ -465,7 +469,7 @@ struct SubtitleFileAccessValue: View {
 
     var body: some View {
         HStack {
-            Text("檔案權限")
+            Text(L10n.text("subtitle.filePermission"))
                 .foregroundStyle(.secondary)
 
             Spacer()

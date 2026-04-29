@@ -9,7 +9,7 @@ struct HeaderView: View {
     let onToggleCaptionSession: () -> Void
 
     private var captionButtonTitle: String {
-        isCaptionSessionActive ? "停止字幕" : "開始字幕"
+        isCaptionSessionActive ? L10n.text("caption.stop") : L10n.text("caption.start")
     }
 
     private var captionButtonSystemImage: String {
@@ -21,7 +21,7 @@ struct HeaderView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("LiveCaption Portal")
                     .font(.system(size: 22, weight: .semibold))
-                Text("現場字幕操作台")
+                Text(L10n.text("app.subtitle"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -44,7 +44,7 @@ struct HeaderView: View {
             )
             .controlSize(.large)
             .disabled(!canToggleCaptionSession)
-            .help(canToggleCaptionSession ? captionButtonTitle : captionSessionDisabledReason ?? "尚無法開始字幕")
+            .help(canToggleCaptionSession ? captionButtonTitle : captionSessionDisabledReason ?? L10n.text("caption.disabled.unavailable"))
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)
@@ -61,7 +61,7 @@ private struct CaptionSessionTimer: View {
                 .font(.system(.headline, design: .monospaced))
                 .foregroundStyle(startedAt == nil ? .secondary : .primary)
                 .frame(minWidth: 86, alignment: .trailing)
-                .accessibilityLabel("字幕計時")
+                .accessibilityLabel(L10n.text("caption.timer.accessibilityLabel"))
                 .accessibilityValue(formattedElapsedTime(at: context.date))
         }
     }

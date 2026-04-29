@@ -68,12 +68,12 @@ struct ContentView: View {
             let result = try await settingsToTest.testConnection()
             speechAuthorizationStatus = .authorized
             speechAuthorizationStatus.save()
-            appendLog(level: .info, title: "Speech 授權重新驗證成功", detail: "Region \(result.region)")
+            appendLog(level: .info, title: L10n.text("log.speech.reauthorizationSucceeded"), detail: "Region \(result.region)")
         } catch {
             let message = error.localizedDescription
             speechAuthorizationStatus = .failed
             speechAuthorizationStatus.save()
-            appendLog(level: .error, title: "Speech 授權重新驗證失敗", detail: message)
+            appendLog(level: .error, title: L10n.text("log.speech.reauthorizationFailed"), detail: message)
         }
     }
 
@@ -183,11 +183,11 @@ struct ContentView: View {
 
     private var captionSessionDisabledReason: String? {
         if !audioInputController.isCapturing {
-            return "請先開啟收音"
+            return L10n.text("caption.disabled.enableCaptureFirst")
         }
 
         if subtitleFileAccessStatus != .authorized {
-            return "請先設定可存取的字幕檔案存放位置"
+            return L10n.text("caption.disabled.configureSubtitleStorageFirst")
         }
 
         return nil
@@ -238,7 +238,11 @@ struct ContentView: View {
     private func beginSubtitleExportSession(startedAt: Date) {
         guard let storageDirectoryURL = subtitleFileSettings.storageDirectoryURL else {
             subtitleExportSession = nil
-            appendLog(level: .warning, title: "未建立 SRT 輸出", detail: "尚未設定字幕檔案存放位置")
+            appendLog(
+                level: .warning,
+                title: L10n.text("log.srt.outputNotCreated"),
+                detail: L10n.text("subtitle.storage.notConfigured")
+            )
             return
         }
 
@@ -251,12 +255,12 @@ struct ContentView: View {
             )
             appendLog(
                 level: .info,
-                title: "已準備 SRT 輸出",
+                title: L10n.text("log.srt.outputPrepared"),
                 detail: subtitleExportSession?.directoryURL.path(percentEncoded: false) ?? ""
             )
         } catch {
             subtitleExportSession = nil
-            appendLog(level: .error, title: "建立 SRT 輸出資料夾失敗", detail: error.localizedDescription)
+            appendLog(level: .error, title: L10n.text("log.srt.createFolderFailed"), detail: error.localizedDescription)
         }
     }
 
@@ -279,9 +283,9 @@ struct ContentView: View {
         do {
             let writtenFileURLs = try subtitleExportSession.writeFiles()
             let detail = writtenFileURLs.isEmpty
-                ? "本次工作階段沒有可輸出的字幕事件"
+                ? L10n.text("srt.noCaptionEvents")
                 : writtenFileURLs.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
-            appendLog(level: .info, title: "SRT 輸出完成", detail: detail)
+            appendLog(level: .info, title: L10n.text("log.srt.outputCompleted"), detail: detail)
         } catch {
             writeFallbackSubtitleFiles(for: subtitleExportSession, primaryError: error)
         }
@@ -300,15 +304,12 @@ struct ContentView: View {
                 fallbackFileURLs: writtenFileURLs,
                 fallbackDirectoryURL: subtitleExportSession.fallbackDirectoryURL
             )
-            appendLog(level: .warning, title: "SRT 已暫存", detail: detail)
+            appendLog(level: .warning, title: L10n.text("log.srt.outputSavedToFallback"), detail: detail)
         } catch {
             appendLog(
                 level: .error,
-                title: "SRT 輸出失敗",
-                detail: """
-                主要位置：\(primaryError.localizedDescription)
-                暫存位置：\(error.localizedDescription)
-                """
+                title: L10n.text("log.srt.outputFailed"),
+                detail: L10n.text("srt.fallbackFailed", primaryError.localizedDescription, error.localizedDescription)
             )
         }
     }
@@ -322,11 +323,7 @@ struct ContentView: View {
             ? fallbackDirectoryURL.path(percentEncoded: false)
             : fallbackFileURLs.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
 
-        return """
-        原本設定的位置寫入失敗：\(primaryError.localizedDescription)
-        已改存到 App 可存取的位置：
-        \(fallbackLocation)
-        """
+        return L10n.text("srt.fallbackDetail", primaryError.localizedDescription, fallbackLocation)
     }
 }
 

@@ -15,13 +15,13 @@ enum SpeechRecognitionState {
     var title: String {
         switch self {
         case .idle:
-            "等待語音"
+            L10n.text("speechRecognition.state.idle")
         case .listening:
-            "聆聽中"
+            L10n.text("speechRecognition.state.listening")
         case .recognizing:
-            "辨識中"
+            L10n.text("speechRecognition.state.recognizing")
         case .failed:
-            "辨識失敗"
+            L10n.text("speechRecognition.state.failed")
         }
     }
 
@@ -115,19 +115,19 @@ final class SpeechRecognitionController: ObservableObject {
 
         guard authorizationStatus == .authorized else {
             stopRecognition(resetTranscript: false)
-            state = .failed("Speech 尚未授權")
+            state = .failed(L10n.text("speechRecognition.error.notAuthorized"))
             return
         }
 
         guard !region.isEmpty, !speechKey.isEmpty else {
             stopRecognition(resetTranscript: false)
-            state = .failed("缺少 Speech Region 或 Key")
+            state = .failed(L10n.text("speechRecognition.error.missingRegionOrKey"))
             return
         }
 
         guard let audioDeviceID, !audioDeviceID.isEmpty else {
             stopRecognition(resetTranscript: false)
-            state = .failed("尚未選擇音訊來源")
+            state = .failed(L10n.text("speechRecognition.error.noAudioSourceSelected"))
             return
         }
 
@@ -246,7 +246,7 @@ final class SpeechRecognitionController: ObservableObject {
         recognizer.addCanceledEventHandler { [weak self] _, event in
             let message = event.errorDetails?.trimmingCharacters(in: .whitespacesAndNewlines)
             Task { @MainActor [weak self] in
-                self?.state = .failed(message?.isEmpty == false ? message! : "Speech Translation 已取消")
+                self?.state = .failed(message?.isEmpty == false ? message! : L10n.text("speechRecognition.cancelled"))
             }
         }
     }
@@ -277,7 +277,7 @@ enum SpeechRecognitionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .audioConfigurationFailed:
-            "無法建立音訊輸入設定"
+            L10n.text("speechRecognition.error.audioConfigurationFailed")
         }
     }
 }

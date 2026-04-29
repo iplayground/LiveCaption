@@ -1,2 +1,3 @@
 "CFBundleDisplayName" = "LiveCaption Portal";
 "CFBundleName" = "LiveCaption Portal";
+"NSMicrophoneUsageDescription" = "Portal needs microphone access to capture live audio and generate real-time captions.";

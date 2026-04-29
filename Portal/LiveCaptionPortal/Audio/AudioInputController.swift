@@ -19,15 +19,15 @@ enum AudioPermissionState {
     var title: String {
         switch self {
         case .authorized:
-            "已允許"
+            L10n.text("audioPermission.authorized")
         case .notDetermined:
-            "待確認"
+            L10n.text("audioPermission.notDetermined")
         case .denied:
-            "已拒絕"
+            L10n.text("audioPermission.denied")
         case .restricted:
-            "受限制"
+            L10n.text("audioPermission.restricted")
         case .unavailable:
-            "不可用"
+            L10n.text("audioPermission.unavailable")
         }
     }
 
@@ -193,7 +193,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
         guard let selectedDeviceID,
               let device = devices.first(where: { $0.id == selectedDeviceID })
         else {
-            return "未選擇"
+            return L10n.text("audio.noSourceSelected")
         }
 
         return device.name
@@ -202,15 +202,15 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
     var microphoneActionTitle: String {
         switch microphonePermission {
         case .authorized:
-            isCapturing ? "收音中" : "可收音"
+            isCapturing ? L10n.text("audio.capturing") : L10n.text("audio.readyToCapture")
         case .notDetermined:
-            "需要授權"
+            L10n.text("audio.needsAuthorization")
         case .denied:
-            "已拒絕"
+            L10n.text("audioPermission.denied")
         case .restricted:
-            "受限制"
+            L10n.text("audioPermission.restricted")
         case .unavailable:
-            "不可用"
+            L10n.text("audioPermission.unavailable")
         }
     }
 
@@ -322,7 +322,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
             requestMicrophoneAccess()
         case .denied:
             isCaptureEnabled = false
-            errorMessage = "Portal 沒有麥克風權限。"
+            errorMessage = L10n.text("audio.error.noMicrophonePermission")
             isMicrophoneSettingsPromptPresented = true
         case .restricted, .unavailable:
             isCaptureEnabled = false
@@ -351,7 +351,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
         guard let selectedDeviceID,
               let device = AVCaptureDevice(uniqueID: selectedDeviceID)
         else {
-            errorMessage = "找不到音訊來源"
+            errorMessage = L10n.text("audio.error.sourceNotFound")
             return
         }
 
@@ -361,7 +361,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
 
             let input = try AVCaptureDeviceInput(device: device)
             guard session.canAddInput(input) else {
-                errorMessage = "無法使用此音訊來源"
+                errorMessage = L10n.text("audio.error.sourceUnavailable")
                 session.commitConfiguration()
                 return
             }
@@ -370,7 +370,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
             let output = AVCaptureAudioDataOutput()
             output.setSampleBufferDelegate(sampleDelegate, queue: sampleQueue)
             guard session.canAddOutput(output) else {
-                errorMessage = "無法讀取音訊音量"
+                errorMessage = L10n.text("audio.error.levelUnavailable")
                 session.commitConfiguration()
                 return
             }

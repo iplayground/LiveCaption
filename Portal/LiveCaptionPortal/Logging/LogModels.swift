@@ -2,12 +2,25 @@ import SwiftUI
 import Foundation
 
 enum LogLevel: String, CaseIterable, Identifiable {
-    case all = "全部"
+    case all = "all"
     case info = "Info"
     case warning = "Warning"
     case error = "Error"
 
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            L10n.text("logLevel.all")
+        case .info:
+            "Info"
+        case .warning:
+            "Warning"
+        case .error:
+            "Error"
+        }
+    }
 
     var tint: Color {
         switch self {

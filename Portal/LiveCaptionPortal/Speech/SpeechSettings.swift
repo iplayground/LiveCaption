@@ -10,13 +10,13 @@ enum SpeechSettingsValidationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingRegion:
-            "尚未設定 Region"
+            L10n.text("speechSettings.error.missingRegion")
         case .missingSpeechKey:
-            "尚未設定 Speech Key"
+            L10n.text("speechSettings.error.missingSpeechKey")
         case .serviceRejected(let statusCode):
-            "Azure Speech 拒絕連線，HTTP \(statusCode)"
+            L10n.text("speechSettings.error.serviceRejected", statusCode)
         case .connectionFailed(let message):
-            "Azure Speech 連線失敗：\(message)"
+            L10n.text("speechSettings.error.connectionFailed", message)
         }
     }
 }
@@ -39,11 +39,11 @@ struct SpeechSettings: Equatable {
     }
 
     var regionSummary: String {
-        region.isEmpty ? "尚未設定" : region
+        region.isEmpty ? L10n.text("common.notConfigured") : region
     }
 
     var outputLanguageSummary: String {
-        "\(selectedOutputLanguageIDs.count) 種"
+        L10n.text("speech.outputLanguageCount", selectedOutputLanguageIDs.count)
     }
 
     var selectedOutputLanguages: [SpeechOutputLanguage] {
@@ -67,7 +67,7 @@ struct SpeechSettings: Equatable {
         let endpointURLString = "https://\(normalizedRegion).api.cognitive.microsoft.com/sts/v1.0/issueToken"
 
         guard let endpointURL = URL(string: endpointURLString) else {
-            throw SpeechSettingsValidationError.connectionFailed("Region 格式無效")
+            throw SpeechSettingsValidationError.connectionFailed(L10n.text("speechSettings.error.invalidRegionFormat"))
         }
 
         var request = URLRequest(url: endpointURL)
@@ -79,7 +79,7 @@ struct SpeechSettings: Equatable {
             let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                throw SpeechSettingsValidationError.connectionFailed("未收到 HTTP 回應")
+                throw SpeechSettingsValidationError.connectionFailed(L10n.text("speechSettings.error.missingHTTPResponse"))
             }
 
             guard (200..<300).contains(httpResponse.statusCode), !data.isEmpty else {
@@ -165,15 +165,15 @@ enum SpeechAuthorizationStatus: String {
     var title: String {
         switch self {
         case .unauthorized:
-            "未授權"
+            L10n.text("speechAuthorization.unauthorized")
         case .unverified:
-            "未驗證"
+            L10n.text("speechAuthorization.unverified")
         case .verifying:
-            "驗證中"
+            L10n.text("speechAuthorization.verifying")
         case .authorized:
-            "已授權"
+            L10n.text("speechAuthorization.authorized")
         case .failed:
-            "授權失敗"
+            L10n.text("speechAuthorization.failed")
         }
     }
 

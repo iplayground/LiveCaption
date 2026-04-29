@@ -27,19 +27,19 @@ struct ControlSidebar: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Panel(title: "工作階段", systemImage: "dot.radiowaves.left.and.right") {
+                Panel(title: L10n.text("panel.session"), systemImage: "dot.radiowaves.left.and.right") {
                     VStack(alignment: .leading, spacing: 12) {
                         SessionStatusValue()
                         SessionCaptureValue(isCapturing: audioInputController.isCapturing)
                         SpeechAuthorizationValue(status: speechAuthorizationStatus)
                         RelayConnectionValue()
                         SubtitleFileAccessValue(status: subtitleFileAccessStatus)
-                        SessionMetricValue(label: "字幕事件", value: "\(recognizedCaptionCount)")
+                        SessionMetricValue(label: L10n.text("session.captionEvents"), value: "\(recognizedCaptionCount)")
                     }
                 }
 
-                Panel(title: "音訊輸入", systemImage: "mic", minHeight: 168) {
-                    Toggle("收音", isOn: captureBinding)
+                Panel(title: L10n.text("panel.audioInput"), systemImage: "mic", minHeight: 168) {
+                    Toggle(L10n.text("audio.capture"), isOn: captureBinding)
                         .font(.caption)
                         .toggleStyle(.switch)
                         .controlSize(.small)
@@ -48,7 +48,7 @@ struct ControlSidebar: View {
                     VStack(alignment: .leading, spacing: 14) {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("來源")
+                                Text(L10n.text("audio.source"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
 
@@ -60,7 +60,7 @@ struct ControlSidebar: View {
                                     Image(systemName: "arrow.clockwise")
                                 }
                                 .buttonStyle(.borderless)
-                                .help("重新掃描音訊來源")
+                                .help(L10n.text("audio.rescanSources"))
                             }
 
                             AudioSourceMenu(
@@ -80,13 +80,13 @@ struct ControlSidebar: View {
                         )
 
                         HStack {
-                            Text("自動校準")
+                            Text(L10n.text("audio.automaticCalibration"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
                             Spacer()
 
-                            Toggle("自動校準", isOn: automaticNoiseCalibrationBinding)
+                            Toggle(L10n.text("audio.automaticCalibration"), isOn: automaticNoiseCalibrationBinding)
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                                 .controlSize(.small)
@@ -94,7 +94,7 @@ struct ControlSidebar: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             PermissionRow(
-                                title: "麥克風權限",
+                                title: L10n.text("audio.microphonePermission"),
                                 state: audioInputController.microphonePermission.title,
                                 tint: audioInputController.microphonePermission.tint
                             )
@@ -109,10 +109,10 @@ struct ControlSidebar: View {
                     }
                 }
 
-                Panel(title: "字幕檔案", systemImage: "folder") {
+                Panel(title: L10n.text("panel.subtitleFiles"), systemImage: "folder") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text("存放位置")
+                            Text(L10n.text("subtitle.storageLocation"))
                                 .foregroundStyle(.secondary)
 
                             Spacer()
@@ -133,7 +133,7 @@ struct ControlSidebar: View {
                             Button {
                                 chooseSubtitleStorageDirectory()
                             } label: {
-                                Label("選擇資料夾", systemImage: "folder.badge.gearshape")
+                                Label(L10n.text("subtitle.chooseFolder"), systemImage: "folder.badge.gearshape")
                                     .frame(maxWidth: .infinity)
                             }
 
@@ -144,7 +144,7 @@ struct ControlSidebar: View {
                                     .frame(width: 24)
                             }
                             .disabled(subtitleFileSettings.storageDirectoryURL == nil)
-                            .help("清除字幕檔存放位置")
+                            .help(L10n.text("subtitle.clearStorageLocation"))
                         }
 
                         if let subtitleFileSettingsErrorMessage {
@@ -169,20 +169,20 @@ struct ControlSidebar: View {
         .onChange(of: subtitleFileSettings) {
             refreshSubtitleFileAccessStatus()
         }
-        .alert("需要麥克風權限", isPresented: $audioInputController.isMicrophoneSettingsPromptPresented) {
-            Button("取消", role: .cancel) {}
-            Button("開啟系統設定") {
+        .alert(L10n.text("alert.microphonePermission.title"), isPresented: $audioInputController.isMicrophoneSettingsPromptPresented) {
+            Button(L10n.text("common.cancel"), role: .cancel) {}
+            Button(L10n.text("common.openSystemSettings")) {
                 audioInputController.openMicrophoneSettingsAfterConfirmation()
             }
         } message: {
-            Text("Portal 需要麥克風權限才能收音。是否要前往系統設定調整權限？")
+            Text(L10n.text("alert.microphonePermission.message"))
         }
     }
 
     private func chooseSubtitleStorageDirectory() {
         let panel = NSOpenPanel()
-        panel.title = "選擇字幕檔存放位置"
-        panel.prompt = "選擇"
+        panel.title = L10n.text("subtitle.chooseStoragePanel.title")
+        panel.prompt = L10n.text("common.choose")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
@@ -197,18 +197,18 @@ struct ControlSidebar: View {
             try updatedSettings.setStorageDirectory(directoryURL)
             subtitleFileSettings = updatedSettings
             subtitleFileSettingsErrorMessage = nil
-            onLogEvent(.info, "字幕檔存放位置已更新", directoryURL.path(percentEncoded: false))
+            onLogEvent(.info, L10n.text("log.subtitle.storageUpdated"), directoryURL.path(percentEncoded: false))
         } catch {
-            let message = "無法保存字幕檔存放位置：\(error.localizedDescription)"
+            let message = L10n.text("subtitle.storageSaveFailed", error.localizedDescription)
             subtitleFileSettingsErrorMessage = message
-            onLogEvent(.error, "字幕檔存放位置保存失敗", message)
+            onLogEvent(.error, L10n.text("log.subtitle.storageSaveFailed"), message)
         }
     }
 
     private func clearSubtitleStorageDirectory() {
         subtitleFileSettings.clearStorageDirectory()
         subtitleFileSettingsErrorMessage = nil
-        onLogEvent(.info, "字幕檔存放位置已清除", "尚未設定字幕檔存放位置")
+        onLogEvent(.info, L10n.text("log.subtitle.storageCleared"), L10n.text("subtitle.storage.notConfigured"))
     }
 
     private func openSubtitleStorageDirectoryInFinder() {
@@ -288,7 +288,7 @@ struct CaptionWorkspace: View {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(alignment: .firstTextBaseline) {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("字幕預覽")
+                            Text(L10n.text("caption.previewTitle"))
                                 .font(.title2.weight(.semibold))
 
                             StatusPill(
@@ -301,11 +301,11 @@ struct CaptionWorkspace: View {
                         Spacer()
 
                         HStack(spacing: 4) {
-                            Text("語音語言")
+                            Text(L10n.text("speech.inputLanguage"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
-                            Picker("語音語言", selection: $inputLanguage) {
+                            Picker(L10n.text("speech.inputLanguage"), selection: $inputLanguage) {
                                 ForEach(InputLanguage.allCases) { language in
                                     Text(language.nativeName).tag(language)
                                 }
@@ -319,12 +319,12 @@ struct CaptionWorkspace: View {
                     .frame(maxWidth: .infinity)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("場次標題")
+                        Text(L10n.text("session.title"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
                         ClickFocusedTextField(
-                            placeholder: "輸入這個場次的標題",
+                            placeholder: L10n.text("session.title.placeholder"),
                             text: $sessionTitle
                         ) {
                             focusedField = nil
@@ -334,7 +334,7 @@ struct CaptionWorkspace: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(title: "即時", systemImage: "waveform")
+                        SectionLabel(title: L10n.text("caption.live"), systemImage: "waveform")
 
                         LiveTranscriptCard(
                             languageName: inputLanguage.name,
@@ -351,7 +351,7 @@ struct CaptionWorkspace: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(title: "預覽", systemImage: "captions.bubble")
+                        SectionLabel(title: L10n.text("caption.preview"), systemImage: "captions.bubble")
 
                         VStack(spacing: 12) {
                             ForEach(previewLanguages) { language in
@@ -471,13 +471,13 @@ struct StatusSidebar: View {
                 Panel(title: "Speech", systemImage: "waveform.badge.magnifyingglass") {
                     VStack(alignment: .leading, spacing: 12) {
                         LabeledValue(label: "Region", value: speechSettings.regionSummary)
-                        LabeledValue(label: "語音語言", value: inputLanguage.nativeName)
-                        LabeledValue(label: "字幕輸出", value: speechSettings.outputLanguageSummary)
+                        LabeledValue(label: L10n.text("speech.inputLanguage"), value: inputLanguage.nativeName)
+                        LabeledValue(label: L10n.text("speech.outputLanguages"), value: speechSettings.outputLanguageSummary)
 
                         Button {
                             isSpeechSettingsPresented = true
                         } label: {
-                            Label("開啟設定", systemImage: "gearshape")
+                            Label(L10n.text("settings.open"), systemImage: "gearshape")
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -489,11 +489,11 @@ struct StatusSidebar: View {
                     ) { result in
                         speechAuthorizationStatus = .authorized
                         speechAuthorizationStatus.save()
-                        onLogEvent(.info, "Speech 設定測試成功", "Region \(result.region)")
+                        onLogEvent(.info, L10n.text("log.speech.settingsTestSucceeded"), "Region \(result.region)")
                     } onFailure: { message in
                         speechAuthorizationStatus = .failed
                         speechAuthorizationStatus.save()
-                        onLogEvent(.error, "Speech 設定測試失敗", message)
+                        onLogEvent(.error, L10n.text("log.speech.settingsTestFailed"), message)
                     } onAuthorizationSettingsChanged: {
                         speechAuthorizationStatus = .initial(for: speechSettings)
                         speechAuthorizationStatus.save()
@@ -502,22 +502,22 @@ struct StatusSidebar: View {
 
                 Panel(title: "Relay", systemImage: "server.rack") {
                     VStack(alignment: .leading, spacing: 12) {
-                        LabeledValue(label: "環境", value: "Local")
-                        LabeledValue(label: "最後送出", value: "尚無")
+                        LabeledValue(label: L10n.text("relay.environment"), value: "Local")
+                        LabeledValue(label: L10n.text("relay.lastSent"), value: L10n.text("common.none"))
 
                         Button {
                         } label: {
-                            Label("開啟設定", systemImage: "gearshape")
+                            Label(L10n.text("settings.open"), systemImage: "gearshape")
                                 .frame(maxWidth: .infinity)
                         }
                     }
                 }
 
-                Panel(title: "最近狀態", systemImage: "clock.badge") {
+                Panel(title: L10n.text("panel.recentStatus"), systemImage: "clock.badge") {
                     VStack(alignment: .leading, spacing: 12) {
-                        LabeledValue(label: "最後事件", value: "Relay 未連線")
-                        LabeledValue(label: "警告", value: "1")
-                        LabeledValue(label: "錯誤", value: "0")
+                        LabeledValue(label: L10n.text("status.lastEvent"), value: L10n.text("relay.notConnected"))
+                        LabeledValue(label: L10n.text("status.warning"), value: "1")
+                        LabeledValue(label: L10n.text("status.error"), value: "0")
                     }
                 }
             }
