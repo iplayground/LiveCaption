@@ -18,19 +18,29 @@ struct ContentView: View {
     @State private var speechSettings: SpeechSettings
     @State private var speechAuthorizationStatus: SpeechAuthorizationStatus
     @State private var shouldVerifySpeechAuthorizationOnLaunch: Bool
+    @State private var relaySettings: RelaySettings
+    @State private var relayConnectionStatus: RelayConnectionStatus
+    @State private var shouldVerifyRelayConnectionOnLaunch: Bool
+    @State private var relayLastPublishedAt: Date?
     @State private var subtitleFileSettings: SubtitleFileSettings
     @State private var subtitleExportSession: SubtitleExportSession?
+    @State private var recognizedCaptionCount = 0
     @State private var sessionTitle = ""
     @State private var subtitleFileAccessStatus = SubtitleFileAccessStatus.notConfigured
     @State private var isLogDrawerExpanded = false
     @State private var selectedLogLevel = LogLevel.all
     @State private var logEntries: [LogEntry] = []
     private let windowMinimumSize = WindowLayout.minimumSize
+    private let relayPublishRetryLimit = 3
+    private let maximumLogEntryCount = 300
 
     init() {
         let speechSettings = SpeechSettings.load()
         let authorizationStatus = SpeechAuthorizationStatus.load(for: speechSettings)
         let shouldVerifySpeechAuthorizationOnLaunch = authorizationStatus == .authorized
+        let relaySettings = RelaySettings.load()
+        let relayConnectionStatus = RelayConnectionStatus.load(for: relaySettings)
+        let shouldVerifyRelayConnectionOnLaunch = relayConnectionStatus == .connected
         let subtitleFileSettings = SubtitleFileSettings.load()
 
         _speechSettings = State(initialValue: speechSettings)
@@ -38,6 +48,11 @@ struct ContentView: View {
             initialValue: shouldVerifySpeechAuthorizationOnLaunch ? .verifying : authorizationStatus
         )
         _shouldVerifySpeechAuthorizationOnLaunch = State(initialValue: shouldVerifySpeechAuthorizationOnLaunch)
+        _relaySettings = State(initialValue: relaySettings)
+        _relayConnectionStatus = State(
+            initialValue: shouldVerifyRelayConnectionOnLaunch ? .testing : relayConnectionStatus
+        )
+        _shouldVerifyRelayConnectionOnLaunch = State(initialValue: shouldVerifyRelayConnectionOnLaunch)
         _subtitleFileSettings = State(initialValue: subtitleFileSettings)
     }
 
@@ -54,6 +69,10 @@ struct ContentView: View {
             LogEntry(time: LogClock.currentTimeString(), level: level, title: title, detail: detail),
             at: 0
         )
+
+        if logEntries.count > maximumLogEntryCount {
+            logEntries.removeLast(logEntries.count - maximumLogEntryCount)
+        }
     }
 
     @MainActor
@@ -78,6 +97,33 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
+    private func verifyRelayConnectionOnLaunchIfNeeded() async {
+        guard shouldVerifyRelayConnectionOnLaunch else {
+            return
+        }
+
+        shouldVerifyRelayConnectionOnLaunch = false
+        let settingsToTest = relaySettings
+        let speechKey = speechSettings.speechKey
+
+        do {
+            let result = try await settingsToTest.testConnection(speechKey: speechKey)
+            relayConnectionStatus = .connected
+            relayConnectionStatus.save()
+            appendLog(
+                level: .info,
+                title: L10n.text("log.relay.connectionTestSucceeded"),
+                detail: result.relayURL.absoluteString
+            )
+        } catch {
+            let message = error.localizedDescription
+            relayConnectionStatus = .failed
+            relayConnectionStatus.save()
+            appendLog(level: .error, title: L10n.text("log.relay.connectionTestFailed"), detail: message)
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
@@ -99,7 +145,7 @@ struct ContentView: View {
                         subtitleFileAccessStatus: $subtitleFileAccessStatus,
                         captionSessionStatus: captionSessionStatus,
                         speechAuthorizationStatus: speechAuthorizationStatus,
-                        recognizedCaptionCount: speechRecognitionController.recognizedCaptionCount
+                        relayConnectionStatus: relayConnectionStatus
                     ) { level, title, detail in
                         appendLog(level: level, title: title, detail: detail)
                     }
@@ -110,7 +156,7 @@ struct ContentView: View {
                         sessionTitle: $sessionTitle,
                         inputLanguage: $inputLanguage,
                         outputLanguages: speechSettings.selectedOutputLanguages,
-                        speechRecognitionController: speechRecognitionController
+                        captionPreviewState: speechRecognitionController.captionPreviewState
                     )
 
                     Divider()
@@ -118,7 +164,11 @@ struct ContentView: View {
                     StatusSidebar(
                         inputLanguage: inputLanguage,
                         speechSettings: $speechSettings,
-                        speechAuthorizationStatus: $speechAuthorizationStatus
+                        speechAuthorizationStatus: $speechAuthorizationStatus,
+                        relaySettings: $relaySettings,
+                        relayConnectionStatus: $relayConnectionStatus,
+                        recognizedCaptionCount: recognizedCaptionCount,
+                        relayLastPublishedAt: relayLastPublishedAt
                     ) { level, title, detail in
                         appendLog(level: level, title: title, detail: detail)
                     }
@@ -139,6 +189,10 @@ struct ContentView: View {
         .task {
             audioInputController.activate()
             await verifySpeechAuthorizationOnLaunchIfNeeded()
+            await verifyRelayConnectionOnLaunchIfNeeded()
+        }
+        .onAppear {
+            configureSpeechCallbacks()
         }
         .onDisappear {
             finishCaptionSessionTiming()
@@ -176,11 +230,14 @@ struct ContentView: View {
             updateSpeechRecognition()
             refreshCaptionSessionReadiness()
         }
-        .onChange(of: speechRecognitionController.latestCaptionEvent?.id) {
-            appendLatestCaptionToSubtitleExportSession()
-        }
         .onChange(of: subtitleFileAccessStatus) {
             refreshCaptionSessionReadiness()
+        }
+        .onChange(of: relayConnectionStatus) {
+            refreshCaptionSessionReadiness()
+        }
+        .onChange(of: relaySettings) {
+            relayLastPublishedAt = nil
         }
     }
 
@@ -196,6 +253,7 @@ struct ContentView: View {
         audioInputController.isCapturing
             && speechAuthorizationStatus == .authorized
             && subtitleFileAccessStatus == .authorized
+            && relayConnectionStatus == .connected
     }
 
     private var captionSessionDisabledReason: String? {
@@ -209,6 +267,10 @@ struct ContentView: View {
 
         if subtitleFileAccessStatus != .authorized {
             return L10n.text("caption.disabled.configureSubtitleStorageFirst")
+        }
+
+        if relayConnectionStatus != .connected {
+            return L10n.text("caption.disabled.verifyRelayFirst")
         }
 
         return nil
@@ -259,6 +321,9 @@ struct ContentView: View {
             finishSubtitleExportSession()
         } else {
             captionSessionElapsedTime = 0
+            relayLastPublishedAt = nil
+            recognizedCaptionCount = 0
+            speechRecognitionController.resetCaptionSessionMetrics()
             let startedAt = Date()
             captionSessionStartedAt = startedAt
 
@@ -312,15 +377,78 @@ struct ContentView: View {
         }
     }
 
-    private func appendLatestCaptionToSubtitleExportSession() {
-        guard var subtitleExportSession,
-              let event = speechRecognitionController.latestCaptionEvent
-        else {
+    private func configureSpeechCallbacks() {
+        speechRecognitionController.onCaptionCountChanged = { count in
+            recognizedCaptionCount = count
+        }
+
+        speechRecognitionController.onCaptionEvent = { event in
+            handleCaptionEvent(event)
+        }
+    }
+
+    private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
+        appendCaptionToSubtitleExportSession(event)
+        publishCaptionEventToRelay(event)
+    }
+
+    private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent) {
+        guard var subtitleExportSession else {
             return
         }
 
         subtitleExportSession.append(event: event, inputLanguage: inputLanguage)
         self.subtitleExportSession = subtitleExportSession
+    }
+
+    private func publishCaptionEventToRelay(_ event: RecognizedCaptionEvent) {
+        guard isCaptionSessionActive, relayConnectionStatus == .connected else {
+            return
+        }
+
+        let settingsToPublish = relaySettings
+        let speechKey = speechSettings.speechKey
+        let relayInput = RelayCaptionPublishInput(
+            event: event,
+            inputLanguage: inputLanguage,
+            outputLanguages: speechSettings.selectedOutputLanguages
+        )
+
+        Task.detached {
+            for attempt in 1...relayPublishRetryLimit {
+                do {
+                    let result = try await settingsToPublish.publishCaptionEvent(
+                        relayInput,
+                        speechKey: speechKey
+                    )
+
+                    await MainActor.run {
+                        relayLastPublishedAt = result.publishedAt
+                    }
+                    return
+                } catch {
+                    let message = error.localizedDescription
+
+                    await MainActor.run {
+                        appendLog(
+                            level: attempt == relayPublishRetryLimit ? .error : .warning,
+                            title: L10n.text("log.relay.publishFailed"),
+                            detail: L10n.text("log.relay.publishFailedDetail", attempt, relayPublishRetryLimit, message)
+                        )
+                    }
+
+                    guard attempt < relayPublishRetryLimit else {
+                        await MainActor.run {
+                            relayConnectionStatus = .failed
+                            relayConnectionStatus.save()
+                        }
+                        return
+                    }
+
+                    try? await Task.sleep(for: .seconds(attempt))
+                }
+            }
+        }
     }
 
     private func finishSubtitleExportSession() {

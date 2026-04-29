@@ -56,11 +56,11 @@ private struct CaptionSessionTimer: View {
     let elapsedTime: TimeInterval
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.05)) { context in
+        TimelineView(.periodic(from: .now, by: 1)) { context in
             Text(formattedElapsedTime(at: context.date))
                 .font(.system(.headline, design: .monospaced))
                 .foregroundStyle(startedAt == nil ? .secondary : .primary)
-                .frame(minWidth: 86, alignment: .trailing)
+                .frame(minWidth: 52, alignment: .trailing)
                 .accessibilityLabel(L10n.text("caption.timer.accessibilityLabel"))
                 .accessibilityValue(formattedElapsedTime(at: context.date))
         }
@@ -73,9 +73,9 @@ private struct CaptionSessionTimer: View {
             max(0, elapsedTime)
         }
         let minutes = Int(elapsed / 60)
-        let seconds = elapsed - Double(minutes * 60)
+        let seconds = Int(elapsed) % 60
 
-        return String(format: "%02d:%06.3f", minutes, seconds)
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 

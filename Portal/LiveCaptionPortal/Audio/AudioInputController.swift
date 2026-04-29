@@ -64,12 +64,20 @@ enum AudioPermissionState {
 
 final class AudioSampleBufferDelegate: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onLevelUpdate: ((Float) -> Void)?
+    private let levelUpdateInterval: TimeInterval = 1.0 / 30.0
+    private var lastLevelUpdate = Date.distantPast
 
     func captureOutput(
         _ output: AVCaptureOutput,
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        let now = Date()
+        guard now.timeIntervalSince(lastLevelUpdate) >= levelUpdateInterval else {
+            return
+        }
+        lastLevelUpdate = now
+
         guard let rms = Self.rmsLevel(from: sampleBuffer) else {
             return
         }
@@ -140,23 +148,34 @@ final class AudioSampleBufferDelegate: NSObject, AVCaptureAudioDataOutputSampleB
 }
 
 @MainActor
+final class AudioLevelState: ObservableObject {
+    @Published fileprivate(set) var level: Float = 0
+    @Published fileprivate(set) var peakLevel: Float = 0
+    @Published fileprivate(set) var decibels: Float = AudioInputController.minimumDecibels
+
+    fileprivate func reset() {
+        level = 0
+        peakLevel = 0
+        decibels = AudioInputController.minimumDecibels
+    }
+}
+
+@MainActor
 final class AudioInputController: ObservableObject, @unchecked Sendable {
     @Published private(set) var devices: [AudioInputDevice] = []
     @Published private(set) var selectedDeviceID: String?
     @Published private(set) var microphonePermission = AudioPermissionState.currentMicrophoneState()
-    @Published private(set) var level: Float = 0
-    @Published private(set) var peakLevel: Float = 0
-    @Published private(set) var decibels: Float = AudioInputController.minimumDecibels
     @Published private(set) var isCaptureEnabled = false
     @Published private(set) var isCapturing = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var isAutomaticNoiseCalibrationEnabled: Bool
     @Published var isMicrophoneSettingsPromptPresented = false
+    let levelState = AudioLevelState()
 
     private static let selectedDeviceDefaultsKey = "audioInput.selectedDeviceID"
     private static let selectedDeviceWasUserChosenDefaultsKey = "audioInput.selectedDeviceWasUserChosen"
     private static let automaticNoiseCalibrationDefaultsKey = "audioInput.automaticNoiseCalibrationEnabled"
-    private static let minimumDecibels: Float = -80
+    fileprivate static let minimumDecibels: Float = -80
     private static let noiseCalibrationDuration: TimeInterval = 1.5
     private static let noiseGateMarginDecibels: Float = 10
     private static let minimumAutomaticNoiseGateDecibels: Float = -70
@@ -285,9 +304,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
         captureSession?.stopRunning()
         captureSession = nil
         isCapturing = false
-        level = 0
-        peakLevel = 0
-        decibels = Self.minimumDecibels
+        levelState.reset()
         resetNoiseCalibration()
     }
 
@@ -402,15 +419,15 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
             rawDecibels
         }
         let rawLevel = max(0, min(1, (gatedDecibels - Self.minimumDecibels) / abs(Self.minimumDecibels)))
-        let displayedLevel = rawLevel < level
-            ? max(rawLevel, level * Self.levelReleaseDecay)
+        let displayedLevel = rawLevel < levelState.level
+            ? max(rawLevel, levelState.level * Self.levelReleaseDecay)
             : rawLevel
         let normalizedLevel = displayedLevel < Self.levelReleaseFloor ? 0 : displayedLevel
-        let decayedPeakLevel = peakLevel * Self.peakDecay
+        let decayedPeakLevel = levelState.peakLevel * Self.peakDecay
 
-        decibels = gatedDecibels
-        level = normalizedLevel
-        peakLevel = max(normalizedLevel, decayedPeakLevel < Self.levelReleaseFloor ? 0 : decayedPeakLevel)
+        levelState.decibels = gatedDecibels
+        levelState.level = normalizedLevel
+        levelState.peakLevel = max(normalizedLevel, decayedPeakLevel < Self.levelReleaseFloor ? 0 : decayedPeakLevel)
     }
 
     private func beginNoiseCalibrationIfNeeded() {

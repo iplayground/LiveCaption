@@ -6,6 +6,7 @@ struct SpeechSettingsSheet: View {
     let onConnectionTested: (SpeechConnectionTestResult) -> Void
     let onFailure: (String) -> Void
     let onAuthorizationSettingsChanged: () -> Void
+    let onSpeechKeyChanged: () -> Void
     @State private var connectionTestStatus = SpeechConnectionTestStatus.idle
     @State private var activeConnectionTestID: UUID?
 
@@ -171,6 +172,7 @@ struct SpeechSettingsSheet: View {
         }
         .onChange(of: settings.speechKey) {
             markConnectionTestChanged()
+            onSpeechKeyChanged()
         }
     }
 }

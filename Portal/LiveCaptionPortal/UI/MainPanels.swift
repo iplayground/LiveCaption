@@ -7,7 +7,7 @@ struct ControlSidebar: View {
     @Binding var subtitleFileAccessStatus: SubtitleFileAccessStatus
     let captionSessionStatus: CaptionSessionStatus
     let speechAuthorizationStatus: SpeechAuthorizationStatus
-    let recognizedCaptionCount: Int
+    let relayConnectionStatus: RelayConnectionStatus
     let onLogEvent: (LogLevel, String, String) -> Void
     @State private var subtitleFileSettingsErrorMessage: String?
 
@@ -33,9 +33,8 @@ struct ControlSidebar: View {
                         SessionStatusValue(status: captionSessionStatus)
                         SessionCaptureValue(isCapturing: audioInputController.isCapturing)
                         SpeechAuthorizationValue(status: speechAuthorizationStatus)
-                        RelayConnectionValue()
+                        RelayConnectionValue(status: relayConnectionStatus)
                         SubtitleFileAccessValue(status: subtitleFileAccessStatus)
-                        SessionMetricValue(label: L10n.text("session.captionEvents"), value: "\(recognizedCaptionCount)")
                     }
                 }
 
@@ -74,11 +73,7 @@ struct ControlSidebar: View {
                             }
                         }
 
-                        AudioLevelMeter(
-                            level: audioInputController.level,
-                            peakLevel: audioInputController.peakLevel,
-                            decibels: audioInputController.decibels
-                        )
+                        AudioLevelMeter(levelState: audioInputController.levelState)
 
                         HStack {
                             Text(L10n.text("audio.automaticCalibration"))
@@ -254,7 +249,7 @@ struct CaptionWorkspace: View {
     @Binding var sessionTitle: String
     @Binding var inputLanguage: InputLanguage
     let outputLanguages: [SpeechOutputLanguage]
-    @ObservedObject var speechRecognitionController: SpeechRecognitionController
+    @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @FocusState private var focusedField: FocusedField?
 
     private enum FocusedField: Hashable {
@@ -293,9 +288,9 @@ struct CaptionWorkspace: View {
                                 .font(.title2.weight(.semibold))
 
                             StatusPill(
-                                title: speechRecognitionController.state.title,
-                                systemImage: speechRecognitionController.state.systemImage,
-                                tint: speechRecognitionController.state.tint
+                                title: captionPreviewState.state.title,
+                                systemImage: captionPreviewState.state.systemImage,
+                                tint: captionPreviewState.state.tint
                             )
                         }
 
@@ -340,10 +335,10 @@ struct CaptionWorkspace: View {
                         LiveTranscriptCard(
                             languageName: inputLanguage.name,
                             languageNativeName: inputLanguage.transcriptNativeName,
-                            text: speechRecognitionController.displayTranscript(for: inputLanguage)
+                            text: captionPreviewState.liveTranscript(for: inputLanguage)
                         )
 
-                        if case let .failed(message) = speechRecognitionController.state {
+                        if case let .failed(message) = captionPreviewState.state {
                             Text(message)
                                 .font(.caption)
                                 .foregroundStyle(.red)
@@ -359,7 +354,7 @@ struct CaptionWorkspace: View {
                                 CaptionCard(
                                     languageName: language.name,
                                     languageNativeName: language.nativeName,
-                                    text: speechRecognitionController.captionText(
+                                    text: captionPreviewState.captionText(
                                         for: language,
                                         inputLanguage: inputLanguage
                                     )
@@ -463,8 +458,13 @@ struct StatusSidebar: View {
     let inputLanguage: InputLanguage
     @Binding var speechSettings: SpeechSettings
     @Binding var speechAuthorizationStatus: SpeechAuthorizationStatus
+    @Binding var relaySettings: RelaySettings
+    @Binding var relayConnectionStatus: RelayConnectionStatus
+    let recognizedCaptionCount: Int
+    let relayLastPublishedAt: Date?
     let onLogEvent: (LogLevel, String, String) -> Void
     @State private var isSpeechSettingsPresented = false
+    @State private var isRelaySettingsPresented = false
 
     var body: some View {
         ScrollView {
@@ -491,6 +491,7 @@ struct StatusSidebar: View {
                         speechAuthorizationStatus = .authorized
                         speechAuthorizationStatus.save()
                         onLogEvent(.info, L10n.text("log.speech.settingsTestSucceeded"), "Region \(result.region)")
+                        testRelayConnectionAfterSpeechAuthorization()
                     } onFailure: { message in
                         speechAuthorizationStatus = .failed
                         speechAuthorizationStatus.save()
@@ -498,19 +499,47 @@ struct StatusSidebar: View {
                     } onAuthorizationSettingsChanged: {
                         speechAuthorizationStatus = .initial(for: speechSettings)
                         speechAuthorizationStatus.save()
+                    } onSpeechKeyChanged: {
+                        relayConnectionStatus = .initial(for: relaySettings)
+                        relayConnectionStatus.save()
                     }
                 }
 
                 Panel(title: "Relay", systemImage: "server.rack") {
                     VStack(alignment: .leading, spacing: 12) {
-                        LabeledValue(label: L10n.text("relay.environment"), value: "Local")
-                        LabeledValue(label: L10n.text("relay.lastSent"), value: L10n.text("common.none"))
+                        LabeledValue(label: L10n.text("relay.url"), value: relaySettings.relayURLSummary)
+                        LabeledValue(label: L10n.text("relay.roomName"), value: relaySettings.roomNameSummary)
+                        LabeledValue(label: L10n.text("relay.trackNumber"), value: relaySettings.trackNumberSummary)
+                        LabeledValue(label: L10n.text("relay.lastPublishedAt"), value: relayLastPublishedAtSummary)
+                        LabeledValue(label: L10n.text("session.captionEvents"), value: "\(recognizedCaptionCount)")
 
                         Button {
+                            isRelaySettingsPresented = true
                         } label: {
                             Label(L10n.text("settings.open"), systemImage: "gearshape")
                                 .frame(maxWidth: .infinity)
                         }
+                    }
+                }
+                .sheet(isPresented: $isRelaySettingsPresented) {
+                    RelaySettingsSheet(
+                        settings: $relaySettings,
+                        speechSettings: speechSettings,
+                        isPresented: $isRelaySettingsPresented
+                    ) {
+                        relayConnectionStatus = .testing
+                        relayConnectionStatus.save()
+                    } onConnectionTested: { result in
+                        relayConnectionStatus = .connected
+                        relayConnectionStatus.save()
+                        onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.relayURL.absoluteString)
+                    } onFailure: { message in
+                        relayConnectionStatus = .failed
+                        relayConnectionStatus.save()
+                        onLogEvent(.error, L10n.text("log.relay.connectionTestFailed"), message)
+                    } onSettingsChanged: {
+                        relayConnectionStatus = .initial(for: relaySettings)
+                        relayConnectionStatus.save()
                     }
                 }
 
@@ -529,5 +558,52 @@ struct StatusSidebar: View {
         .frame(width: WindowLayout.statusSidebarWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var relayLastPublishedAtSummary: String {
+        guard let relayLastPublishedAt else {
+            return L10n.text("common.none")
+        }
+
+        return Self.relayLastPublishedAtFormatter.string(from: relayLastPublishedAt)
+    }
+
+    private static let relayLastPublishedAtFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    private func testRelayConnectionAfterSpeechAuthorization() {
+        guard relaySettings.isConfigured else {
+            return
+        }
+
+        relayConnectionStatus = .testing
+        relayConnectionStatus.save()
+
+        let settingsToTest = relaySettings
+        let speechKey = speechSettings.speechKey
+
+        Task {
+            do {
+                let result = try await settingsToTest.testConnection(speechKey: speechKey)
+
+                await MainActor.run {
+                    relayConnectionStatus = .connected
+                    relayConnectionStatus.save()
+                    onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.relayURL.absoluteString)
+                }
+            } catch {
+                let message = error.localizedDescription
+
+                await MainActor.run {
+                    relayConnectionStatus = .failed
+                    relayConnectionStatus.save()
+                    onLogEvent(.error, L10n.text("log.relay.connectionTestFailed"), message)
+                }
+            }
+        }
     }
 }

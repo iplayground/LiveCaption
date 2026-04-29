@@ -205,12 +205,10 @@ struct AudioSourceMenu: View {
 }
 
 struct AudioLevelMeter: View {
-    let level: Float
-    let peakLevel: Float
-    let decibels: Float
+    @ObservedObject var levelState: AudioLevelState
 
     private var decibelText: String {
-        "\(Int(decibels.rounded())) dB"
+        "\(Int(levelState.decibels.rounded())) dB"
     }
 
     var body: some View {
@@ -228,12 +226,12 @@ struct AudioLevelMeter: View {
                                 endPoint: .trailing
                             )
                         )
-                        .frame(width: proxy.size.width * CGFloat(level))
+                        .frame(width: proxy.size.width * CGFloat(levelState.level))
 
                     Rectangle()
                         .fill(Color.primary.opacity(0.55))
                         .frame(width: 2)
-                        .offset(x: max(0, proxy.size.width * CGFloat(peakLevel) - 1))
+                        .offset(x: max(0, proxy.size.width * CGFloat(levelState.peakLevel) - 1))
                 }
             }
             .frame(height: 12)
@@ -477,6 +475,23 @@ struct SpeechAuthorizationValue: View {
 }
 
 struct RelayConnectionValue: View {
+    let status: RelayConnectionStatus
+
+    private var systemImage: String {
+        switch status {
+        case .notConfigured:
+            "antenna.radiowaves.left.and.right.slash"
+        case .unverified:
+            "questionmark.circle.fill"
+        case .testing:
+            "arrow.triangle.2.circlepath"
+        case .connected:
+            "checkmark.seal.fill"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
     var body: some View {
         HStack {
             Text("Relay")
@@ -485,9 +500,9 @@ struct RelayConnectionValue: View {
             Spacer()
 
             SessionStatusBadge(
-                title: L10n.text("relay.connection.notConnected"),
-                systemImage: "antenna.radiowaves.left.and.right.slash",
-                tint: .orange
+                title: status.title,
+                systemImage: systemImage,
+                tint: status.tint
             )
         }
         .font(.subheadline)
