@@ -67,6 +67,7 @@ final class SpeechRecognitionController: ObservableObject {
     @Published private(set) var finalTranscript = ""
     @Published private(set) var finalTranslations: [String: String] = [:]
     @Published private(set) var recognizedCaptionCount = 0
+    @Published private(set) var latestCaptionEvent: RecognizedCaptionEvent?
 
     private var recognizer: SPXTranslationRecognizer?
     private var activeRequest: SpeechRecognitionRequest?
@@ -229,8 +230,15 @@ final class SpeechRecognitionController: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.interimTranscript = ""
                 self?.finalTranscript = text
-                self?.finalTranslations = Self.normalizedTranslations(from: result.translations)
+                let translations = Self.normalizedTranslations(from: result.translations)
+                self?.finalTranslations = translations
                 self?.recognizedCaptionCount += 1
+                self?.latestCaptionEvent = RecognizedCaptionEvent(
+                    text: text,
+                    translations: translations,
+                    offsetTicks: result.offset,
+                    durationTicks: result.duration
+                )
                 self?.state = .listening
             }
         }

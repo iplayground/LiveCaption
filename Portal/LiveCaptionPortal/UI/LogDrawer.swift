@@ -161,16 +161,18 @@ struct LogEntryRow: View {
     let entry: LogEntry
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Text(entry.time)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .leading)
+                .padding(.top, 1)
 
             Text(entry.level.rawValue)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(entry.level.tint)
                 .frame(width: 64, alignment: .leading)
+                .padding(.top, 1)
 
             Text(entry.title)
                 .font(.subheadline.weight(.medium))
@@ -180,9 +182,10 @@ struct LogEntryRow: View {
             Text(entry.detail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
+                .lineLimit(nil)
+                .multilineTextAlignment(.leading)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 9)
     }

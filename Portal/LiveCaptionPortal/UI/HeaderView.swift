@@ -2,7 +2,10 @@ import SwiftUI
 
 struct HeaderView: View {
     let isCaptionSessionActive: Bool
+    let captionSessionStartedAt: Date?
+    let captionSessionElapsedTime: TimeInterval
     let canToggleCaptionSession: Bool
+    let captionSessionDisabledReason: String?
     let onToggleCaptionSession: () -> Void
 
     private var captionButtonTitle: String {
@@ -25,7 +28,7 @@ struct HeaderView: View {
 
             Spacer()
 
-            StatusPill(title: "Relay 未連線", systemImage: "antenna.radiowaves.left.and.right.slash", tint: .orange)
+            CaptionSessionTimer(startedAt: captionSessionStartedAt, elapsedTime: captionSessionElapsedTime)
 
             Button {
                 onToggleCaptionSession()
@@ -41,10 +44,38 @@ struct HeaderView: View {
             )
             .controlSize(.large)
             .disabled(!canToggleCaptionSession)
-            .help(canToggleCaptionSession ? captionButtonTitle : "請先開啟收音")
+            .help(canToggleCaptionSession ? captionButtonTitle : captionSessionDisabledReason ?? "尚無法開始字幕")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)
+    }
+}
+
+private struct CaptionSessionTimer: View {
+    let startedAt: Date?
+    let elapsedTime: TimeInterval
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.05)) { context in
+            Text(formattedElapsedTime(at: context.date))
+                .font(.system(.headline, design: .monospaced))
+                .foregroundStyle(startedAt == nil ? .secondary : .primary)
+                .frame(minWidth: 86, alignment: .trailing)
+                .accessibilityLabel("字幕計時")
+                .accessibilityValue(formattedElapsedTime(at: context.date))
+        }
+    }
+
+    private func formattedElapsedTime(at date: Date) -> String {
+        let elapsed = if let startedAt {
+            max(0, date.timeIntervalSince(startedAt))
+        } else {
+            max(0, elapsedTime)
+        }
+        let minutes = Int(elapsed / 60)
+        let seconds = elapsed - Double(minutes * 60)
+
+        return String(format: "%02d:%06.3f", minutes, seconds)
     }
 }
 

@@ -407,6 +407,75 @@ struct SpeechAuthorizationValue: View {
     }
 }
 
+struct RelayConnectionValue: View {
+    var body: some View {
+        HStack {
+            Text("Relay")
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            SessionStatusBadge(title: "未連線", systemImage: "antenna.radiowaves.left.and.right.slash", tint: .orange)
+        }
+        .font(.subheadline)
+    }
+}
+
+enum SubtitleFileAccessStatus {
+    case notConfigured
+    case authorized
+    case unavailable
+
+    var title: String {
+        switch self {
+        case .notConfigured:
+            "未設定"
+        case .authorized:
+            "已授權"
+        case .unavailable:
+            "無法存取"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .notConfigured:
+            "questionmark.circle.fill"
+        case .authorized:
+            "checkmark.seal.fill"
+        case .unavailable:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .notConfigured:
+            .secondary
+        case .authorized:
+            .green
+        case .unavailable:
+            .red
+        }
+    }
+}
+
+struct SubtitleFileAccessValue: View {
+    let status: SubtitleFileAccessStatus
+
+    var body: some View {
+        HStack {
+            Text("檔案權限")
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            SessionStatusBadge(title: status.title, systemImage: status.systemImage, tint: status.tint)
+        }
+        .font(.subheadline)
+    }
+}
+
 struct PermissionRow: View {
     let title: String
     let state: String
