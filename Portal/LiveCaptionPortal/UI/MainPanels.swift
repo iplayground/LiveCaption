@@ -5,6 +5,7 @@ struct ControlSidebar: View {
     @ObservedObject var audioInputController: AudioInputController
     @Binding var subtitleFileSettings: SubtitleFileSettings
     @Binding var subtitleFileAccessStatus: SubtitleFileAccessStatus
+    let captionSessionStatus: CaptionSessionStatus
     let speechAuthorizationStatus: SpeechAuthorizationStatus
     let recognizedCaptionCount: Int
     let onLogEvent: (LogLevel, String, String) -> Void
@@ -29,7 +30,7 @@ struct ControlSidebar: View {
             VStack(alignment: .leading, spacing: 18) {
                 Panel(title: L10n.text("panel.session"), systemImage: "dot.radiowaves.left.and.right") {
                     VStack(alignment: .leading, spacing: 12) {
-                        SessionStatusValue()
+                        SessionStatusValue(status: captionSessionStatus)
                         SessionCaptureValue(isCapturing: audioInputController.isCapturing)
                         SpeechAuthorizationValue(status: speechAuthorizationStatus)
                         RelayConnectionValue()

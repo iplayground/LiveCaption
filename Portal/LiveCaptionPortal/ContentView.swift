@@ -12,6 +12,7 @@ struct ContentView: View {
     @StateObject private var audioInputController = AudioInputController()
     @StateObject private var speechRecognitionController = SpeechRecognitionController()
     @State private var isCaptionSessionActive = false
+    @State private var captionSessionStatus = CaptionSessionStatus.notStarted
     @State private var captionSessionStartedAt: Date?
     @State private var captionSessionElapsedTime: TimeInterval = 0
     @State private var speechSettings: SpeechSettings
@@ -96,6 +97,7 @@ struct ContentView: View {
                         audioInputController: audioInputController,
                         subtitleFileSettings: $subtitleFileSettings,
                         subtitleFileAccessStatus: $subtitleFileAccessStatus,
+                        captionSessionStatus: captionSessionStatus,
                         speechAuthorizationStatus: speechAuthorizationStatus,
                         recognizedCaptionCount: speechRecognitionController.recognizedCaptionCount
                     ) { level, title, detail in
@@ -149,12 +151,17 @@ struct ContentView: View {
         }
         .onChange(of: audioInputController.isCapturing) {
             if !audioInputController.isCapturing {
+                if isCaptionSessionActive {
+                    captionSessionStatus = .stopping
+                }
                 finishCaptionSessionTiming()
                 finishSubtitleExportSession()
                 isCaptionSessionActive = false
             } else {
                 updateSpeechRecognition()
             }
+
+            refreshCaptionSessionReadiness()
         }
         .onChange(of: audioInputController.selectedDeviceID) {
             updateSpeechRecognition()
@@ -167,9 +174,13 @@ struct ContentView: View {
         }
         .onChange(of: speechAuthorizationStatus) {
             updateSpeechRecognition()
+            refreshCaptionSessionReadiness()
         }
         .onChange(of: speechRecognitionController.latestCaptionEvent?.id) {
             appendLatestCaptionToSubtitleExportSession()
+        }
+        .onChange(of: subtitleFileAccessStatus) {
+            refreshCaptionSessionReadiness()
         }
     }
 
@@ -178,12 +189,22 @@ struct ContentView: View {
             return true
         }
 
-        return audioInputController.isCapturing && subtitleFileAccessStatus == .authorized
+        return canStartCaptionSession
+    }
+
+    private var canStartCaptionSession: Bool {
+        audioInputController.isCapturing
+            && speechAuthorizationStatus == .authorized
+            && subtitleFileAccessStatus == .authorized
     }
 
     private var captionSessionDisabledReason: String? {
         if !audioInputController.isCapturing {
             return L10n.text("caption.disabled.enableCaptureFirst")
+        }
+
+        if speechAuthorizationStatus != .authorized {
+            return L10n.text("caption.disabled.verifySpeechFirst")
         }
 
         if subtitleFileAccessStatus != .authorized {
@@ -212,17 +233,42 @@ struct ContentView: View {
         )
     }
 
-    private func toggleCaptionSession() {
-        isCaptionSessionActive.toggle()
+    private func refreshCaptionSessionReadiness() {
+        guard !isCaptionSessionActive else {
+            return
+        }
 
+        guard canStartCaptionSession else {
+            captionSessionStatus = .notStarted
+            return
+        }
+
+        switch captionSessionStatus {
+        case .notStarted, .ready:
+            captionSessionStatus = .ready
+        case .captioning, .stopping, .completed, .completedWithWarning, .failed:
+            break
+        }
+    }
+
+    private func toggleCaptionSession() {
         if isCaptionSessionActive {
+            captionSessionStatus = .stopping
+            isCaptionSessionActive = false
+            finishCaptionSessionTiming()
+            finishSubtitleExportSession()
+        } else {
             captionSessionElapsedTime = 0
             let startedAt = Date()
             captionSessionStartedAt = startedAt
-            beginSubtitleExportSession(startedAt: startedAt)
-        } else {
-            finishCaptionSessionTiming()
-            finishSubtitleExportSession()
+
+            if beginSubtitleExportSession(startedAt: startedAt) {
+                captionSessionStatus = .captioning
+                isCaptionSessionActive = true
+            } else {
+                finishCaptionSessionTiming()
+                captionSessionStatus = .failed
+            }
         }
     }
 
@@ -235,7 +281,7 @@ struct ContentView: View {
         self.captionSessionStartedAt = nil
     }
 
-    private func beginSubtitleExportSession(startedAt: Date) {
+    private func beginSubtitleExportSession(startedAt: Date) -> Bool {
         guard let storageDirectoryURL = subtitleFileSettings.storageDirectoryURL else {
             subtitleExportSession = nil
             appendLog(
@@ -243,7 +289,7 @@ struct ContentView: View {
                 title: L10n.text("log.srt.outputNotCreated"),
                 detail: L10n.text("subtitle.storage.notConfigured")
             )
-            return
+            return false
         }
 
         do {
@@ -258,9 +304,11 @@ struct ContentView: View {
                 title: L10n.text("log.srt.outputPrepared"),
                 detail: subtitleExportSession?.directoryURL.path(percentEncoded: false) ?? ""
             )
+            return true
         } catch {
             subtitleExportSession = nil
             appendLog(level: .error, title: L10n.text("log.srt.createFolderFailed"), detail: error.localizedDescription)
+            return false
         }
     }
 
@@ -277,6 +325,9 @@ struct ContentView: View {
 
     private func finishSubtitleExportSession() {
         guard let subtitleExportSession else {
+            if captionSessionStatus == .stopping {
+                captionSessionStatus = .completed
+            }
             return
         }
 
@@ -286,6 +337,7 @@ struct ContentView: View {
                 ? L10n.text("srt.noCaptionEvents")
                 : writtenFileURLs.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
             appendLog(level: .info, title: L10n.text("log.srt.outputCompleted"), detail: detail)
+            captionSessionStatus = .completed
         } catch {
             writeFallbackSubtitleFiles(for: subtitleExportSession, primaryError: error)
         }
@@ -305,12 +357,14 @@ struct ContentView: View {
                 fallbackDirectoryURL: subtitleExportSession.fallbackDirectoryURL
             )
             appendLog(level: .warning, title: L10n.text("log.srt.outputSavedToFallback"), detail: detail)
+            captionSessionStatus = .completedWithWarning
         } catch {
             appendLog(
                 level: .error,
                 title: L10n.text("log.srt.outputFailed"),
                 detail: L10n.text("srt.fallbackFailed", primaryError.localizedDescription, error.localizedDescription)
             )
+            captionSessionStatus = .failed
         }
     }
 

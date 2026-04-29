@@ -284,7 +284,76 @@ struct LabeledValue: View {
     }
 }
 
+enum CaptionSessionStatus {
+    case notStarted
+    case ready
+    case captioning
+    case stopping
+    case completed
+    case completedWithWarning
+    case failed
+
+    var title: String {
+        switch self {
+        case .notStarted:
+            L10n.text("session.notStarted")
+        case .ready:
+            L10n.text("session.ready")
+        case .captioning:
+            L10n.text("session.captioning")
+        case .stopping:
+            L10n.text("session.stopping")
+        case .completed:
+            L10n.text("session.completed")
+        case .completedWithWarning:
+            L10n.text("session.completedWithWarning")
+        case .failed:
+            L10n.text("session.failed")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .notStarted:
+            "pause.circle.fill"
+        case .ready:
+            "checkmark.circle.fill"
+        case .captioning:
+            "dot.radiowaves.left.and.right"
+        case .stopping:
+            "hourglass"
+        case .completed:
+            "checkmark.seal.fill"
+        case .completedWithWarning:
+            "exclamationmark.triangle.fill"
+        case .failed:
+            "xmark.octagon.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .notStarted:
+            .secondary
+        case .ready:
+            .blue
+        case .captioning:
+            .green
+        case .stopping:
+            .orange
+        case .completed:
+            .green
+        case .completedWithWarning:
+            .orange
+        case .failed:
+            .red
+        }
+    }
+}
+
 struct SessionStatusValue: View {
+    let status: CaptionSessionStatus
+
     var body: some View {
         HStack {
             Text(L10n.text("session.status"))
@@ -292,7 +361,7 @@ struct SessionStatusValue: View {
 
             Spacer()
 
-            SessionStatusBadge(title: L10n.text("session.notStarted"), systemImage: "pause.circle.fill", tint: .secondary)
+            SessionStatusBadge(title: status.title, systemImage: status.systemImage, tint: status.tint)
         }
         .font(.subheadline)
     }

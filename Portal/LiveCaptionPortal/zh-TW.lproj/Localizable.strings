@@ -25,6 +25,7 @@
 "caption.disabled.configureSubtitleStorageFirst" = "請先設定可存取的字幕檔案存放位置";
 "caption.disabled.enableCaptureFirst" = "請先開啟收音";
 "caption.disabled.unavailable" = "尚無法開始字幕";
+"caption.disabled.verifySpeechFirst" = "請先完成 Speech 授權驗證";
 "caption.live" = "即時";
 "caption.preview" = "預覽";
 "caption.previewTitle" = "字幕預覽";
@@ -65,8 +66,14 @@
 "relay.connection.notConnected" = "未連線";
 "relay.notConnected" = "Relay 未連線";
 "session.captionEvents" = "字幕事件";
+"session.captioning" = "字幕中";
+"session.completed" = "已完成";
+"session.completedWithWarning" = "完成但有警告";
+"session.failed" = "結束失敗";
 "session.notStarted" = "尚未開始";
+"session.ready" = "準備就緒";
 "session.status" = "狀態";
+"session.stopping" = "正在停止";
 "session.title" = "場次標題";
 "session.title.placeholder" = "輸入這個場次的標題";
 "settings.open" = "開啟設定";

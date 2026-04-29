@@ -25,6 +25,7 @@
 "caption.disabled.configureSubtitleStorageFirst" = "Configure an accessible subtitle storage folder first";
 "caption.disabled.enableCaptureFirst" = "Enable capture first";
 "caption.disabled.unavailable" = "Captions cannot start yet";
+"caption.disabled.verifySpeechFirst" = "Verify Speech authorization first";
 "caption.live" = "Live";
 "caption.preview" = "Preview";
 "caption.previewTitle" = "Caption Preview";
@@ -65,8 +66,14 @@
 "relay.connection.notConnected" = "Not connected";
 "relay.notConnected" = "Relay not connected";
 "session.captionEvents" = "Caption events";
+"session.captioning" = "Captioning";
+"session.completed" = "Completed";
+"session.completedWithWarning" = "Completed with warnings";
+"session.failed" = "End failed";
 "session.notStarted" = "Not started";
+"session.ready" = "Ready";
 "session.status" = "Status";
+"session.stopping" = "Stopping";
 "session.title" = "Session title";
 "session.title.placeholder" = "Enter a title for this session";
 "settings.open" = "Open Settings";
