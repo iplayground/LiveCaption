@@ -1,6 +1,6 @@
 # Relay Azure Functions 設定
 
-本文記錄 Relay 的 Azure Functions 設定方式、本機設定與目前尚未完成的整合邊界。
+本文記錄 Relay 的 Azure Functions 設定方式、本機設定、Azure Web PubSub 基礎設施與目前尚未完成的整合邊界。
 
 Relay 目前以 Python 3.13 Azure Functions 實作，HTTP endpoint 為：
 
@@ -18,15 +18,17 @@ POST /api/caption-events
 - 字幕事件資料模型。
 - 字幕事件 validator。
 - HTTP handler 雛形。
+- Azure Web PubSub 正式資源與 Relay app settings 的 Bicep 設定。
 - Web PubSub 發布 payload builder。
+- 正式 Azure Functions 與 Azure Web PubSub 基礎設施部署。
 - pytest 測試。
 
 尚未完成：
 
 - Azure Web PubSub publisher adapter。
-- 正式環境部署執行。
+- 觀眾端 Web PubSub 連線或 negotiate endpoint。
 
-在 Web PubSub 發布完成前，Relay 不應對外開放作為正式服務。
+在 publisher adapter 完成前，Relay 可用來驗證事件接收與授權，但不會實際發布字幕到觀眾端。
 
 ## 必要 App Settings
 
@@ -38,6 +40,9 @@ Azure Functions 需要下列設定：
 | `AzureWebJobsStorage` | 是 | Azure Functions runtime 使用的 Storage 設定。本機可使用 Azurite 的 `UseDevelopmentStorage=true`；正式環境由 Bicep 設定 managed identity 型 app settings，例如 `AzureWebJobsStorage__accountName` 與各 service URI，不得提交真值。 |
 | `AzureWebJobsDisableHomepage` | 正式是 | 正式環境固定為 `true`，避免 Function App 根路徑顯示 Azure Functions 預設首頁。 |
 | `AZURE_SPEECH_ACCOUNT_ID` | 是 | Azure Speech resource 的 ARM resource id。正式環境由 Bicep 產生，Relay 依此定位 Azure Speech resource 並讀取實際 Speech key。 |
+| `AZURE_WEBPUBSUB_ENDPOINT` | 是 | Azure Web PubSub endpoint，例如 `https://<name>.webpubsub.azure.com`。正式環境由 Bicep 產生，不應使用 connection string。 |
+| `AZURE_WEBPUBSUB_HUB_NAME` | 是 | Relay 發布字幕使用的 Web PubSub hub，第一版預設為 `livecaption`。 |
+| `AZURE_WEBPUBSUB_GROUP_NAME` | 是 | Relay 發布字幕使用的 Web PubSub group，第一版固定為 `caption-live`。 |
 
 ## 本機設定
 
@@ -50,8 +55,9 @@ cp local.settings.sample.json local.settings.json
 
 `Relay/local.settings.sample.json` 只能放不含真實機密的範例值。本機
 `local.settings.json` 只應保存 Azure Speech resource 定位資訊，不應保存 Speech
-key 真值。若需要使用 Azure Storage connection string，只能放在未提交的
-`local.settings.json` 或本機 shell 環境。
+key 真值。Web PubSub 本機設定只保存 endpoint、hub name 與 group name，不應保存
+Web PubSub connection string 或 SAS token。若需要使用 Azure Storage connection string，
+只能放在未提交的 `local.settings.json` 或本機 shell 環境。
 
 正式 Azure Functions 不設定 `AZURE_SUBSCRIPTION_ID` 與
 `AZURE_SPEECH_RESOURCE_GROUP`。Relay 只使用 Bicep 寫入的
@@ -112,14 +118,17 @@ Function App。部署相關檔案放在 `Relay/infra/`：
 
 ## 正式 Azure 資源
 
-`Relay/infra/main.bicep` 會建立下列資源：
+`Relay/infra/main.bicep` 會建立下列資源；目前已部署到 `iplayground` resource group：
 
 - Azure Functions Flex Consumption Function App，Python 3.13。
 - Storage Account，供 Functions host 與部署 package 使用。
 - Log Analytics Workspace。
 - Application Insights。
+- Azure Web PubSub，預設以 `Free_F1` 建立，活動前可升級為 `Standard_S1`。
 - System-assigned Managed Identity。
 - Storage Blob、Queue、Table 與 Application Insights 所需 RBAC。
+- Web PubSub resource 範圍的 `Web PubSub Service Owner` 角色指派，供 Relay 使用
+  Managed Identity 呼叫 data-plane publish API。
 - 既有 Azure Speech resource 上的 `Cognitive Services User` 角色指派。
 - GitHub Actions 專用 user-assigned Managed Identity。
 - 綁定到 `iplayground/LiveCaption` 的 `main` 分支 federated credential。
@@ -127,6 +136,18 @@ Function App。部署相關檔案放在 `Relay/infra/`：
 Relay 使用 Managed Identity 向 Azure 讀取 Speech key，並以該 key 驗證 Portal
 送出的 HMAC 簽章。正式環境不應在 App Settings、參數檔或 repo 中保存 Speech
 key 真值。
+
+目前 Web PubSub 現況：
+
+- Resource name：`<web-pubsub-name>`
+- Region：`japaneast`
+- SKU：`Free_F1`
+- Unit count：`1`
+- Endpoint：`https://<web-pubsub-name>.webpubsub.azure.com`
+- Hub：`livecaption`
+- Group：`caption-live`
+- Relay Managed Identity 已在此 Web PubSub resource 範圍取得 `Web PubSub Service Owner`。
+- Web PubSub local auth 已關閉，Relay 後續應使用 Managed Identity，不使用 connection string。
 
 ## 正式基礎設施部署
 
@@ -148,7 +169,7 @@ az deployment group create \
   --parameters Relay/infra/prod.bicepparam
 ```
 
-基礎設施部署完成後，需把 Bicep outputs 寫入 GitHub Actions secrets：
+基礎設施部署完成後，若 GitHub Actions secrets 尚未設定，需把 Bicep outputs 寫入 GitHub Actions secrets：
 
 - `AZURE_CLIENT_ID`
   說明：Bicep output `githubActionsIdentityClientId`
@@ -274,9 +295,16 @@ Consumption。建立 App Service Managed Certificate 時需使用
 `Microsoft.Web/sites/hostNameBindings`，將 `sslState` 設為 `SniEnabled` 並填入
 managed certificate 的 `thumbprint`。
 
-## Azure Web PubSub 設定方向
+## Azure Web PubSub 設定
 
-Relay 後續發布字幕到 Azure Web PubSub 時，Portal 不應知道 Web PubSub hub、connection string、SAS token 或 group name。
+Relay 發布字幕到 Azure Web PubSub 時，Portal 不應知道 Web PubSub hub、connection string、SAS token 或 group name。
+
+`Relay/infra/main.bicep` 已建立 Web PubSub resource，並把下列非機密設定寫入
+Relay Function App：
+
+- `AZURE_WEBPUBSUB_ENDPOINT`
+- `AZURE_WEBPUBSUB_HUB_NAME`
+- `AZURE_WEBPUBSUB_GROUP_NAME`
 
 第一版發布 group 由 Relay 固定管理：
 

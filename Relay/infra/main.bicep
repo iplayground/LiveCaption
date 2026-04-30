@@ -22,6 +22,29 @@ param logAnalyticsWorkspaceName string = '${functionAppName}-logs'
 @description('Application Insights resource name for Relay telemetry.')
 param applicationInsightsName string = '${functionAppName}-appi'
 
+@description('Globally unique Azure Web PubSub resource name.')
+@minLength(3)
+@maxLength(63)
+param webPubSubName string
+
+@description('Azure Web PubSub SKU. Use Free_F1 while idle and Standard_S1 for events that need more than 20 concurrent clients.')
+@allowed([
+  'Free_F1'
+  'Standard_S1'
+  'Premium_P1'
+])
+param webPubSubSkuName string = 'Free_F1'
+
+@description('Azure Web PubSub unit count. Free_F1 supports only 1 unit.')
+@minValue(1)
+param webPubSubUnitCount int = 1
+
+@description('Azure Web PubSub hub used by Relay.')
+param webPubSubHubName string = 'livecaption'
+
+@description('Azure Web PubSub group used for live caption broadcasts.')
+param webPubSubGroupName string = 'caption-live'
+
 @description('Existing Azure Speech resource group name.')
 param speechResourceGroupName string = resourceGroup().name
 
@@ -77,6 +100,10 @@ var roleDefinitions = {
   websiteContributor: subscriptionResourceId(
     'Microsoft.Authorization/roleDefinitions',
     'de139f84-1756-47ae-9be6-808fbbe84772'
+  )
+  webPubSubServiceOwner: subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    '12cf5a90-567b-43ae-8102-96cf46c7d9b4'
   )
   cognitiveServicesUser: subscriptionResourceId(
     'Microsoft.Authorization/roleDefinitions',
@@ -178,6 +205,23 @@ resource githubFederatedCredential 'Microsoft.ManagedIdentity/userAssignedIdenti
   }
 }
 
+resource webPubSub 'Microsoft.SignalRService/webPubSub@2024-03-01' = {
+  name: webPubSubName
+  location: location
+  tags: tags
+  sku: {
+    name: webPubSubSkuName
+    capacity: webPubSubUnitCount
+  }
+  properties: {
+    disableLocalAuth: true
+    publicNetworkAccess: 'Enabled'
+    tls: {
+      clientCertEnabled: false
+    }
+  }
+}
+
 resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
@@ -251,6 +295,18 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
             speechAccountName
           )
         }
+        {
+          name: 'AZURE_WEBPUBSUB_ENDPOINT'
+          value: 'https://${webPubSub.properties.hostName}'
+        }
+        {
+          name: 'AZURE_WEBPUBSUB_HUB_NAME'
+          value: webPubSubHubName
+        }
+        {
+          name: 'AZURE_WEBPUBSUB_GROUP_NAME'
+          value: webPubSubGroupName
+        }
       ]
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
@@ -308,6 +364,16 @@ resource githubWebsiteContributorRole 'Microsoft.Authorization/roleAssignments@2
   }
 }
 
+resource webPubSubServiceOwnerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(webPubSub.id, functionApp.id, roleDefinitions.webPubSubServiceOwner)
+  scope: webPubSub
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: roleDefinitions.webPubSubServiceOwner
+  }
+}
+
 module speechKeyReaderRole 'speech-role-assignment.bicep' = {
   name: 'speech-key-reader-role-${uniqueString(functionApp.id, speechAccountName)}'
   scope: resourceGroup(speechResourceGroupName)
@@ -322,6 +388,11 @@ output functionAppResourceId string = functionApp.id
 output functionAppName string = functionApp.name
 output relayEndpoint string = 'https://${functionApp.properties.defaultHostName}/api/caption-events'
 output managedIdentityPrincipalId string = functionApp.identity.principalId
+output webPubSubResourceId string = webPubSub.id
+output webPubSubName string = webPubSub.name
+output webPubSubEndpoint string = 'https://${webPubSub.properties.hostName}'
+output webPubSubHubName string = webPubSubHubName
+output webPubSubGroupName string = webPubSubGroupName
 output githubActionsIdentityClientId string = githubActionsIdentity.properties.clientId
 output githubActionsIdentityPrincipalId string = githubActionsIdentity.properties.principalId
 output githubActionsIdentityResourceId string = githubActionsIdentity.id

@@ -1,8 +1,8 @@
 # Relay
 
-Relay 是 LiveCaption 的後端服務，負責接收 Portal 傳來的字幕事件，驗證事件格式，並在後續整合中發布到 Azure Web PubSub。
+Relay 是 LiveCaption 的後端服務，負責接收 Portal 傳來的字幕事件，驗證事件格式，並發布到 Azure Web PubSub。
 
-目前 Relay 已建立 Python 3.13 Azure Functions 骨架、字幕事件 validator 與 Speech key HMAC 請求驗證。Azure Web PubSub publisher 仍待後續實作。
+目前 Relay 已建立 Python 3.13 Azure Functions 骨架、字幕事件 validator、Speech key HMAC 請求驗證、Azure Web PubSub 基礎設施設定與發布 payload builder。Azure Web PubSub publisher adapter 仍待後續實作，因此目前 HTTP handler 驗證成功後尚未實際發布字幕。
 
 ## 目錄
 
@@ -43,9 +43,11 @@ cp local.settings.sample.json local.settings.json
 ```
 
 Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，執行時向
-Azure 讀取實際 Speech key 並驗證 Portal 請求簽章。正式 Azure Functions 由 Bicep
-寫入此非機密設定；Portal 不會把 Speech key 直接傳給 Relay，而是用本機 Speech
-key 對 request body 產生 HMAC 簽章。
+Azure 讀取實際 Speech key 並驗證 Portal 請求簽章。Relay 也透過
+`AZURE_WEBPUBSUB_ENDPOINT`、`AZURE_WEBPUBSUB_HUB_NAME` 與
+`AZURE_WEBPUBSUB_GROUP_NAME` 定位字幕發布目標。正式 Azure Functions 由 Bicep
+寫入這些非機密設定；Portal 不會把 Speech key 或 Azure Web PubSub 發布細節直接傳給 Relay，
+而是用本機 Speech key 對 request body 產生 HMAC 簽章。
 
 ## 本機啟動
 
