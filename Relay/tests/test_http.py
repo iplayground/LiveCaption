@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from relay.http import build_publish_payload, handle_caption_event_request
+from relay.http import build_health_payload, build_publish_payload
+from relay.http import handle_caption_event_request
 from relay.webpubsub import RelayWebPubSubError
 from relay.validation import validate_caption_event
 
@@ -112,3 +113,17 @@ def test_build_publish_payload_keeps_empty_room_name() -> None:
 
     assert payload["roomName"] == ""
     assert payload["trackNumber"] == 1
+
+
+def test_build_health_payload_includes_commit() -> None:
+    assert build_health_payload(commit="abc123") == {
+        "status": "ok",
+        "commit": "abc123",
+    }
+
+
+def test_build_health_payload_defaults_to_unknown_commit() -> None:
+    assert build_health_payload() == {
+        "status": "ok",
+        "commit": "unknown",
+    }

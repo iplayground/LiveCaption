@@ -2,13 +2,15 @@
 
 本文記錄 Relay 的 Azure Functions 設定方式、本機設定、Azure Web PubSub 基礎設施與目前尚未完成的整合邊界。
 
-Relay 目前以 Python 3.13 Azure Functions 實作，HTTP endpoint 為：
+Relay 目前以 Python 3.13 Azure Functions 實作，HTTP endpoints 為：
 
 ```http
 POST /api/caption-events
+GET /api/health
 ```
 
 字幕事件 API 契約請見 [字幕事件 API](../api/caption-events.md)。
+健康檢查 API 契約請見 [Relay 健康檢查 API](../api/health.md)。
 
 ## 目前狀態
 
@@ -22,6 +24,8 @@ POST /api/caption-events
 - Web PubSub 發布 payload builder。
 - Azure Web PubSub publisher adapter。
 - 正式 Azure Functions 與 Azure Web PubSub 基礎設施部署。
+- 正式 Azure Functions 已套用 Flex Consumption `RollingUpdate` site update strategy。
+- GitHub Actions 部署後健康檢查與失敗時自動 rollback。
 - pytest 測試。
 
 尚未完成：
@@ -222,43 +226,55 @@ Service Principal secret 建立第二套部署路徑。
 - push 到 `main`，且變更包含 `Relay/**` 或 workflow 本身。
 - 手動執行 `workflow_dispatch`。
 
-workflow 觸發後，會先找出上一個成功 Azure 上傳所建立的 GitHub deployment
-紀錄，並比對該 deployment commit 到目前 HEAD 的檔案差異。只要差異中包含
-任何 `Relay/` 底下的檔案，就會登入 Azure 並上傳 Functions 程式碼。
+push 觸發時，GitHub Actions 會以 workflow 的 `paths` 篩選判斷是否需要自動部署；
+手動執行 `workflow_dispatch` 時則直接登入 Azure 並上傳 Functions 程式碼。
 
-若同一次 push 同時包含 `Relay/` 與 `Portal/`、`docs/`、根目錄文件或 workflow
-本身的變更，仍會部署 Relay。若從上一個成功 Azure 上傳到目前 HEAD 完全沒有
-`Relay/` 變更，才會略過 Azure 上傳。
+正式 Function App 採用 Flex Consumption `RollingUpdate` site update strategy，
+降低部署時因預設 `Recreate` 策略一次重啟全部執行個體造成的中斷風險。此功能目前
+仍屬 Azure preview；它不是 rollback 機制，也無法保證有 runtime bug 的新版本在
+替換完成後不影響正式服務。
 
-若找不到上一個成功 Azure 上傳紀錄，workflow 會視為需要重新建立部署基準並允許
-Azure 上傳。若該紀錄指向的 commit 不在目前 checkout，workflow 會先嘗試從
-origin 以該 commit SHA 抓取；只有遠端也無法取得該 commit 時，才會直接允許
-Azure 上傳。
-Azure 上傳成功後，workflow 會在 GitHub 建立 `livecaption-relay-production`
-deployment success 紀錄，作為下次 diff 比對的基準。若 workflow 因沒有 `Relay/`
-差異而略過 Azure 上傳，不會建立新的 deployment 紀錄，也不會改變下次比對基準。
+`RollingUpdate` 是 Azure Function App 的站台設定，需先透過
+`az deployment group create` 套用 `Relay/infra/main.bicep` 後才會在 Azure 生效。
+只修改 workflow 或只部署程式碼不會改變既有 Function App 的 site update strategy。
 
-workflow 拆成兩個 job：
+每次 workflow 部署前會在部署包寫入 `build-info.json`，內容包含該次 commit SHA。
+Relay 提供不需授權的 `GET /api/health`，回傳 `status` 與部署包內的 commit SHA。
+部署完成後，workflow 會輪詢健康檢查，直到確認正式 endpoint 回傳目前 commit SHA。
+健康檢查通過後，workflow 才會建立 `livecaption-relay-production` GitHub deployment
+success 紀錄。此紀錄代表上一個已知健康部署版本，供後續自動 rollback 選擇 ref。
 
-- `detect-relay-changes`：判斷是否有 `Relay/` 變更，並在 Summary 寫入結果。
-- `deploy`：只有 `detect-relay-changes` 判斷需要部署時才執行 Azure 上傳。
+若健康檢查未通過，workflow 會重新部署 rollback ref，優先順序如下：
 
-若沒有 `Relay/` 變更，`detect-relay-changes` 會成功結束，`deploy` 會顯示為
-skipped，不會讓 GitHub Actions 亮紅燈。
+1. 上一個 `livecaption-relay-production` GitHub deployment success 紀錄的 commit SHA。
+2. 手動執行時填入的 `rollback_ref` input。
+3. push 觸發時 GitHub push event 的 `before` SHA。
+
+rollback 會重新 checkout rollback ref，並再次透過 `Azure/functions-action@v1`
+上傳該版本。GitHub Deployments 只用來記錄健康版本與選擇 rollback ref；它不保存
+部署包，也不提供 Azure 原生 rollback。
+
+手動執行 `workflow_dispatch` 不會做額外 diff 判斷；操作者需自行確認是否需要
+重新上傳 Relay。
+
+workflow 使用單一 job：
+
+- `deploy`：驗證 Relay 程式碼，使用 GitHub OIDC 登入 Azure，並上傳 Azure
+  Functions 程式碼。
 
 執行順序：
 
-1. `detect-relay-changes` checkout repo。
-2. 找出上一個成功 Azure 上傳 deployment commit。
-3. 檢查從上一個成功 Azure 上傳到目前 HEAD 是否有 `Relay/` 差異。
-4. 若需要部署，執行 `deploy` job。
-5. 設定 Python 3.12。
-6. 安裝 `Relay/requirements.txt`。
-7. 執行 `compileall` 檢查 Python 語法。
-8. 直接 import `function_app` 確認應用可載入。
-9. 使用 GitHub OIDC 登入 Azure。
-10. 透過 `Azure/functions-action@v1` 以 `remote-build: true` 部署 `Relay/`。
-11. Azure 上傳成功後，建立 GitHub deployment success 紀錄。
+1. checkout repo。
+2. 設定 Python 3.13。
+3. 安裝 `Relay/requirements.txt`。
+4. 執行 `compileall` 檢查 Python 語法。
+5. 直接 import `function_app` 確認應用可載入。
+6. 寫入 `build-info.json`。
+7. 使用 GitHub OIDC 登入 Azure。
+8. 透過 `Azure/functions-action@v1` 以 `remote-build: true` 部署 `Relay/`。
+9. 輪詢 `GET /api/health`，確認 endpoint 回傳目前 commit SHA。
+10. 健康檢查通過後，建立 GitHub deployment success 紀錄。
+11. 若健康檢查失敗且可取得 rollback ref，重新部署 rollback ref。
 
 workflow 使用的官方 GitHub Actions 需採用 Node.js 24 runtime：
 

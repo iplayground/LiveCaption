@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
 from relay.auth import SIGNATURE_HEADER, TIMESTAMP_HEADER, RelayAuthenticationError
 from relay.auth import verify_speech_key_signature
+from relay.http import build_health_payload
 from relay.http import handle_caption_event_request
 from relay.http import to_json_response_body
 from relay.speech_keys import AzureSpeechKeyProvider, RelaySpeechKeyError
@@ -18,6 +20,16 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 speech_key_provider = AzureSpeechKeyProvider()
 web_pubsub_publisher = AzureWebPubSubPublisher()
 ROOT_REDIRECT_URL = "https://github.com/iplayground/LiveCaption"
+BUILD_INFO_PATH = Path(__file__).resolve().parent / "build-info.json"
+
+
+@app.route(route="api/health", methods=["GET"])
+def health(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(
+        to_json_response_body(build_health_payload(commit=_read_build_commit())),
+        status_code=200,
+        mimetype="application/json",
+    )
 
 
 @app.route(route="{*path}", methods=["GET"])
@@ -106,3 +118,15 @@ def _verify_with_any_speech_key(
             last_error = error
 
     raise last_error or RelayAuthenticationError("No Azure Speech key is available.")
+
+
+def _read_build_commit() -> str | None:
+    try:
+        payload = json.loads(BUILD_INFO_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    commit = payload.get("commit")
+    if isinstance(commit, str) and commit:
+        return commit
+    return None

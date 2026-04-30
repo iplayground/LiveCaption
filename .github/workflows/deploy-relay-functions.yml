@@ -8,6 +8,11 @@ on:
       - '.github/workflows/deploy-relay-functions.yml'
       - 'Relay/**'
   workflow_dispatch:
+    inputs:
+      rollback_ref:
+        description: 'Commit SHA to redeploy if health check fails. Leave empty to skip automatic rollback.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -22,115 +27,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  detect-relay-changes:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    outputs:
-      should_deploy: ${{ steps.relay-diff.outputs.should_deploy }}
-    permissions:
-      contents: read
-      deployments: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Find previous successful Azure upload
-        id: previous-deploy
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const environment = 'livecaption-relay-production';
-            const deployments = await github.rest.repos.listDeployments({
-              owner,
-              repo,
-              environment,
-              per_page: 30,
-            });
-
-            for (const deployment of deployments.data) {
-              if (deployment.sha === context.sha) {
-                continue;
-              }
-
-              const statuses = await github.rest.repos.listDeploymentStatuses({
-                owner,
-                repo,
-                deployment_id: deployment.id,
-                per_page: 1,
-              });
-
-              if (statuses.data[0]?.state === 'success') {
-                core.setOutput('base_sha', deployment.sha);
-                return;
-              }
-            }
-
-            core.setOutput('base_sha', '');
-
-      - name: Check deployment diff scope
-        id: relay-diff
-        shell: bash
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-
-          base_sha='${{ steps.previous-deploy.outputs.base_sha }}'
-
-          if [[ -z "${base_sha}" ]]; then
-            echo "No previous successful deployment found. Proceeding with deployment."
-            echo "First deployment: Azure upload will run." >> "${GITHUB_STEP_SUMMARY}"
-            echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-            echo "Previous successful deployment commit ${base_sha} is not available locally. Fetching it from origin."
-            if git fetch --no-tags --depth=1 origin "${base_sha}"; then
-              echo "Fetched previous successful deployment commit ${base_sha} from origin."
-            else
-              echo "Previous successful deployment commit ${base_sha} is not available locally or from origin. Proceeding with deployment."
-              echo "Previous successful deployment commit ${base_sha} is unavailable locally and from origin. Azure upload will run." >> "${GITHUB_STEP_SUMMARY}"
-              echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-          fi
-
-          mapfile -t changed_files < <(git diff --name-only "${base_sha}" HEAD)
-
-          if [[ "${#changed_files[@]}" -eq 0 ]]; then
-            echo "No file changes since previous successful deployment."
-            echo "No file changes since previous successful deployment. Azure upload skipped." >> "${GITHUB_STEP_SUMMARY}"
-            echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          relay_files=()
-          for file in "${changed_files[@]}"; do
-            if [[ "${file}" == Relay/* ]]; then
-              relay_files+=("${file}")
-            fi
-          done
-
-          if [[ "${#relay_files[@]}" -eq 0 ]]; then
-            echo "Skipping Azure upload because no Relay files changed since ${base_sha}."
-            echo "No Relay files changed since ${base_sha}. Azure upload skipped." >> "${GITHUB_STEP_SUMMARY}"
-            echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          echo "Relay files changed since ${base_sha}. Proceeding with deployment."
-          {
-            echo "Relay files changed since ${base_sha}:"
-            printf '%s\n' "${relay_files[@]}"
-          } | tee -a "${GITHUB_STEP_SUMMARY}"
-          echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
-
   deploy:
-    if: needs.detect-relay-changes.outputs.should_deploy == 'true'
-    needs: detect-relay-changes
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -159,6 +57,46 @@ jobs:
       - name: Validate application imports
         run: python -c "import function_app"
 
+      - name: Find previous healthy deployment
+        id: previous-deploy
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const environment = 'livecaption-relay-production';
+            const deployments = await github.rest.repos.listDeployments({
+              owner,
+              repo,
+              environment,
+              per_page: 30,
+            });
+
+            for (const deployment of deployments.data) {
+              if (deployment.sha === context.sha) {
+                continue;
+              }
+
+              const statuses = await github.rest.repos.listDeploymentStatuses({
+                owner,
+                repo,
+                deployment_id: deployment.id,
+                per_page: 1,
+              });
+
+              if (statuses.data[0]?.state === 'success') {
+                core.setOutput('rollback_ref', deployment.sha);
+                return;
+              }
+            }
+
+            core.setOutput('rollback_ref', '');
+
+      - name: Write build info
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"commit":"%s"}\n' "${GITHUB_SHA}" > build-info.json
+
       - name: Azure login with OIDC
         uses: azure/login@v3
         with:
@@ -167,13 +105,46 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy function code with remote build
+        id: deploy-code
         uses: Azure/functions-action@v1
         with:
           app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
           package: Relay
           remote-build: true
 
-      - name: Mark successful Azure upload
+      - name: Verify deployed health
+        id: health
+        shell: bash
+        run: |
+          set -euo pipefail
+          relay_health_url="https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health"
+
+          for attempt in {1..18}; do
+            if ! body="$(curl --fail --silent --show-error --max-time 10 "${relay_health_url}")"; then
+              echo "Health check attempt ${attempt} could not reach Relay health endpoint."
+              sleep 10
+              continue
+            fi
+
+            if ! commit="$(python -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))' <<< "${body}")"; then
+              echo "Health check attempt ${attempt} returned invalid JSON."
+              sleep 10
+              continue
+            fi
+
+            if [[ "${commit}" == "${GITHUB_SHA}" ]]; then
+              echo "Health check passed for ${GITHUB_SHA}."
+              exit 0
+            fi
+
+            echo "Health check attempt ${attempt} saw commit '${commit}', waiting for ${GITHUB_SHA}."
+            sleep 10
+          done
+
+          echo "Health check did not observe deployed commit ${GITHUB_SHA}." >&2
+          exit 1
+
+      - name: Mark healthy deployment
         uses: actions/github-script@v8
         with:
           script: |
@@ -194,5 +165,57 @@ jobs:
               deployment_id: deployment.data.id,
               state: 'success',
               environment,
-              description: 'Relay Azure Function App upload completed.',
+              description: 'Relay health check passed after Azure Function App upload.',
             });
+
+      - name: Resolve rollback ref
+        if: failure() && (steps.deploy-code.outcome == 'failure' || steps.health.outcome == 'failure')
+        id: rollback-ref
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rollback_ref='${{ steps.previous-deploy.outputs.rollback_ref }}'
+          if [[ -z "${rollback_ref}" && -n '${{ inputs.rollback_ref }}' ]]; then
+            rollback_ref='${{ inputs.rollback_ref }}'
+          elif [[ -z "${rollback_ref}" && "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            rollback_ref='${{ github.event.before }}'
+          fi
+
+          if [[ -z "${rollback_ref}" || "${rollback_ref}" =~ ^0+$ ]]; then
+            echo "No rollback ref is available for this run."
+            echo "rollback_ref=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Rollback ref: ${rollback_ref}"
+          echo "rollback_ref=${rollback_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout rollback ref
+        if: failure() && (steps.deploy-code.outcome == 'failure' || steps.health.outcome == 'failure') && steps.rollback-ref.outputs.rollback_ref != ''
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ steps.rollback-ref.outputs.rollback_ref }}"
+          git checkout --force "${{ steps.rollback-ref.outputs.rollback_ref }}"
+
+      - name: Validate rollback application imports
+        if: failure() && (steps.deploy-code.outcome == 'failure' || steps.health.outcome == 'failure') && steps.rollback-ref.outputs.rollback_ref != ''
+        shell: bash
+        run: python -c "import function_app"
+
+      - name: Write rollback build info
+        if: failure() && (steps.deploy-code.outcome == 'failure' || steps.health.outcome == 'failure') && steps.rollback-ref.outputs.rollback_ref != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"commit":"%s"}\n' "${{ steps.rollback-ref.outputs.rollback_ref }}" > build-info.json
+
+      - name: Roll back function code with remote build
+        if: failure() && (steps.deploy-code.outcome == 'failure' || steps.health.outcome == 'failure') && steps.rollback-ref.outputs.rollback_ref != ''
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: Relay
+          remote-build: true

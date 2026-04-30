@@ -26,10 +26,15 @@ Relay Functions 採用以下部署基線：
    先假定設定正確，再以 GitHub Actions 執行結果驗證。
 6. 日常 workflow 只負責部署 Relay 程式碼，不在每次 push 時重跑整份 Bicep。
 7. Function App 程式碼部署採用 `Azure/functions-action@v1` 與 `remote-build: true`。
-8. workflow 會以上一次成功 Azure 上傳建立的 GitHub deployment 紀錄作為基準，
-   只要從該 commit 到目前 HEAD 的差異包含 `Relay/` 檔案，就執行 Azure 上傳。
-9. workflow 拆成 `detect-relay-changes` 與 `deploy` 兩個 job。沒有 `Relay/`
-   差異時，`detect-relay-changes` 成功結束，`deploy` 顯示 skipped。
+8. workflow 使用 GitHub Deployments 記錄「健康檢查通過後」的 Relay 部署版本。
+   deployment success 紀錄作為未來自動 rollback 的上一個已知健康 commit。
+9. push 觸發時以 GitHub Actions `paths` 篩選控制自動部署範圍；手動執行
+   `workflow_dispatch` 時則直接部署 Relay。
+10. Flex Consumption Function App 設定 `siteUpdateStrategy.type` 為
+    `RollingUpdate`，降低部署時因預設 `Recreate` 策略造成的服務中斷風險。
+11. workflow 部署後會檢查 `GET /api/health` 是否回傳目前 commit SHA；若失敗，
+    會重新部署上一個 GitHub deployment success 紀錄指向的 commit。若沒有上一個
+    健康 deployment，push 事件 fallback 使用 `github.event.before`。
 
 ## 影響
 
@@ -45,9 +50,14 @@ Relay Functions 採用以下部署基線：
 - Azure Portal 的 GitHub OAuth 與部署中心來源綁定需手動完成，無法只靠 Bicep
   或 GitHub Actions 全自動建立。
 - 若 GitHub repo、組織或主要分支改名，必須同步更新 federated credential。
-- 若同一批變更包含 Relay 與 Portal 或文件，workflow 仍會上傳 Relay。只有完全
-  沒有 `Relay/` 差異時才會略過 Azure 上傳，且略過時不會更新 GitHub deployment
-  基準。
-- 無 Relay 差異時不應使 GitHub Actions 失敗；Summary 需能看出 deploy job 是否
-  實際執行。
+- 若同一批 push 變更包含 Relay 與 Portal 或文件，workflow 仍會上傳 Relay。
+  完全沒有 `Relay/` 或 workflow 檔案差異的 push 不會觸發自動部署。
+- GitHub Deployments 只記錄通過健康檢查的版本，用於選擇 rollback ref；它不保存
+  部署包，也不提供 Azure 原生 rollback。因此 rollback 仍需 checkout 該 commit
+  並重新部署一次。
+- Rolling update 是 Azure Functions Flex Consumption 的 preview 功能。它可避免
+  部署更新時一次重啟全部執行個體，並讓執行中的請求自然完成；但它不是 rollback
+  機制，也無法保證有 runtime bug 的新版本不會在替換完成後影響正式服務。
+- 手動執行 `workflow_dispatch` 不會做額外 diff 判斷；操作者需自行確認是否
+  需要重新上傳 Relay。
 - 若未來要讓 GitHub Actions 也部署 Bicep，需另設計較高權限的部署身分與審核流程。

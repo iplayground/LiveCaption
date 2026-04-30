@@ -46,6 +46,13 @@ def handle_caption_event_request(
     return 202, {"accepted": True}
 
 
+def build_health_payload(*, commit: str | None = None) -> dict[str, str]:
+    return {
+        "status": "ok",
+        "commit": commit or "unknown",
+    }
+
+
 def build_publish_payload(event: CaptionEvent, *, received_at: datetime) -> dict[str, Any]:
     return {
         "relay": {
