@@ -532,7 +532,7 @@ struct StatusSidebar: View {
                     } onConnectionTested: { result in
                         relayConnectionStatus = .connected
                         relayConnectionStatus.save()
-                        onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.relayURL.absoluteString)
+                        onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.logDetail)
                     } onFailure: { message in
                         relayConnectionStatus = .failed
                         relayConnectionStatus.save()
@@ -593,7 +593,7 @@ struct StatusSidebar: View {
                 await MainActor.run {
                     relayConnectionStatus = .connected
                     relayConnectionStatus.save()
-                    onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.relayURL.absoluteString)
+                    onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.logDetail)
                 }
             } catch {
                 let message = error.localizedDescription

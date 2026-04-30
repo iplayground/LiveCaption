@@ -225,7 +225,8 @@ enum RelayConnectionTestStatus {
             L10n.text(
                 "relayConnection.message.success",
                 result.relayURL.absoluteString,
-                result.trackNumber
+                result.trackNumber,
+                result.viewerAccessCode
             )
         case .failure(let message):
             message

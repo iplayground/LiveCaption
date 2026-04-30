@@ -46,6 +46,7 @@
 "log.recentCount" = "最近 %d 筆";
 "log.relay.connectionTestFailed" = "Relay 連線測試失敗";
 "log.relay.connectionTestSucceeded" = "Relay 連線測試成功";
+"log.relay.connectionTestSucceededDetail" = "Relay URL：%@\n軌道：%d\nViewer access code：%@";
 "log.relay.publishFailed" = "Relay 字幕發佈失敗";
 "log.relay.publishFailedDetail" = "第 %d/%d 次嘗試失敗：%@";
 "log.speech.reauthorizationFailed" = "Speech 授權重新驗證失敗";
@@ -75,7 +76,7 @@
 "relay.url" = "Relay URL";
 "relaySettings.configuration" = "設定狀態";
 "relayConnection.failure" = "測試失敗";
-"relayConnection.message.success" = "Relay 測試成功：%@，第 %d 軌。";
+"relayConnection.message.success" = "Relay 測試成功：%@，第 %d 軌。Viewer access code：%@。";
 "relayConnection.message.testing" = "正在測試 Relay endpoint 與簽章驗證。";
 "relayConnection.readyToTest" = "待測試";
 "relayConnection.success" = "可連線";

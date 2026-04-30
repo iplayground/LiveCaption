@@ -45,6 +45,17 @@ enum RelayConnectionTestError: LocalizedError {
 struct RelayConnectionTestResult {
     let relayURL: URL
     let trackNumber: Int
+    let viewerAccessCode: String
+    let viewerAccessExpiresAt: Date
+
+    var logDetail: String {
+        L10n.text(
+            "log.relay.connectionTestSucceededDetail",
+            relayURL.absoluteString,
+            trackNumber,
+            viewerAccessCode
+        )
+    }
 }
 
 struct RelayPublishResult {
@@ -217,28 +228,53 @@ struct RelaySettings: Equatable {
 
     nonisolated func testConnection(speechKey: String) async throws -> RelayConnectionTestResult {
         let relayURL = try validatedRelayURL()
-        let roomName = try validatedRoomName()
         let trackNumber = try validatedTrackNumber()
-        let createdAt = Date()
-        let payload: [String: Any] = [
-            "roomName": roomName,
-            "trackNumber": trackNumber,
-            "createdAt": Self.formatTimestamp(createdAt),
-            "source": Self.sourcePayload(),
-            "speech": [
-                "inputLanguage": "en-US",
-                "offsetTicks": 0,
-                "durationTicks": 10_000_000,
-                "text": "Relay connection test",
-            ],
-            "captions": [
-                "zh-Hant": "Relay connection test",
-                "en": "Relay connection test",
-            ],
-        ]
+        let normalizedSpeechKey = speechKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        try await send(payload: payload, speechKey: speechKey, createdAt: createdAt)
-        return RelayConnectionTestResult(relayURL: relayURL, trackNumber: trackNumber)
+        guard !normalizedSpeechKey.isEmpty else {
+            throw RelayConnectionTestError.missingSpeechKey
+        }
+
+        let endpointURL = relayURL.appending(path: "api/caption-events")
+        let createdAtHeader = Self.formatTimestamp(Date())
+        let body = Data()
+        let signature = Self.signature(speechKey: normalizedSpeechKey, timestamp: createdAtHeader, body: body)
+
+        var request = URLRequest(url: endpointURL)
+        request.httpMethod = "HEAD"
+        request.setValue(createdAtHeader, forHTTPHeaderField: "X-LiveCaption-Timestamp")
+        request.setValue(signature, forHTTPHeaderField: "X-LiveCaption-Signature")
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw RelayConnectionTestError.invalidResponse
+            }
+
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw RelayConnectionTestError.serviceRejected(httpResponse.statusCode)
+            }
+
+            guard let viewerAccessCode = httpResponse.value(forHTTPHeaderField: "X-LiveCaption-Viewer-Access-Code"),
+                  let expiresAtString = httpResponse.value(forHTTPHeaderField: "X-LiveCaption-Viewer-Access-Expires-At"),
+                  let viewerAccessExpiresAt = Self.parseTimestamp(expiresAtString)
+            else {
+                throw RelayConnectionTestError.invalidResponse
+            }
+
+            return RelayConnectionTestResult(
+                relayURL: relayURL,
+                trackNumber: trackNumber,
+                viewerAccessCode: viewerAccessCode,
+                viewerAccessExpiresAt: viewerAccessExpiresAt
+            )
+        } catch {
+            if let relayError = error as? RelayConnectionTestError {
+                throw relayError
+            }
+
+            throw RelayConnectionTestError.connectionFailed(error.localizedDescription)
+        }
     }
 
     nonisolated func publishCaptionEvent(
@@ -367,6 +403,12 @@ struct RelaySettings: Equatable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    nonisolated private static func parseTimestamp(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
     }
 
     nonisolated private static func sourcePayload() -> [String: Any] {

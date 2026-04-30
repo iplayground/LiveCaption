@@ -1,15 +1,18 @@
 # Relay Azure Functions 設定
 
-本文記錄 Relay 的 Azure Functions 設定方式、本機設定、Azure Web PubSub 基礎設施與目前尚未完成的整合邊界。
+本文記錄 Relay 的 Azure Functions 設定方式、本機設定、Azure Web PubSub 基礎設施與目前整合邊界。
 
 Relay 目前以 Python 3.13 Azure Functions 實作，HTTP endpoints 為：
 
 ```http
+HEAD /api/caption-events
 POST /api/caption-events
+POST /api/viewer/negotiate
 GET /api/health
 ```
 
 字幕事件 API 契約請見 [字幕事件 API](../api/caption-events.md)。
+觀眾端連線 API 契約請見 [觀眾端連線 API](../api/viewer-negotiate.md)。
 健康檢查 API 契約請見 [Relay 健康檢查 API](../api/health.md)。
 
 ## 目前狀態
@@ -19,10 +22,11 @@ GET /api/health
 - Azure Functions Python 專案骨架。
 - 字幕事件資料模型。
 - 字幕事件 validator。
-- HTTP handler 雛形。
+- HTTP handlers。
 - Azure Web PubSub 正式資源與 Relay app settings 的 Bicep 設定。
 - Web PubSub 發布 payload builder。
 - Azure Web PubSub publisher adapter。
+- 觀眾端 receive-only Web PubSub negotiate endpoint。
 - 正式 Azure Functions 與 Azure Web PubSub 基礎設施部署。
 - 正式 Azure Functions 已套用 Flex Consumption `RollingUpdate` site update strategy。
 - GitHub Actions 部署後健康檢查與失敗時自動 rollback。
@@ -30,9 +34,9 @@ GET /api/health
 
 尚未完成：
 
-- 觀眾端 Web PubSub 連線或 negotiate endpoint。
+- 觀眾端 App Web PubSub 連線與字幕顯示介面。
 
-目前 Relay 程式可接收 Portal 字幕事件並發布到 Web PubSub group；正式 Azure Relay 需以 GitHub Actions 部署包含此變更的 commit 後，才會執行新版 publisher 程式。觀眾端仍需要後續實作連線或 negotiate endpoint 才能接收字幕。
+目前 Relay 程式可接收 Portal 字幕事件並發布到 Web PubSub group；Portal 可用 `HEAD /api/caption-events` 測試 Relay 並取得觀眾端 access code。當 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 需帶 access code 呼叫 Relay negotiate endpoint，取得 receive-only client access URL，再直接連線 Azure Web PubSub 接收字幕。
 
 ## 必要 App Settings
 
@@ -47,6 +51,7 @@ Azure Functions 需要下列設定：
 | `AZURE_WEBPUBSUB_ENDPOINT` | 是 | Azure Web PubSub endpoint，例如 `https://<name>.webpubsub.azure.com`。正式環境由 Bicep 產生，不應使用 connection string。 |
 | `AZURE_WEBPUBSUB_HUB_NAME` | 是 | Relay 發布字幕使用的 Web PubSub hub，第一版預設為 `livecaption`。 |
 | `AZURE_WEBPUBSUB_GROUP_NAME` | 是 | Relay 發布字幕使用的 Web PubSub group，第一版固定為 `caption-live`。 |
+| `VIEWER_ACCESS_CODE_REQUIRED` | 否 | 控制 `POST /api/viewer/negotiate` 是否必須帶 `X-LiveCaption-Viewer-Access-Code`。預設與無效值都視為 `true`；切到 Web PubSub Free tier 時應為 `true`，切到付費層且不需要限制 negotiate 時可設為 `false`。 |
 
 ## 本機設定
 
@@ -68,6 +73,20 @@ Web PubSub connection string 或 SAS token。若需要使用 Azure Storage conne
 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，避免依賴 Azure Functions
 runtime 是否提供 subscription 或 resource group 環境變數。
 
+## 觀眾端 access code 開關
+
+Relay 不在 `POST /api/viewer/negotiate` runtime 查詢 Azure Web PubSub SKU。是否要求
+觀眾端 access code 由 `VIEWER_ACCESS_CODE_REQUIRED` 控制：
+
+- `true`：必須帶 `X-LiveCaption-Viewer-Access-Code`，適合 Web PubSub Free tier 或需要限制 negotiate 的環境。
+- `false`：不驗證 access code，直接回傳 receive-only Web PubSub client access URL。
+
+這個設定不存在或填入無效值時，Relay 會以 `true` 處理。若未來用 GitHub Actions
+排程切換 Web PubSub SKU，應在同一個流程同步更新 Function app setting；例如切到
+`Free_F1` 時設為 `true`，切到 `Standard_S1` 或 `Premium_P1` 且不需限制 negotiate
+時設為 `false`。更新 Function app setting 可能會觸發 Function App restart，應在
+workflow 後段執行健康檢查或 negotiate smoke test。
+
 ## 本機啟動
 
 安裝 Azure Functions Core Tools 後：
@@ -82,7 +101,9 @@ func start --port 7071
 本機 endpoint：
 
 ```text
-http://localhost:7071/api/caption-events
+HEAD http://localhost:7071/api/caption-events
+POST http://localhost:7071/api/caption-events
+POST http://localhost:7071/api/viewer/negotiate
 ```
 
 重啟本機 Functions 時，必須先確認目標行程使用的是 port `7071`，只能停止該 port 對應的 `func` 行程，不得關閉其他 `func` 行程。
@@ -120,6 +141,19 @@ Function App。部署相關檔案放在 `Relay/infra/`：
 
 `az bicep build` 產生的 JSON 是本機衍生檔，不應提交。
 
+## 目前 Azure 需要套用的更新
+
+目前工作區新增了 Relay 觀眾端 negotiate、`HEAD /api/caption-events` access code
+回傳，以及 `VIEWER_ACCESS_CODE_REQUIRED` 行為開關。這些變更在 Azure 生效需要：
+
+1. 重新部署 Relay Function App 程式碼。
+2. 重新套用 `Relay/infra/main.bicep`，讓 Function App app settings 包含 `VIEWER_ACCESS_CODE_REQUIRED`。
+
+`viewerAccessCodeRequired` 參數預設為 `true`，因此未特別調整時，正式環境會要求
+`POST /api/viewer/negotiate` 帶 `X-LiveCaption-Viewer-Access-Code`。若後續排程將
+Azure Web PubSub 切到付費層且不需限制 negotiate，可在同一個流程把 Function App
+app setting 更新為 `VIEWER_ACCESS_CODE_REQUIRED=false`。
+
 ## 正式 Azure 資源
 
 `Relay/infra/main.bicep` 會建立下列資源；目前已部署到 `iplayground` resource group：
@@ -138,7 +172,8 @@ Function App。部署相關檔案放在 `Relay/infra/`：
 - 綁定到 `iplayground/LiveCaption` 的 `main` 分支 federated credential。
 
 Relay 使用 Managed Identity 向 Azure 讀取 Speech key，並以該 key 驗證 Portal
-送出的 HMAC 簽章；Relay 也使用 Managed Identity 呼叫 Web PubSub data-plane publish API。
+送出的 HMAC 簽章與衍生觀眾端 access code；Relay 也使用 Managed Identity 呼叫
+Web PubSub data-plane publish API 與產生觀眾端 receive-only client access URL。
 正式環境不應在 App Settings、參數檔或 repo 中保存 Speech key 或 Web PubSub
 connection string 真值。
 
@@ -296,7 +331,9 @@ https://<relay-domain>/api/caption-events
 程式碼部署成功後，Portal 發出的字幕事件會由 Relay 發布到 Web PubSub 的
 `livecaption` hub 與 `caption-live` group。Azure Web PubSub 不保存字幕內容歷史，
 Azure Portal 只能觀察連線數、訊息數與服務狀態；若要看到字幕 payload，需使用
-觀眾端或測試 client 連上並加入對應 group。
+觀眾端或測試 client 透過 `POST /api/viewer/negotiate` 取得短效 URL 後連上。
+當 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，negotiate request 必須在
+`X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 顯示的 access code。
 
 正式 Relay Function App 綁定自訂網域：
 
@@ -327,6 +364,7 @@ Relay Function App：
 - `AZURE_WEBPUBSUB_ENDPOINT`
 - `AZURE_WEBPUBSUB_HUB_NAME`
 - `AZURE_WEBPUBSUB_GROUP_NAME`
+- `VIEWER_ACCESS_CODE_REQUIRED`
 
 第一版發布 group 由 Relay 固定管理：
 

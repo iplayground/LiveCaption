@@ -6,6 +6,7 @@
     "AZURE_SPEECH_ACCOUNT_ID": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/replace-with-resource-group/providers/Microsoft.CognitiveServices/accounts/replace-with-speech-account-name",
     "AZURE_WEBPUBSUB_ENDPOINT": "https://replace-with-webpubsub-name.webpubsub.azure.com",
     "AZURE_WEBPUBSUB_HUB_NAME": "livecaption",
-    "AZURE_WEBPUBSUB_GROUP_NAME": "caption-live"
+    "AZURE_WEBPUBSUB_GROUP_NAME": "caption-live",
+    "VIEWER_ACCESS_CODE_REQUIRED": "true"
   }
 }

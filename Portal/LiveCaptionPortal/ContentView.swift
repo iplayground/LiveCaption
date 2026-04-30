@@ -114,7 +114,7 @@ struct ContentView: View {
             appendLog(
                 level: .info,
                 title: L10n.text("log.relay.connectionTestSucceeded"),
-                detail: result.relayURL.absoluteString
+                detail: result.logDetail
             )
         } catch {
             let message = error.localizedDescription

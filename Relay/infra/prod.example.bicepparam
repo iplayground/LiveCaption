@@ -11,6 +11,7 @@ param webPubSubSkuName = 'Free_F1'
 param webPubSubUnitCount = 1
 param webPubSubHubName = 'livecaption'
 param webPubSubGroupName = 'caption-live'
+param viewerAccessCodeRequired = true
 param speechResourceGroupName = 'iplayground'
 param speechAccountName = '<speech-account-name>'
 param githubRepository = 'iplayground/LiveCaption'

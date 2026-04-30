@@ -46,6 +46,7 @@
 "log.recentCount" = "Recent %d";
 "log.relay.connectionTestFailed" = "Relay connection test failed";
 "log.relay.connectionTestSucceeded" = "Relay connection test succeeded";
+"log.relay.connectionTestSucceededDetail" = "Relay URL: %@\nTrack: %d\nViewer access code: %@";
 "log.relay.publishFailed" = "Relay caption publish failed";
 "log.relay.publishFailedDetail" = "Attempt %d/%d failed: %@";
 "log.speech.reauthorizationFailed" = "Speech authorization revalidation failed";
@@ -75,7 +76,7 @@
 "relay.url" = "Relay URL";
 "relaySettings.configuration" = "Configuration";
 "relayConnection.failure" = "Test failed";
-"relayConnection.message.success" = "Relay test succeeded: %@, track %d.";
+"relayConnection.message.success" = "Relay test succeeded: %@, track %d. Viewer access code: %@.";
 "relayConnection.message.testing" = "Testing Relay endpoint and signature verification.";
 "relayConnection.readyToTest" = "Ready to test";
 "relayConnection.success" = "Connected";

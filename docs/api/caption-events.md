@@ -69,6 +69,28 @@ Relay 收到請求時必須驗證：
 
 Relay 使用 Azure SDK 的 `DefaultAzureCredential` 讀取 Azure Speech resource key。正式環境應使用 Managed Identity；本機開發可讓 `DefaultAzureCredential` 使用目前的 Azure CLI 登入身分。
 
+## Portal 連線測試
+
+Portal 應使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
+
+```http
+HEAD /api/caption-events
+X-LiveCaption-Timestamp: <utc-iso-8601-timestamp>
+X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
+```
+
+`HEAD` 簽章規則與 `POST` 相同，但 request body 為空 bytes。Relay 收到 `HEAD` 後只驗證 Portal HMAC、確認可讀取 Azure Speech key 與 Web PubSub 設定，並回傳觀眾端 access code headers；Relay 不會解析字幕 JSON，也不會發布任何 Web PubSub 訊息。
+
+成功回應：
+
+```http
+HTTP/1.1 204 No Content
+X-LiveCaption-Viewer-Access-Code: 482913
+X-LiveCaption-Viewer-Access-Expires-At: 2026-05-01T00:00:00.000Z
+```
+
+`X-LiveCaption-Viewer-Access-Code` 由 Relay 以 Azure Speech key、UTC 日期、Web PubSub hub 與 group 衍生，不需要 DB。Portal 可顯示此 code 給觀眾端 App 使用；當 Relay 要求觀眾端 access code 時，觀眾端 App 呼叫 `POST /api/viewer/negotiate` 需放在同名 request header。`POST /api/caption-events` 的 request 與 response 都不傳 access code。
+
 ## 請求格式
 
 ```json
@@ -199,7 +221,7 @@ Relay 發布到 Azure Web PubSub 前可加入 Relay 自己的 metadata，例如 
 caption-live
 ```
 
-同一場活動的所有字幕軌先發布到同一個 group，觀眾端依 payload 內的 `trackNumber` 判斷要顯示哪個軌道的字幕，並可用 `roomName` 顯示會議室名稱；`roomName` 為空字串時代表未設定。Portal 不需要知道 group 命名規則，觀眾端若需要訂閱也應透過 Relay 或前端設定取得對應資訊。
+同一場活動的所有字幕軌先發布到同一個 group，觀眾端依 payload 內的 `trackNumber` 判斷要顯示哪個軌道的字幕，並可用 `roomName` 顯示會議室名稱；`roomName` 為空字串時代表未設定。Portal 不需要知道 group 命名規則，觀眾端透過 Relay 的 `POST /api/viewer/negotiate` 取得 receive-only Web PubSub client access URL；當 Relay 要求觀眾端 access code 時，negotiate request 需在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 顯示的 access code。
 
 第一版建議 Web PubSub 發布 payload 保留 Portal 傳入的字幕欄位，並只加入 Relay metadata：
 
@@ -255,8 +277,9 @@ Relay 不得記錄：
 - 實作字幕事件資料模型與 validator。
 - 為成功路徑、錯誤輸入、語言規則、授權邊界與發布失敗撰寫測試。
 - 實作 Azure Web PubSub publisher adapter，並隔離外部服務方便測試。
+- 實作觀眾端 receive-only Web PubSub negotiate endpoint。
 - 補上部署文件與必要環境變數範例。
 
 尚未完成：
 
-- 觀眾端 Web PubSub 連線或 negotiate endpoint。
+- 觀眾端 App Web PubSub 連線與字幕顯示介面。

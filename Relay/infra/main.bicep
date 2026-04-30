@@ -45,6 +45,9 @@ param webPubSubHubName string = 'livecaption'
 @description('Azure Web PubSub group used for live caption broadcasts.')
 param webPubSubGroupName string = 'caption-live'
 
+@description('Require the Portal-provided viewer access code when negotiating a viewer Web PubSub URL.')
+param viewerAccessCodeRequired bool = true
+
 @description('Existing Azure Speech resource group name.')
 param speechResourceGroupName string = resourceGroup().name
 
@@ -306,6 +309,10 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'AZURE_WEBPUBSUB_GROUP_NAME'
           value: webPubSubGroupName
+        }
+        {
+          name: 'VIEWER_ACCESS_CODE_REQUIRED'
+          value: string(viewerAccessCodeRequired)
         }
       ]
       ftpsState: 'Disabled'

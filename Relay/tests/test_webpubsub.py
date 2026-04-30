@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from azure.core.exceptions import AzureError
 
-from relay.webpubsub import AzureWebPubSubPublisher, RelayWebPubSubError, WebPubSubConfig
+from relay.webpubsub import AzureWebPubSubPublisher
+from relay.webpubsub import AzureWebPubSubViewerTokenProvider
+from relay.webpubsub import RelayWebPubSubError
+from relay.webpubsub import WebPubSubConfig
 
 
 def test_webpubsub_config_reads_environment() -> None:
@@ -99,10 +104,80 @@ def test_webpubsub_publisher_wraps_azure_errors(monkeypatch: pytest.MonkeyPatch)
         publisher.publish({"caption": "do not leak"})
 
 
+def test_viewer_token_provider_generates_receive_only_group_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = WebPubSubConfig(
+        endpoint="https://livecaption.webpubsub.azure.com",
+        hub_name="livecaption",
+        group_name="caption-live",
+    )
+    client = FakeWebPubSubServiceClient()
+    provider = AzureWebPubSubViewerTokenProvider(
+        config_factory=lambda: config,
+        token_ttl=timedelta(minutes=60),
+    )
+    monkeypatch.setattr(provider, "_client", client)
+    monkeypatch.setattr(provider, "_config", config)
+
+    access = provider.get_viewer_access_token(
+        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
+    )
+
+    assert access.url == "wss://livecaption.webpubsub.azure.com/client/hubs/livecaption?access_token=fake"
+    assert access.hub_name == "livecaption"
+    assert access.group_name == "caption-live"
+    assert access.expires_at == datetime(2026, 4, 30, 13, 0, tzinfo=UTC)
+    assert client.access_token_requests == [
+        {
+            "minutes_to_expire": 60,
+            "groups": ["caption-live"],
+        }
+    ]
+
+
+def test_viewer_token_provider_rejects_invalid_token_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = WebPubSubConfig(
+        endpoint="https://livecaption.webpubsub.azure.com",
+        hub_name="livecaption",
+        group_name="caption-live",
+    )
+    provider = AzureWebPubSubViewerTokenProvider(config_factory=lambda: config)
+    monkeypatch.setattr(provider, "_client", FakeWebPubSubServiceClient(token_response={}))
+    monkeypatch.setattr(provider, "_config", config)
+
+    with pytest.raises(RelayWebPubSubError):
+        provider.get_viewer_access_token(now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC))
+
+
+def test_viewer_token_provider_wraps_azure_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = WebPubSubConfig(
+        endpoint="https://livecaption.webpubsub.azure.com",
+        hub_name="livecaption",
+        group_name="caption-live",
+    )
+    provider = AzureWebPubSubViewerTokenProvider(config_factory=lambda: config)
+    monkeypatch.setattr(provider, "_client", FakeWebPubSubServiceClient(fail=True))
+    monkeypatch.setattr(provider, "_config", config)
+
+    with pytest.raises(RelayWebPubSubError):
+        provider.get_viewer_access_token(now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC))
+
+
 class FakeWebPubSubServiceClient:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, token_response: object | None = None) -> None:
         self.fail = fail
+        self.token_response = (
+            token_response
+            if token_response is not None
+            else {
+                "url": "wss://livecaption.webpubsub.azure.com/client/hubs/livecaption?access_token=fake"
+            }
+        )
         self.messages: list[dict[str, object]] = []
+        self.access_token_requests: list[dict[str, object]] = []
 
     def send_to_group(self, *, group: str, message: str, content_type: str) -> None:
         if self.fail:
@@ -114,3 +189,19 @@ class FakeWebPubSubServiceClient:
                 "content_type": content_type,
             }
         )
+
+    def get_client_access_token(
+        self,
+        *,
+        minutes_to_expire: int,
+        groups: list[str],
+    ) -> object:
+        if self.fail:
+            raise AzureError("azure failure")
+        self.access_token_requests.append(
+            {
+                "minutes_to_expire": minutes_to_expire,
+                "groups": groups,
+            }
+        )
+        return self.token_response
