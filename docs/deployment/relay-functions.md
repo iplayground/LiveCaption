@@ -81,11 +81,11 @@ Relay 不在 `POST /api/viewer/negotiate` runtime 查詢 Azure Web PubSub SKU。
 - `true`：必須帶 `X-LiveCaption-Viewer-Access-Code`，適合 Web PubSub Free tier 或需要限制 negotiate 的環境。
 - `false`：不驗證 access code，直接回傳 receive-only Web PubSub client access URL。
 
-這個設定不存在或填入無效值時，Relay 會以 `true` 處理。若未來用 GitHub Actions
-排程切換 Web PubSub SKU，應在同一個流程同步更新 Function app setting；例如切到
+這個設定不存在或填入無效值時，Relay 會以 `true` 處理。Azure Automation
+排程切換 Web PubSub SKU 時，會在同一個 runbook 同步更新 Function app setting；例如切到
 `Free_F1` 時設為 `true`，切到 `Standard_S1` 或 `Premium_P1` 且不需限制 negotiate
 時設為 `false`。更新 Function app setting 可能會觸發 Function App restart，應在
-workflow 後段執行健康檢查或 negotiate smoke test。
+排程執行後確認健康檢查或 negotiate smoke test。
 
 ## 本機啟動
 
@@ -321,6 +321,48 @@ workflow 使用的官方 GitHub Actions 需採用 Node.js 24 runtime：
 
 上述版本需要 GitHub Actions runner `v2.327.1` 或更新版本。GitHub-hosted runner
 通常會自動維持新版；若改用 self-hosted runner，需先確認 runner 版本。
+
+## Azure Automation SKU 排程
+
+Azure SKU 排程使用 Azure Automation Account
+`<automation-account-name>` 的 `switch-livecaption-sku` PowerShell runbook。
+runbook 以 Automation Account 的 system-assigned Managed Identity 登入 Azure，並依
+一次性 schedule 同步更新：
+
+- Azure Web PubSub SKU 與 unit count。
+- Relay Function App 的 `VIEWER_ACCESS_CODE_REQUIRED` app setting。
+- Azure Speech SKU。
+
+runbook 會從 Managed Identity 登入後的 Azure context 取得 subscription ID；
+job schedule parameters 不需設定 `SubscriptionId`。`ResourceGroup` 與
+`SpeechResourceGroup` 的預設值都是 `iplayground`，正式環境排程不需另外設定。
+
+實際排程時間由 Azure Automation schedules 管理，GitHub 文件不記錄正式活動的真實排程設定。
+檢查或修改排程時，以 Azure Portal 或 Azure CLI 查詢 Automation Account 的 schedules
+與 job schedules 為準。
+
+Runbook 原始碼放在 `Relay/infra/automation/switch-livecaption-sku.ps1`。變更 runbook
+後，需重新上傳並 publish：
+
+```sh
+az automation runbook replace-content \
+  --automation-account-name <automation-account-name> \
+  --resource-group iplayground \
+  --name switch-livecaption-sku \
+  --content @Relay/infra/automation/switch-livecaption-sku.ps1
+
+az automation runbook publish \
+  --automation-account-name <automation-account-name> \
+  --resource-group iplayground \
+  --name switch-livecaption-sku
+```
+
+Azure Automation Managed Identity 需要對正式 Function App、Azure Web PubSub resource
+與 Azure Speech account 具備更新權限：
+
+- Function App 範圍：Contributor。
+- Web PubSub resource 範圍：Contributor。
+- Speech account 範圍：Contributor。
 
 部署完成後，Portal 的 Relay URL 應設定為：
 

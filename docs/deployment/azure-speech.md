@@ -93,6 +93,17 @@ az cognitiveservices account show \
   --output json
 ```
 
+## 排程切換
+
+正式環境的 Speech SKU 會和 Azure Web PubSub SKU 由
+Azure Automation `switch-livecaption-sku` runbook 同步切換：
+
+- 活動模式：Speech `S0`、Web PubSub `Standard_S1`、Relay viewer negotiate 不要求 access code。
+- 閒置模式：Speech `F0`、Web PubSub `Free_F1`、Relay viewer negotiate 要求 access code。
+
+實際排程時間由 Azure Automation schedules 管理，GitHub 文件不記錄正式活動的真實排程設定。
+檢查或修改排程時，以 Azure Portal 或 Azure CLI 查詢 Automation Account 為準。
+
 ## Token 測試
 
 若要測試 Speech authorization token，需先取得其中一組 key。
