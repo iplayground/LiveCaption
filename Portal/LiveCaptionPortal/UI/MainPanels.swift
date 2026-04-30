@@ -507,7 +507,7 @@ struct StatusSidebar: View {
 
                 Panel(title: "Relay", systemImage: "server.rack") {
                     VStack(alignment: .leading, spacing: 12) {
-                        LabeledValue(label: L10n.text("relay.url"), value: relaySettings.relayURLSummary)
+                        RelayURLValue(value: relaySettings.relayURLSummary)
                         LabeledValue(label: L10n.text("relay.roomName"), value: relaySettings.roomNameSummary)
                         LabeledValue(label: L10n.text("relay.trackNumber"), value: relaySettings.trackNumberSummary)
                         LabeledValue(label: L10n.text("relay.lastPublishedAt"), value: relayLastPublishedAtSummary)
@@ -605,5 +605,25 @@ struct StatusSidebar: View {
                 }
             }
         }
+    }
+}
+
+private struct RelayURLValue: View {
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L10n.text("relay.url"))
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.leading, 16)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .help(value)
+        }
+        .font(.subheadline)
     }
 }
