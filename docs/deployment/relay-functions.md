@@ -20,15 +20,15 @@ POST /api/caption-events
 - HTTP handler 雛形。
 - Azure Web PubSub 正式資源與 Relay app settings 的 Bicep 設定。
 - Web PubSub 發布 payload builder。
+- Azure Web PubSub publisher adapter。
 - 正式 Azure Functions 與 Azure Web PubSub 基礎設施部署。
 - pytest 測試。
 
 尚未完成：
 
-- Azure Web PubSub publisher adapter。
 - 觀眾端 Web PubSub 連線或 negotiate endpoint。
 
-在 publisher adapter 完成前，Relay 可用來驗證事件接收與授權，但不會實際發布字幕到觀眾端。
+目前 Relay 程式可接收 Portal 字幕事件並發布到 Web PubSub group；正式 Azure Relay 需以 GitHub Actions 部署包含此變更的 commit 後，才會執行新版 publisher 程式。觀眾端仍需要後續實作連線或 negotiate endpoint 才能接收字幕。
 
 ## 必要 App Settings
 
@@ -134,8 +134,9 @@ Function App。部署相關檔案放在 `Relay/infra/`：
 - 綁定到 `iplayground/LiveCaption` 的 `main` 分支 federated credential。
 
 Relay 使用 Managed Identity 向 Azure 讀取 Speech key，並以該 key 驗證 Portal
-送出的 HMAC 簽章。正式環境不應在 App Settings、參數檔或 repo 中保存 Speech
-key 真值。
+送出的 HMAC 簽章；Relay 也使用 Managed Identity 呼叫 Web PubSub data-plane publish API。
+正式環境不應在 App Settings、參數檔或 repo 中保存 Speech key 或 Web PubSub
+connection string 真值。
 
 目前 Web PubSub 現況：
 
@@ -275,6 +276,11 @@ workflow 使用的官方 GitHub Actions 需採用 Node.js 24 runtime：
 ```text
 https://<relay-domain>/api/caption-events
 ```
+
+程式碼部署成功後，Portal 發出的字幕事件會由 Relay 發布到 Web PubSub 的
+`livecaption` hub 與 `caption-live` group。Azure Web PubSub 不保存字幕內容歷史，
+Azure Portal 只能觀察連線數、訊息數與服務狀態；若要看到字幕 payload，需使用
+觀眾端或測試 client 連上並加入對應 group。
 
 正式 Relay Function App 綁定自訂網域：
 

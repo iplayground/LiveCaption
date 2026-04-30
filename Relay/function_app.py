@@ -12,9 +12,11 @@ from relay.auth import verify_speech_key_signature
 from relay.http import handle_caption_event_request
 from relay.http import to_json_response_body
 from relay.speech_keys import AzureSpeechKeyProvider, RelaySpeechKeyError
+from relay.webpubsub import AzureWebPubSubPublisher
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 speech_key_provider = AzureSpeechKeyProvider()
+web_pubsub_publisher = AzureWebPubSubPublisher()
 ROOT_REDIRECT_URL = "https://github.com/iplayground/LiveCaption"
 
 
@@ -71,7 +73,10 @@ def caption_events(req: func.HttpRequest) -> func.HttpResponse:
                 }
             }
         else:
-            status_code, body = handle_caption_event_request(payload)
+            status_code, body = handle_caption_event_request(
+                payload,
+                publisher=web_pubsub_publisher,
+            )
 
     return func.HttpResponse(
         to_json_response_body(body),

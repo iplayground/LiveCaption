@@ -247,10 +247,16 @@ Relay 不得記錄：
 - 可識別個人的使用者資料
 - Portal 本機檔案路徑或裝置唯一識別資訊
 
-## 後續實作順序
+## 實作狀態
 
-1. 在 `Relay/` 建立 Python 3.12 Azure Functions 專案骨架。
-2. 實作字幕事件資料模型與 validator。
-3. 為成功路徑、錯誤輸入、語言規則、授權邊界與 logging 遮蔽撰寫測試。
-4. 實作 Azure Web PubSub publisher 介面，先以可替換 adapter 隔離外部服務。
-5. 補上部署文件與必要環境變數範例。
+已完成：
+
+- 在 `Relay/` 建立 Python 3.13 Azure Functions 專案骨架。
+- 實作字幕事件資料模型與 validator。
+- 為成功路徑、錯誤輸入、語言規則、授權邊界與發布失敗撰寫測試。
+- 實作 Azure Web PubSub publisher adapter，並隔離外部服務方便測試。
+- 補上部署文件與必要環境變數範例。
+
+尚未完成：
+
+- 觀眾端 Web PubSub 連線或 negotiate endpoint。

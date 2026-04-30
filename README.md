@@ -122,7 +122,7 @@ open /tmp/LiveCaptionDerivedData/Build/Products/Debug/LiveCaptionPortal.app
 
 ### Relay
 
-Relay 是後端服務。它會接收來自 Portal 的字幕事件，驗證事件格式與請求簽章；Azure Web PubSub 基礎設施已建立，publisher adapter 完成後會負責即時發布字幕。
+Relay 是後端服務。它會接收來自 Portal 的字幕事件，驗證事件格式與請求簽章，並透過 Azure Web PubSub publisher adapter 發布字幕。
 
 - [字幕事件 API](docs/api/caption-events.md)
 - [Relay Azure Functions 設定](docs/deployment/relay-functions.md)

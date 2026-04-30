@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from relay.models import CaptionEvent
 from relay.validation import CaptionEventValidationError, validate_caption_event
+from relay.webpubsub import RelayWebPubSubError
+
+
+class CaptionEventPublisher(Protocol):
+    def publish(self, payload: dict[str, Any]) -> None:
+        pass
 
 
 def handle_caption_event_request(
     payload: Any,
     *,
+    publisher: CaptionEventPublisher,
     now: datetime | None = None,
 ) -> tuple[int, dict[str, Any]]:
     try:
@@ -25,8 +32,17 @@ def handle_caption_event_request(
         }
 
     publish_payload = build_publish_payload(event, received_at=now or datetime.now(UTC))
-    # Azure Web PubSub publishing is intentionally deferred behind a future adapter.
-    _ = publish_payload
+    try:
+        publisher.publish(publish_payload)
+    except RelayWebPubSubError:
+        return 502, {
+            "error": {
+                "code": "caption_publish_failed",
+                "message": "Caption event could not be published.",
+                "details": [],
+            }
+        }
+
     return 202, {"accepted": True}
 
 
