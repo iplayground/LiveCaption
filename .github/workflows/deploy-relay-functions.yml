@@ -1,0 +1,198 @@
+name: Deploy Relay Azure Function App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-relay-functions.yml'
+      - 'Relay/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+
+env:
+  PYTHON_VERSION: '3.13'
+
+concurrency:
+  group: livecaption-relay-production
+  cancel-in-progress: false
+
+jobs:
+  detect-relay-changes:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.relay-diff.outputs.should_deploy }}
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Find previous successful Azure upload
+        id: previous-deploy
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const environment = 'livecaption-relay-production';
+            const deployments = await github.rest.repos.listDeployments({
+              owner,
+              repo,
+              environment,
+              per_page: 30,
+            });
+
+            for (const deployment of deployments.data) {
+              if (deployment.sha === context.sha) {
+                continue;
+              }
+
+              const statuses = await github.rest.repos.listDeploymentStatuses({
+                owner,
+                repo,
+                deployment_id: deployment.id,
+                per_page: 1,
+              });
+
+              if (statuses.data[0]?.state === 'success') {
+                core.setOutput('base_sha', deployment.sha);
+                return;
+              }
+            }
+
+            core.setOutput('base_sha', '');
+
+      - name: Check deployment diff scope
+        id: relay-diff
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          base_sha='${{ steps.previous-deploy.outputs.base_sha }}'
+
+          if [[ -z "${base_sha}" ]]; then
+            echo "No previous successful deployment found. Proceeding with deployment."
+            echo "First deployment: Azure upload will run." >> "${GITHUB_STEP_SUMMARY}"
+            echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "Previous successful deployment commit ${base_sha} is not available locally. Fetching it from origin."
+            if git fetch --no-tags --depth=1 origin "${base_sha}"; then
+              echo "Fetched previous successful deployment commit ${base_sha} from origin."
+            else
+              echo "Previous successful deployment commit ${base_sha} is not available locally or from origin. Proceeding with deployment."
+              echo "Previous successful deployment commit ${base_sha} is unavailable locally and from origin. Azure upload will run." >> "${GITHUB_STEP_SUMMARY}"
+              echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+
+          mapfile -t changed_files < <(git diff --name-only "${base_sha}" HEAD)
+
+          if [[ "${#changed_files[@]}" -eq 0 ]]; then
+            echo "No file changes since previous successful deployment."
+            echo "No file changes since previous successful deployment. Azure upload skipped." >> "${GITHUB_STEP_SUMMARY}"
+            echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          relay_files=()
+          for file in "${changed_files[@]}"; do
+            if [[ "${file}" == Relay/* ]]; then
+              relay_files+=("${file}")
+            fi
+          done
+
+          if [[ "${#relay_files[@]}" -eq 0 ]]; then
+            echo "Skipping Azure upload because no Relay files changed since ${base_sha}."
+            echo "No Relay files changed since ${base_sha}. Azure upload skipped." >> "${GITHUB_STEP_SUMMARY}"
+            echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Relay files changed since ${base_sha}. Proceeding with deployment."
+          {
+            echo "Relay files changed since ${base_sha}:"
+            printf '%s\n' "${relay_files[@]}"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+          echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+
+  deploy:
+    if: needs.detect-relay-changes.outputs.should_deploy == 'true'
+    needs: detect-relay-changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      id-token: write
+    defaults:
+      run:
+        working-directory: Relay
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Validate Python sources
+        run: python -m compileall function_app.py src
+
+      - name: Validate application imports
+        run: python -c "import function_app"
+
+      - name: Azure login with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy function code with remote build
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: Relay
+          remote-build: true
+
+      - name: Mark successful Azure upload
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const environment = 'livecaption-relay-production';
+            const deployment = await github.rest.repos.createDeployment({
+              owner,
+              repo,
+              ref: context.sha,
+              environment,
+              auto_merge: false,
+              required_contexts: [],
+            });
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment,
+              description: 'Relay Azure Function App upload completed.',
+            });

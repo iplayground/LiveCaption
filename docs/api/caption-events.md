@@ -62,7 +62,8 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 
 Relay 收到請求時必須驗證：
 
-- Relay 可透過 `AZURE_SUBSCRIPTION_ID`、`AZURE_SPEECH_RESOURCE_GROUP` 與 `AZURE_SPEECH_ACCOUNT_NAME` 取得 Azure Speech key。
+- Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，並取得 Azure
+  Speech key。正式環境由 Bicep 寫入此非機密設定。
 - `X-LiveCaption-Timestamp` 存在且在允許時間窗內。
 - `X-LiveCaption-Signature` 存在且與 request body 驗算結果一致。
 

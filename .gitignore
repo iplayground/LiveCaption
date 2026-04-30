@@ -58,6 +58,8 @@ htmlcov/
 local.settings.json
 .azure/
 .funcignore.generated
+Relay/infra/*.json
+Relay/infra/prod.bicepparam
 
 # Environment and secrets
 .env

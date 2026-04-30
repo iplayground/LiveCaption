@@ -24,8 +24,7 @@ POST /api/caption-events
 尚未完成：
 
 - Azure Web PubSub publisher adapter。
-- Azure 資源部署自動化。
-- 正式環境 App Settings 與 Managed Identity 綁定。
+- 正式環境部署執行。
 
 在 Web PubSub 發布完成前，Relay 不應對外開放作為正式服務。
 
@@ -35,11 +34,10 @@ Azure Functions 需要下列設定：
 
 | 名稱 | 必填 | 說明 |
 | --- | --- | --- |
-| `FUNCTIONS_WORKER_RUNTIME` | 是 | 固定為 `python`。 |
-| `AzureWebJobsStorage` | 是 | Azure Functions runtime 使用的 Storage 設定。本機可使用 Azurite 的 `UseDevelopmentStorage=true`；正式環境由部署流程設定，不得提交真值。 |
-| `AZURE_SUBSCRIPTION_ID` | 是 | Azure Speech resource 所在的 subscription id。 |
-| `AZURE_SPEECH_RESOURCE_GROUP` | 是 | Azure Speech resource 所在的 resource group。 |
-| `AZURE_SPEECH_ACCOUNT_NAME` | 是 | Azure Speech resource 名稱。Relay 使用此資訊向 Azure 讀取實際 Speech key 並驗證 Portal HMAC 簽章。 |
+| `FUNCTIONS_WORKER_RUNTIME` | 本機是，正式否 | 本機 `local.settings.json` 固定為 `python`。Azure Functions Flex Consumption 正式環境不得設定此 app setting，runtime 由 Bicep 的 `functionAppConfig.runtime` 指定。 |
+| `AzureWebJobsStorage` | 是 | Azure Functions runtime 使用的 Storage 設定。本機可使用 Azurite 的 `UseDevelopmentStorage=true`；正式環境由 Bicep 設定 managed identity 型 app settings，例如 `AzureWebJobsStorage__accountName` 與各 service URI，不得提交真值。 |
+| `AzureWebJobsDisableHomepage` | 正式是 | 正式環境固定為 `true`，避免 Function App 根路徑顯示 Azure Functions 預設首頁。 |
+| `AZURE_SPEECH_ACCOUNT_ID` | 是 | Azure Speech resource 的 ARM resource id。正式環境由 Bicep 產生，Relay 依此定位 Azure Speech resource 並讀取實際 Speech key。 |
 
 ## 本機設定
 
@@ -50,7 +48,15 @@ cd Relay
 cp local.settings.sample.json local.settings.json
 ```
 
-`Relay/local.settings.sample.json` 只能放不含真實機密的範例值。本機 `local.settings.json` 只應保存 Azure Speech resource 定位資訊，不應保存 Speech key 真值。若需要使用 Azure Storage connection string，只能放在未提交的 `local.settings.json` 或本機 shell 環境。
+`Relay/local.settings.sample.json` 只能放不含真實機密的範例值。本機
+`local.settings.json` 只應保存 Azure Speech resource 定位資訊，不應保存 Speech
+key 真值。若需要使用 Azure Storage connection string，只能放在未提交的
+`local.settings.json` 或本機 shell 環境。
+
+正式 Azure Functions 不設定 `AZURE_SUBSCRIPTION_ID` 與
+`AZURE_SPEECH_RESOURCE_GROUP`。Relay 只使用 Bicep 寫入的
+`AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，避免依賴 Azure Functions
+runtime 是否提供 subscription 或 resource group 環境變數。
 
 ## 本機啟動
 
@@ -77,6 +83,196 @@ http://localhost:7071/api/caption-events
 cd Relay
 python -m pytest
 ```
+
+## 正式部署檔案
+
+Relay Functions 只規劃單一正式環境，不建立 staging、test slot 或第二套測試用
+Function App。部署相關檔案放在 `Relay/infra/`：
+
+部署檔案：
+
+- `main.bicep`：建立正式 Relay Function App、Storage Account、
+  Log Analytics、Application Insights、Managed Identity 與必要 RBAC。
+  同時建立 GitHub Actions OIDC 部署用的 user-assigned Managed Identity、
+  federated credential 與 Function App 範圍的 Website Contributor 權限。
+- `speech-role-assignment.bicep`：在既有 Azure Speech resource 上指派
+  Relay Managed Identity 讀取 Speech key 所需權限。
+- `prod.example.bicepparam`：正式部署參數範例，只能放非機密範例值。
+  實際 `prod.bicepparam` 不應提交。
+
+部署包排除規則放在 `Relay/.funcignore`，正式發布時不得包含：
+
+- `local.settings.json`
+- Python virtual environment
+- pytest 與其他本機快取
+- 測試檔
+- `Relay/infra/` 部署檔
+
+`az bicep build` 產生的 JSON 是本機衍生檔，不應提交。
+
+## 正式 Azure 資源
+
+`Relay/infra/main.bicep` 會建立下列資源：
+
+- Azure Functions Flex Consumption Function App，Python 3.13。
+- Storage Account，供 Functions host 與部署 package 使用。
+- Log Analytics Workspace。
+- Application Insights。
+- System-assigned Managed Identity。
+- Storage Blob、Queue、Table 與 Application Insights 所需 RBAC。
+- 既有 Azure Speech resource 上的 `Cognitive Services User` 角色指派。
+- GitHub Actions 專用 user-assigned Managed Identity。
+- 綁定到 `iplayground/LiveCaption` 的 `main` 分支 federated credential。
+
+Relay 使用 Managed Identity 向 Azure 讀取 Speech key，並以該 key 驗證 Portal
+送出的 HMAC 簽章。正式環境不應在 App Settings、參數檔或 repo 中保存 Speech
+key 真值。
+
+## 正式基礎設施部署
+
+以下命令是正式基礎設施部署流程範例；執行後會建立或修改 Azure 資源。
+部署前需確認目前 commit、參數值與 Azure subscription 都正確。
+
+先從 repo root 複製正式參數範例，並確認資源名稱：
+
+```sh
+cp Relay/infra/prod.example.bicepparam Relay/infra/prod.bicepparam
+```
+
+部署正式 Azure 資源：
+
+```sh
+az deployment group create \
+  --resource-group iplayground \
+  --template-file Relay/infra/main.bicep \
+  --parameters Relay/infra/prod.bicepparam
+```
+
+基礎設施部署完成後，需把 Bicep outputs 寫入 GitHub Actions secrets：
+
+- `AZURE_CLIENT_ID`
+  說明：Bicep output `githubActionsIdentityClientId`
+- `AZURE_TENANT_ID`
+  說明：Bicep output `tenantId`
+- `AZURE_SUBSCRIPTION_ID`
+  說明：Bicep output `subscriptionId`
+- `AZURE_FUNCTIONAPP_NAME`
+  說明：Bicep output `functionAppName`
+
+若已完成 `gh auth login`，可用 GitHub CLI 設定：
+
+```sh
+gh secret set AZURE_CLIENT_ID --body "<github-actions-identity-client-id>" -R iplayground/LiveCaption
+gh secret set AZURE_TENANT_ID --body "<azure-tenant-id>" -R iplayground/LiveCaption
+gh secret set AZURE_SUBSCRIPTION_ID --body "<azure-subscription-id>" -R iplayground/LiveCaption
+gh secret set AZURE_FUNCTIONAPP_NAME --body "<function-app-name>" -R iplayground/LiveCaption
+```
+
+## GitHub Actions 程式碼部署
+
+Relay 程式碼部署使用 `.github/workflows/deploy-relay-functions.yml`。workflow
+只負責部署既有 Function App 的程式碼，不在每次 push 時重跑 Bicep。
+
+Azure Portal 的 GitHub 來源綁定是必要手動步驟，而且只能手動完成。Bicep 只負責
+建立 GitHub Actions OIDC 登入 Azure 所需的 Managed Identity、federated
+credential 與 Function App 部署權限，不會替 Azure Portal 完成 GitHub OAuth
+授權或部署中心來源綁定。
+
+在基礎設施已建立、GitHub OAuth 可用後，於 Azure Portal 內完成以下設定：
+
+1. 開啟正式 Relay Function App 的 `部署中心`。
+2. `來源` 選擇 `GitHub`。
+3. 在 `登入身分` 完成 GitHub OAuth 授權。
+4. 選擇對應的 GitHub `組織`、`存放庫` 與 `分支`。
+5. `工作流程選項` 選擇 `使用可用的工作流程`。
+6. 按下 `儲存`，完成 Azure Portal 的 GitHub 來源綁定。
+
+Azure Portal 在選擇 `使用可用的工作流程` 後，可能不會顯示或預覽實際使用的
+workflow yml。因此到此只能假定部署中心已正確綁定 repo 內既有 workflow；實際
+是否採用 `.github/workflows/deploy-relay-functions.yml`，需以 GitHub Actions
+後續執行結果確認。
+
+不得讓 Azure Portal 產生新的 workflow，也不得另外使用 publish profile 或長效
+Service Principal secret 建立第二套部署路徑。
+
+觸發條件：
+
+- push 到 `main`，且變更包含 `Relay/**` 或 workflow 本身。
+- 手動執行 `workflow_dispatch`。
+
+workflow 觸發後，會先找出上一個成功 Azure 上傳所建立的 GitHub deployment
+紀錄，並比對該 deployment commit 到目前 HEAD 的檔案差異。只要差異中包含
+任何 `Relay/` 底下的檔案，就會登入 Azure 並上傳 Functions 程式碼。
+
+若同一次 push 同時包含 `Relay/` 與 `Portal/`、`docs/`、根目錄文件或 workflow
+本身的變更，仍會部署 Relay。若從上一個成功 Azure 上傳到目前 HEAD 完全沒有
+`Relay/` 變更，才會略過 Azure 上傳。
+
+若找不到上一個成功 Azure 上傳紀錄，workflow 會視為需要重新建立部署基準並允許
+Azure 上傳。若該紀錄指向的 commit 不在目前 checkout，workflow 會先嘗試從
+origin 以該 commit SHA 抓取；只有遠端也無法取得該 commit 時，才會直接允許
+Azure 上傳。
+Azure 上傳成功後，workflow 會在 GitHub 建立 `livecaption-relay-production`
+deployment success 紀錄，作為下次 diff 比對的基準。若 workflow 因沒有 `Relay/`
+差異而略過 Azure 上傳，不會建立新的 deployment 紀錄，也不會改變下次比對基準。
+
+workflow 拆成兩個 job：
+
+- `detect-relay-changes`：判斷是否有 `Relay/` 變更，並在 Summary 寫入結果。
+- `deploy`：只有 `detect-relay-changes` 判斷需要部署時才執行 Azure 上傳。
+
+若沒有 `Relay/` 變更，`detect-relay-changes` 會成功結束，`deploy` 會顯示為
+skipped，不會讓 GitHub Actions 亮紅燈。
+
+執行順序：
+
+1. `detect-relay-changes` checkout repo。
+2. 找出上一個成功 Azure 上傳 deployment commit。
+3. 檢查從上一個成功 Azure 上傳到目前 HEAD 是否有 `Relay/` 差異。
+4. 若需要部署，執行 `deploy` job。
+5. 設定 Python 3.12。
+6. 安裝 `Relay/requirements.txt`。
+7. 執行 `compileall` 檢查 Python 語法。
+8. 直接 import `function_app` 確認應用可載入。
+9. 使用 GitHub OIDC 登入 Azure。
+10. 透過 `Azure/functions-action@v1` 以 `remote-build: true` 部署 `Relay/`。
+11. Azure 上傳成功後，建立 GitHub deployment success 紀錄。
+
+workflow 使用的官方 GitHub Actions 需採用 Node.js 24 runtime：
+
+- `actions/checkout@v6`
+- `actions/setup-python@v6`
+- `actions/github-script@v8`
+- `azure/login@v3`
+- `Azure/functions-action@v1`
+
+上述版本需要 GitHub Actions runner `v2.327.1` 或更新版本。GitHub-hosted runner
+通常會自動維持新版；若改用 self-hosted runner，需先確認 runner 版本。
+
+部署完成後，Portal 的 Relay URL 應設定為：
+
+```text
+https://<relay-domain>/api/caption-events
+```
+
+正式 Relay Function App 綁定自訂網域：
+
+```text
+<relay-domain>
+```
+
+DNS 端需設定：
+
+- 自訂網域指向正式 Relay Function App 的預設 hostname。
+- Azure 驗證需要的 `asuid` TXT 值應以 Function App 當下的
+  `customDomainVerificationId` 為準，不寫入文件。
+
+Flex Consumption Function App 可以透過 `az webapp config hostname add` 綁定
+hostname，但 Azure CLI 的 `az webapp config ssl create` 舊路徑不支援 Flex
+Consumption。建立 App Service Managed Certificate 時需使用
+`Microsoft.Web/sites/certificates` ARM endpoint；建立後再更新
+`Microsoft.Web/sites/hostNameBindings`，將 `sslState` 設為 `SniEnabled` 並填入
+managed certificate 的 `thumbprint`。
 
 ## Azure Web PubSub 設定方向
 

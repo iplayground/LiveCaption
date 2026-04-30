@@ -1,0 +1,4 @@
+azure-functions
+azure-functions-runtime
+azure-identity
+azure-mgmt-cognitiveservices

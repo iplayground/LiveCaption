@@ -42,10 +42,10 @@ cd Relay
 cp local.settings.sample.json local.settings.json
 ```
 
-Relay 透過 `AZURE_SUBSCRIPTION_ID`、`AZURE_SPEECH_RESOURCE_GROUP` 與
-`AZURE_SPEECH_ACCOUNT_NAME` 定位 Azure Speech resource，執行時向 Azure 讀取實際
-Speech key 並驗證 Portal 請求簽章。Portal 不會把 Speech key 直接傳給 Relay，而是用
-本機 Speech key 對 request body 產生 HMAC 簽章。
+Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，執行時向
+Azure 讀取實際 Speech key 並驗證 Portal 請求簽章。正式 Azure Functions 由 Bicep
+寫入此非機密設定；Portal 不會把 Speech key 直接傳給 Relay，而是用本機 Speech
+key 對 request body 產生 HMAC 簽章。
 
 ## 本機啟動
 
