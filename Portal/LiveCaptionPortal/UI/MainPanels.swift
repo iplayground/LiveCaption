@@ -462,6 +462,7 @@ struct StatusSidebar: View {
     @Binding var relayConnectionStatus: RelayConnectionStatus
     let recognizedCaptionCount: Int
     let relayLastPublishedAt: Date?
+    let logEntries: [LogEntry]
     let onLogEvent: (LogLevel, String, String) -> Void
     @State private var isSpeechSettingsPresented = false
     @State private var isRelaySettingsPresented = false
@@ -545,9 +546,10 @@ struct StatusSidebar: View {
 
                 Panel(title: L10n.text("panel.recentStatus"), systemImage: "clock.badge") {
                     VStack(alignment: .leading, spacing: 12) {
-                        LabeledValue(label: L10n.text("status.lastEvent"), value: L10n.text("relay.notConnected"))
-                        LabeledValue(label: L10n.text("status.warning"), value: "1")
-                        LabeledValue(label: L10n.text("status.error"), value: "0")
+                        LabeledValue(label: L10n.text("status.lastEvent"), value: recentStatusLastEventSummary)
+                            .help(recentStatusLastEventHelp)
+                        LabeledValue(label: L10n.text("status.warning"), value: "\(recentStatusWarningCount)")
+                        LabeledValue(label: L10n.text("status.error"), value: "\(recentStatusErrorCount)")
                     }
                 }
             }
@@ -566,6 +568,34 @@ struct StatusSidebar: View {
         }
 
         return Self.relayLastPublishedAtFormatter.string(from: relayLastPublishedAt)
+    }
+
+    private var recentStatusLastEventSummary: String {
+        guard let latestLogEntry = logEntries.first else {
+            return L10n.text("common.none")
+        }
+
+        return "\(latestLogEntry.time) \(latestLogEntry.title)"
+    }
+
+    private var recentStatusLastEventHelp: String {
+        guard let latestLogEntry = logEntries.first else {
+            return L10n.text("common.none")
+        }
+
+        guard !latestLogEntry.detail.isEmpty else {
+            return recentStatusLastEventSummary
+        }
+
+        return "\(recentStatusLastEventSummary)\n\(latestLogEntry.detail)"
+    }
+
+    private var recentStatusWarningCount: Int {
+        logEntries.filter { $0.level == .warning }.count
+    }
+
+    private var recentStatusErrorCount: Int {
+        logEntries.filter { $0.level == .error }.count
     }
 
     private static let relayLastPublishedAtFormatter: DateFormatter = {

@@ -168,7 +168,8 @@ struct ContentView: View {
                         relaySettings: $relaySettings,
                         relayConnectionStatus: $relayConnectionStatus,
                         recognizedCaptionCount: recognizedCaptionCount,
-                        relayLastPublishedAt: relayLastPublishedAt
+                        relayLastPublishedAt: relayLastPublishedAt,
+                        logEntries: logEntries
                     ) { level, title, detail in
                         appendLog(level: level, title: title, detail: detail)
                     }
