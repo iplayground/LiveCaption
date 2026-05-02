@@ -347,6 +347,15 @@ enum CaptionSessionStatus {
             .red
         }
     }
+
+    var locksProjectionSettings: Bool {
+        switch self {
+        case .captioning, .stopping:
+            true
+        case .notStarted, .ready, .completed, .completedWithWarning, .failed:
+            false
+        }
+    }
 }
 
 struct SessionStatusValue: View {

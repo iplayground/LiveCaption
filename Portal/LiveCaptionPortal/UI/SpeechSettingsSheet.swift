@@ -122,6 +122,12 @@ struct SpeechSettingsSheet: View {
                         }
                     }
 
+                    SpeechSettingsSection(title: L10n.text("speechSettings.section.segmentation"), systemImage: "timer") {
+                        SpeechSegmentationTimeoutControl(
+                            timeoutMilliseconds: $settings.sentenceSilenceTimeoutMilliseconds
+                        )
+                    }
+
                     SpeechSettingsSection(title: L10n.text("speechSettings.section.check"), systemImage: "checkmark.seal") {
                         VStack(alignment: .leading, spacing: 12) {
                             SpeechSettingsStatusRow(
@@ -362,6 +368,50 @@ struct OutputLanguageToggleRow: View {
         }
         .toggleStyle(.checkbox)
         .disabled(isRequired)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
+struct SpeechSegmentationTimeoutControl: View {
+    @Binding var timeoutMilliseconds: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(L10n.text("speechSettings.segmentation.silenceTimeout"))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 160, alignment: .leading)
+
+                TextField(
+                    L10n.text("speechSettings.segmentation.silenceTimeout"),
+                    value: $timeoutMilliseconds,
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 92)
+
+                Stepper(
+                    L10n.text("speechSettings.segmentation.silenceTimeout"),
+                    value: $timeoutMilliseconds,
+                    in: SpeechSettings.minimumSentenceSilenceTimeoutMilliseconds...SpeechSettings.maximumSentenceSilenceTimeoutMilliseconds,
+                    step: 100
+                )
+                .labelsHidden()
+
+                Text("ms")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(L10n.text("speechSettings.segmentation.silenceTimeout.hint"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color(nsColor: .controlBackgroundColor))

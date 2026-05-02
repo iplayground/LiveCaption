@@ -138,6 +138,14 @@ struct ContentView: View {
 
                 Divider()
 
+                ProjectionCaptureSection(
+                    inputLanguage: inputLanguage,
+                    outputLanguages: speechSettings.selectedOutputLanguages,
+                    captionPreviewState: speechRecognitionController.captionPreviewState
+                )
+
+                Divider()
+
                 HStack(alignment: .top, spacing: 0) {
                     ControlSidebar(
                         audioInputController: audioInputController,
@@ -163,7 +171,9 @@ struct ContentView: View {
 
                     StatusSidebar(
                         inputLanguage: inputLanguage,
+                        captionSessionStatus: captionSessionStatus,
                         speechSettings: $speechSettings,
+                        captionPreviewState: speechRecognitionController.captionPreviewState,
                         speechAuthorizationStatus: $speechAuthorizationStatus,
                         relaySettings: $relaySettings,
                         relayConnectionStatus: $relayConnectionStatus,

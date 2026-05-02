@@ -55,9 +55,14 @@ enum SpeechRecognitionState: Equatable {
 private struct SpeechCaptionPreviewSnapshot {
     var state = SpeechRecognitionState.idle
     var interimTranscript = ""
+    var visibleLiveTranscript = ""
     var interimTranslations: [String: String] = [:]
     var finalTranscript = ""
     var finalTranslations: [String: String] = [:]
+    var finalTranscriptHistory: [String] = []
+    var finalTranslationHistory: [String: [String]] = [:]
+    var lastFinalOffsetTicks: UInt64?
+    var projectionOverrideText: String?
 }
 
 struct SpeechRecognitionRequest: Equatable {
@@ -66,6 +71,7 @@ struct SpeechRecognitionRequest: Equatable {
     let inputLocale: String
     let audioDeviceID: String
     let outputLanguageIDs: [String]
+    let sentenceSilenceTimeoutMilliseconds: Int
 }
 
 @MainActor
@@ -85,8 +91,8 @@ final class SpeechCaptionPreviewState: ObservableObject {
     }
 
     func liveTranscript(for inputLanguage: InputLanguage) -> String {
-        if !snapshot.interimTranscript.isEmpty {
-            return snapshot.interimTranscript
+        if !snapshot.visibleLiveTranscript.isEmpty {
+            return snapshot.visibleLiveTranscript
         }
 
         return shouldShowWelcomeText ? inputLanguage.previewText : ""
@@ -120,6 +126,90 @@ final class SpeechCaptionPreviewState: ObservableObject {
         return shouldShowWelcomeText ? language.previewText : ""
     }
 
+    func finalCaptionText(for language: SpeechOutputLanguage, inputLanguage: InputLanguage) -> String {
+        if language.id == inputLanguage.matchingOutputLanguageID {
+            if !snapshot.finalTranscript.isEmpty {
+                return snapshot.finalTranscript
+            }
+
+            return shouldShowWelcomeText ? inputLanguage.previewText : ""
+        }
+
+        if let text = snapshot.finalTranslations[language.id], !text.isEmpty {
+            return text
+        }
+
+        return shouldShowWelcomeText ? language.previewText : ""
+    }
+
+    func projectionCaptionText(
+        for language: SpeechOutputLanguage?,
+        inputLanguage: InputLanguage,
+        appendsText: Bool,
+        appendLineLimit: Int
+    ) -> String {
+        if let projectionOverrideText = snapshot.projectionOverrideText {
+            return projectionOverrideText
+        }
+
+        return computedProjectionCaptionText(
+            for: language,
+            inputLanguage: inputLanguage,
+            appendsText: appendsText,
+            appendLineLimit: appendLineLimit
+        )
+    }
+
+    func clearProjectionCaption() {
+        updateSnapshot { snapshot in
+            snapshot.finalTranscriptHistory = []
+            snapshot.finalTranslationHistory = [:]
+            snapshot.projectionOverrideText = ""
+        }
+    }
+
+    func fillProjectionCaption() {
+        updateSnapshot { snapshot in
+            Self.appendIfNeeded(snapshot.finalTranscript, to: &snapshot.finalTranscriptHistory)
+
+            snapshot.finalTranslations.forEach { languageID, translation in
+                Self.appendIfNeeded(translation, to: &snapshot.finalTranslationHistory[languageID, default: []])
+            }
+
+            snapshot.projectionOverrideText = nil
+        }
+    }
+
+    private func computedProjectionCaptionText(
+        for language: SpeechOutputLanguage?,
+        inputLanguage: InputLanguage,
+        appendsText: Bool,
+        appendLineLimit: Int
+    ) -> String {
+        guard appendsText else {
+            guard let language else {
+                return displayTranscript(for: inputLanguage)
+            }
+
+            if language.id != inputLanguage.matchingOutputLanguageID {
+                return finalCaptionText(for: language, inputLanguage: inputLanguage)
+            }
+
+            return captionText(for: language, inputLanguage: inputLanguage)
+        }
+
+        guard let language else {
+            return appendedTranscriptText(for: inputLanguage, lineLimit: appendLineLimit)
+        }
+
+        if language.id == inputLanguage.matchingOutputLanguageID {
+            return appendedTranscriptText(for: inputLanguage, lineLimit: appendLineLimit)
+        }
+
+        let lines = snapshot.finalTranslationHistory[language.id, default: []]
+        return recentProjectionText(from: lines, previewText: language.previewText, lineLimit: appendLineLimit)
+    }
+
     func setListening() {
         updateSnapshot { snapshot in
             snapshot.state = .listening
@@ -132,14 +222,22 @@ final class SpeechCaptionPreviewState: ObservableObject {
         }
     }
 
-    func setRecognizingTranscript(_ text: String, translations: [String: String]) {
-        guard !text.isEmpty else {
+    func setRecognizingTranscript(_ text: String, translations: [String: String], offsetTicks: UInt64) {
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
             return
         }
 
         updateSnapshot { snapshot in
-            snapshot.interimTranscript = text
-            snapshot.interimTranslations = translations
+            if let lastFinalOffsetTicks = snapshot.lastFinalOffsetTicks,
+               offsetTicks <= lastFinalOffsetTicks {
+                return
+            }
+
+            snapshot.interimTranscript = normalizedText
+            snapshot.visibleLiveTranscript = normalizedText
+            Self.mergeNonEmptyTranslations(translations, into: &snapshot.interimTranslations)
+            snapshot.projectionOverrideText = nil
 
             if case .recognizing = snapshot.state {
                 return
@@ -149,11 +247,29 @@ final class SpeechCaptionPreviewState: ObservableObject {
         }
     }
 
-    func setFinalTranscript(_ text: String, translations: [String: String]) {
+    func setFinalTranscript(_ text: String, translations: [String: String], offsetTicks: UInt64) {
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            return
+        }
+
         updateSnapshot { snapshot in
-            snapshot.interimTranslations = [:]
-            snapshot.finalTranscript = text
-            snapshot.finalTranslations = translations
+            snapshot.interimTranscript = ""
+            snapshot.visibleLiveTranscript = normalizedText
+            snapshot.finalTranscript = normalizedText
+            Self.mergeNonEmptyTranslations(translations, into: &snapshot.finalTranslations)
+            snapshot.finalTranscriptHistory.append(normalizedText)
+            snapshot.lastFinalOffsetTicks = offsetTicks
+            snapshot.projectionOverrideText = nil
+
+            translations.forEach { languageID, translation in
+                guard !translation.isEmpty else {
+                    return
+                }
+
+                snapshot.interimTranslations.removeValue(forKey: languageID)
+                snapshot.finalTranslationHistory[languageID, default: []].append(translation)
+            }
             snapshot.state = .listening
         }
     }
@@ -167,16 +283,66 @@ final class SpeechCaptionPreviewState: ObservableObject {
     func resetTranscript() {
         updateSnapshot { snapshot in
             snapshot.interimTranscript = ""
+            snapshot.visibleLiveTranscript = ""
             snapshot.interimTranslations = [:]
             snapshot.finalTranscript = ""
             snapshot.finalTranslations = [:]
+            snapshot.finalTranscriptHistory = []
+            snapshot.finalTranslationHistory = [:]
+            snapshot.lastFinalOffsetTicks = nil
+            snapshot.projectionOverrideText = nil
         }
+    }
+
+    private func appendedTranscriptText(for inputLanguage: InputLanguage, lineLimit: Int) -> String {
+        var lines = snapshot.finalTranscriptHistory
+
+        if case .recognizing = snapshot.state,
+           !snapshot.visibleLiveTranscript.isEmpty,
+           lines.last != snapshot.visibleLiveTranscript {
+            lines.append(snapshot.visibleLiveTranscript)
+        }
+
+        return recentProjectionText(from: lines, previewText: inputLanguage.previewText, lineLimit: lineLimit)
+    }
+
+    private func recentProjectionText(from lines: [String], previewText: String, lineLimit: Int) -> String {
+        let visibleLines = lines.filter { !$0.isEmpty }
+
+        if visibleLines.isEmpty {
+            return shouldShowWelcomeText ? previewText : ""
+        }
+
+        return visibleLines
+            .suffix(max(1, lineLimit))
+            .joined(separator: "\n")
     }
 
     private func updateSnapshot(_ update: (inout SpeechCaptionPreviewSnapshot) -> Void) {
         var nextSnapshot = snapshot
         update(&nextSnapshot)
         snapshot = nextSnapshot
+    }
+
+    private static func mergeNonEmptyTranslations(
+        _ translations: [String: String],
+        into target: inout [String: String]
+    ) {
+        translations.forEach { languageID, translation in
+            guard !translation.isEmpty else {
+                return
+            }
+
+            target[languageID] = translation
+        }
+    }
+
+    private static func appendIfNeeded(_ text: String, to target: inout [String]) {
+        guard !text.isEmpty, target.last != text else {
+            return
+        }
+
+        target.append(text)
     }
 }
 
@@ -232,7 +398,8 @@ final class SpeechRecognitionController: ObservableObject {
             speechKey: speechKey,
             inputLocale: inputLanguage.speechLocale,
             audioDeviceID: audioDeviceID,
-            outputLanguageIDs: outputLanguageIDs
+            outputLanguageIDs: outputLanguageIDs,
+            sentenceSilenceTimeoutMilliseconds: settings.sentenceSilenceTimeoutMilliseconds
         )
 
         guard request != activeRequest || recognizer == nil else {
@@ -249,6 +416,11 @@ final class SpeechRecognitionController: ObservableObject {
             )
 
             translationConfiguration.speechRecognitionLanguage = inputLanguage.speechLocale
+            translationConfiguration.setPropertyTo("Time", by: SPXPropertyId(rawValue: 9_004)!)
+            translationConfiguration.setPropertyTo(
+                "\(settings.sentenceSilenceTimeoutMilliseconds)",
+                by: SPXPropertyId(rawValue: 9_002)!
+            )
             outputLanguageIDs
                 .filter { $0 != inputLanguage.matchingOutputLanguageID }
                 .forEach { translationConfiguration.addTargetLanguage($0) }
@@ -309,7 +481,11 @@ final class SpeechRecognitionController: ObservableObject {
             let translations = Self.normalizedTranslations(from: event.result.translations)
 
             DispatchQueue.main.async { [weak self] in
-                self?.captionPreviewState.setRecognizingTranscript(text, translations: translations)
+                self?.captionPreviewState.setRecognizingTranscript(
+                    text,
+                    translations: translations,
+                    offsetTicks: event.result.offset
+                )
             }
         }
 
@@ -331,7 +507,11 @@ final class SpeechRecognitionController: ObservableObject {
             )
 
             DispatchQueue.main.async { [weak self] in
-                self?.captionPreviewState.setFinalTranscript(text, translations: translations)
+                self?.captionPreviewState.setFinalTranscript(
+                    text,
+                    translations: translations,
+                    offsetTicks: result.offset
+                )
 
                 self?.deferCaptionEvent(captionEvent)
             }

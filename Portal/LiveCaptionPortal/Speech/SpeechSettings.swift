@@ -24,10 +24,20 @@ enum SpeechSettingsValidationError: LocalizedError {
 struct SpeechSettings: Equatable {
     static let requiredOutputLanguageIDs: Set<String> = ["zh-Hant", "en"]
     static let defaultOutputLanguageIDs: Set<String> = ["zh-Hant", "en", "ja"]
+    static let minimumSentenceSilenceTimeoutMilliseconds = 100
+    static let maximumSentenceSilenceTimeoutMilliseconds = 5_000
+    static let defaultSentenceSilenceTimeoutMilliseconds = 800
     private static let userDefaults = UserDefaults.standard
 
     var region = ""
     var speechKey = ""
+    var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMilliseconds {
+        didSet {
+            sentenceSilenceTimeoutMilliseconds = Self.clampedSentenceSilenceTimeoutMilliseconds(
+                sentenceSilenceTimeoutMilliseconds
+            )
+        }
+    }
     var selectedOutputLanguageIDs = defaultOutputLanguageIDs {
         didSet {
             selectedOutputLanguageIDs.formUnion(Self.requiredOutputLanguageIDs)
@@ -106,14 +116,27 @@ struct SpeechSettings: Equatable {
             settings.selectedOutputLanguageIDs = Set(outputLanguageIDs).union(requiredOutputLanguageIDs)
         }
 
+        if userDefaults.object(forKey: UserDefaultsKey.sentenceSilenceTimeoutMilliseconds.rawValue) != nil {
+            settings.sentenceSilenceTimeoutMilliseconds = clampedSentenceSilenceTimeoutMilliseconds(
+                userDefaults.integer(forKey: UserDefaultsKey.sentenceSilenceTimeoutMilliseconds.rawValue)
+            )
+        }
+
         return settings
     }
 
     mutating func save() {
+        sentenceSilenceTimeoutMilliseconds = Self.clampedSentenceSilenceTimeoutMilliseconds(
+            sentenceSilenceTimeoutMilliseconds
+        )
         Self.userDefaults.set(region, forKey: UserDefaultsKey.region.rawValue)
         Self.userDefaults.set(
             Array(selectedOutputLanguageIDs.union(Self.requiredOutputLanguageIDs)).sorted(),
             forKey: UserDefaultsKey.outputLanguageIDs.rawValue
+        )
+        Self.userDefaults.set(
+            sentenceSilenceTimeoutMilliseconds,
+            forKey: UserDefaultsKey.sentenceSilenceTimeoutMilliseconds.rawValue
         )
         if speechKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Self.userDefaults.removeObject(forKey: UserDefaultsKey.speechKey.rawValue)
@@ -122,10 +145,18 @@ struct SpeechSettings: Equatable {
         }
     }
 
+    private static func clampedSentenceSilenceTimeoutMilliseconds(_ value: Int) -> Int {
+        min(
+            max(value, minimumSentenceSilenceTimeoutMilliseconds),
+            maximumSentenceSilenceTimeoutMilliseconds
+        )
+    }
+
     private enum UserDefaultsKey: String {
         case region = "speech.region"
         case speechKey = "speech.key"
         case outputLanguageIDs = "speech.outputLanguageIDs"
+        case sentenceSilenceTimeoutMilliseconds = "speech.sentenceSilenceTimeoutMilliseconds"
     }
 }
 
