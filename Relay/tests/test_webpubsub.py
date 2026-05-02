@@ -67,6 +67,35 @@ def test_webpubsub_publisher_sends_payload_to_configured_group(monkeypatch: pyte
     ]
 
 
+def test_webpubsub_publisher_also_sends_payload_to_track_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = WebPubSubConfig(
+        endpoint="https://livecaption.webpubsub.azure.com",
+        hub_name="livecaption",
+        group_name="caption-live",
+    )
+    client = FakeWebPubSubServiceClient()
+    publisher = AzureWebPubSubPublisher(config_factory=lambda: config)
+    monkeypatch.setattr(publisher, "_client", client)
+    monkeypatch.setattr(publisher, "_group_name", config.group_name)
+
+    publisher.publish({"trackNumber": 2}, track_number=2)
+
+    assert client.messages == [
+        {
+            "group": "caption-live",
+            "message": '{"trackNumber":2}',
+            "content_type": "text/plain",
+        },
+        {
+            "group": "caption-live-track-2",
+            "message": '{"trackNumber":2}',
+            "content_type": "text/plain",
+        },
+    ]
+
+
 def test_webpubsub_publisher_preserves_non_ascii_text(monkeypatch: pytest.MonkeyPatch) -> None:
     config = WebPubSubConfig(
         endpoint="https://livecaption.webpubsub.azure.com",
@@ -132,6 +161,36 @@ def test_viewer_token_provider_generates_receive_only_group_token(
         {
             "minutes_to_expire": 60,
             "groups": ["caption-live"],
+        }
+    ]
+
+
+def test_viewer_token_provider_generates_track_group_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = WebPubSubConfig(
+        endpoint="https://livecaption.webpubsub.azure.com",
+        hub_name="livecaption",
+        group_name="caption-live",
+    )
+    client = FakeWebPubSubServiceClient()
+    provider = AzureWebPubSubViewerTokenProvider(
+        config_factory=lambda: config,
+        token_ttl=timedelta(minutes=60),
+    )
+    monkeypatch.setattr(provider, "_client", client)
+    monkeypatch.setattr(provider, "_config", config)
+
+    access = provider.get_viewer_access_token(
+        track_number=2,
+        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
+    )
+
+    assert access.group_name == "caption-live-track-2"
+    assert client.access_token_requests == [
+        {
+            "minutes_to_expire": 60,
+            "groups": ["caption-live-track-2"],
         }
     ]
 

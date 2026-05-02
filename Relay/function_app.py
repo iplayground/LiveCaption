@@ -127,6 +127,7 @@ def viewer_negotiate(req: func.HttpRequest) -> func.HttpResponse:
         req.headers.get(ACCESS_CODE_HEADER),
         token_provider=viewer_token_provider,
         access_code_verifier=RelayViewerAccessCodeVerifier(),
+        track_number=_read_viewer_track_number(req),
         access_code_required=is_viewer_access_code_required(),
     )
     return _json_response(body, status_code=status_code)
@@ -176,6 +177,21 @@ class RelayViewerAccessCodeVerifier:
             webpubsub_config=WebPubSubConfig.from_environment(),
             now=now,
         )
+
+
+def _read_viewer_track_number(req: func.HttpRequest):
+    body_bytes = req.get_body()
+    if not body_bytes:
+        return None
+
+    try:
+        payload = req.get_json()
+    except ValueError:
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+    return payload.get("trackNumber")
 
 
 def _json_response(payload: dict, *, status_code: int) -> func.HttpResponse:

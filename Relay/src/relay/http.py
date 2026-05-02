@@ -11,12 +11,17 @@ from relay.webpubsub import RelayWebPubSubError, ViewerAccessToken
 
 
 class CaptionEventPublisher(Protocol):
-    def publish(self, payload: dict[str, Any]) -> None:
+    def publish(self, payload: dict[str, Any], *, track_number: int | None = None) -> None:
         pass
 
 
 class ViewerTokenProvider(Protocol):
-    def get_viewer_access_token(self, *, now: datetime | None = None) -> ViewerAccessToken:
+    def get_viewer_access_token(
+        self,
+        *,
+        track_number: int | None = None,
+        now: datetime | None = None,
+    ) -> ViewerAccessToken:
         pass
 
 
@@ -39,7 +44,7 @@ def handle_caption_event_request(
 
     publish_payload = build_publish_payload(event, received_at=now or datetime.now(UTC))
     try:
-        publisher.publish(publish_payload)
+        publisher.publish(publish_payload, track_number=event.track_number)
     except RelayWebPubSubError:
         return 502, {
             "error": {
@@ -57,9 +62,26 @@ def handle_viewer_negotiate_request(
     *,
     token_provider: ViewerTokenProvider,
     access_code_verifier: ViewerAccessCodeVerifier,
+    track_number: Any = None,
     access_code_required: bool = True,
     now: datetime | None = None,
 ) -> tuple[int, dict[str, Any]]:
+    try:
+        normalized_track_number = validate_viewer_track_number(track_number)
+    except ValueError:
+        return 400, {
+            "error": {
+                "code": "invalid_viewer_filter",
+                "message": "Viewer filter is invalid.",
+                "details": [
+                    {
+                        "field": "trackNumber",
+                        "reason": "Track number must be a positive integer.",
+                    }
+                ],
+            }
+        }
+
     if access_code_required:
         try:
             access_code_verifier.verify(access_code=access_code, now=now)
@@ -73,7 +95,10 @@ def handle_viewer_negotiate_request(
             }
 
     try:
-        access = token_provider.get_viewer_access_token(now=now)
+        access = token_provider.get_viewer_access_token(
+            track_number=normalized_track_number,
+            now=now,
+        )
     except RelayWebPubSubError:
         return 502, {
             "error": {
@@ -101,6 +126,14 @@ def build_health_payload(*, commit: str | None = None) -> dict[str, str]:
         "status": "ok",
         "commit": commit or "unknown",
     }
+
+
+def validate_viewer_track_number(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("Track number must be a positive integer.")
+    return value
 
 
 def build_publish_payload(event: CaptionEvent, *, received_at: datetime) -> dict[str, Any]:

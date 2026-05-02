@@ -64,14 +64,20 @@ class AzureWebPubSubPublisher:
         self._client: Any | None = None
         self._group_name: str | None = None
 
-    def publish(self, payload: dict[str, Any]) -> None:
+    def publish(self, payload: dict[str, Any], *, track_number: int | None = None) -> None:
         client, group_name = self._get_client()
+        target_groups = [group_name]
+        if track_number is not None:
+            target_groups.append(build_track_group_name(group_name, track_number=track_number))
+
         try:
-            client.send_to_group(
-                group=group_name,
-                message=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                content_type="text/plain",
-            )
+            message = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            for target_group in target_groups:
+                client.send_to_group(
+                    group=target_group,
+                    message=message,
+                    content_type="text/plain",
+                )
         except AzureError as error:
             raise RelayWebPubSubError("Unable to publish caption event.") from error
 
@@ -108,16 +114,26 @@ class AzureWebPubSubViewerTokenProvider:
         self._client: Any | None = None
         self._config: WebPubSubConfig | None = None
 
-    def get_viewer_access_token(self, *, now: datetime | None = None) -> ViewerAccessToken:
+    def get_viewer_access_token(
+        self,
+        *,
+        track_number: int | None = None,
+        now: datetime | None = None,
+    ) -> ViewerAccessToken:
         client, config = self._get_client()
         reference_time = (now or datetime.now(UTC)).astimezone(UTC)
         expires_at = reference_time + self._token_ttl
         minutes_to_expire = max(1, int(self._token_ttl.total_seconds() // 60))
+        group_name = (
+            build_track_group_name(config.group_name, track_number=track_number)
+            if track_number is not None
+            else config.group_name
+        )
 
         try:
             token = client.get_client_access_token(
                 minutes_to_expire=minutes_to_expire,
-                groups=[config.group_name],
+                groups=[group_name],
             )
         except AzureError as error:
             raise RelayWebPubSubError("Unable to generate viewer access token.") from error
@@ -126,7 +142,7 @@ class AzureWebPubSubViewerTokenProvider:
         return ViewerAccessToken(
             url=url,
             hub_name=config.hub_name,
-            group_name=config.group_name,
+            group_name=group_name,
             expires_at=expires_at,
         )
 
@@ -160,3 +176,7 @@ def _extract_client_access_url(token: object) -> str:
     if not isinstance(url, str) or not url:
         raise RelayWebPubSubError("Azure Web PubSub returned an invalid viewer access token.")
     return url
+
+
+def build_track_group_name(base_group_name: str, *, track_number: int) -> str:
+    return f"{base_group_name}-track-{track_number}"

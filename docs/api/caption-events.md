@@ -221,7 +221,15 @@ Relay 發布到 Azure Web PubSub 前可加入 Relay 自己的 metadata，例如 
 caption-live
 ```
 
-同一場活動的所有字幕軌先發布到同一個 group，觀眾端依 payload 內的 `trackNumber` 判斷要顯示哪個軌道的字幕，並可用 `roomName` 顯示會議室名稱；`roomName` 為空字串時代表未設定。Portal 不需要知道 group 命名規則，觀眾端透過 Relay 的 `POST /api/viewer/negotiate` 取得 receive-only Web PubSub client access URL；當 Relay 要求觀眾端 access code 時，negotiate request 需在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 顯示的 access code。
+Relay 會把每筆字幕發布到 base group 與該字幕軌的專用 group。Base group 保留相容性；多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber`，取得對應 track group 的 receive-only Web PubSub client access URL，避免收到其他會議室或字幕軌的事件。
+
+Track group 命名規則：
+
+```text
+<base-group>-track-<trackNumber>
+```
+
+例如 `trackNumber=1` 會發布到 `caption-live-track-1`。觀眾端仍可用 payload 內的 `roomName` 顯示會議室名稱；`roomName` 為空字串時代表未設定。Portal 不需要知道 group 命名規則。當 Relay 要求觀眾端 access code 時，negotiate request 需在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 顯示的 access code。
 
 第一版建議 Web PubSub 發布 payload 保留 Portal 傳入的字幕欄位，並只加入 Relay metadata：
 
