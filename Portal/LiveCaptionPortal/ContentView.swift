@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import IOKit.pwr_mgt
 
 struct ContentView: View {
     @State private var inputLanguage = InputLanguage.mandarin
@@ -30,6 +31,7 @@ struct ContentView: View {
     @State private var isLogDrawerExpanded = false
     @State private var selectedLogLevel = LogLevel.all
     @State private var logEntries: [LogEntry] = []
+    @State private var sleepPreventionController = SleepPreventionController()
     private let windowMinimumSize = WindowLayout.minimumSize
     private let relayPublishRetryLimit = 3
     private let maximumLogEntryCount = 300
@@ -152,6 +154,7 @@ struct ContentView: View {
                         subtitleFileSettings: $subtitleFileSettings,
                         subtitleFileAccessStatus: $subtitleFileAccessStatus,
                         captionSessionStatus: captionSessionStatus,
+                        areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                         speechAuthorizationStatus: speechAuthorizationStatus,
                         relayConnectionStatus: relayConnectionStatus
                     ) { level, title, detail in
@@ -163,6 +166,7 @@ struct ContentView: View {
                     CaptionWorkspace(
                         sessionTitle: $sessionTitle,
                         inputLanguage: $inputLanguage,
+                        areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                         outputLanguages: speechSettings.selectedOutputLanguages,
                         captionPreviewState: speechRecognitionController.captionPreviewState
                     )
@@ -172,6 +176,7 @@ struct ContentView: View {
                     StatusSidebar(
                         inputLanguage: inputLanguage,
                         captionSessionStatus: captionSessionStatus,
+                        areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                         speechSettings: $speechSettings,
                         captionPreviewState: speechRecognitionController.captionPreviewState,
                         speechAuthorizationStatus: $speechAuthorizationStatus,
@@ -197,6 +202,7 @@ struct ContentView: View {
         }
         .frame(minWidth: windowMinimumSize.width, minHeight: windowMinimumSize.height)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background(KeyboardEventBlocker(isEnabled: captionSessionStatus.blocksKeyboardEvents))
         .task {
             audioInputController.activate()
             await verifySpeechAuthorizationOnLaunchIfNeeded()
@@ -208,6 +214,7 @@ struct ContentView: View {
         .onDisappear {
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
+            sleepPreventionController.stopPreventingSleep()
             audioInputController.stopCapture()
             speechRecognitionController.stopRecognition()
         }
@@ -330,6 +337,7 @@ struct ContentView: View {
             isCaptionSessionActive = false
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
+            sleepPreventionController.stopPreventingSleep()
         } else {
             captionSessionElapsedTime = 0
             relayLastPublishedAt = nil
@@ -339,10 +347,12 @@ struct ContentView: View {
             captionSessionStartedAt = startedAt
 
             if beginSubtitleExportSession(startedAt: startedAt) {
+                sleepPreventionController.startPreventingSleep()
                 captionSessionStatus = .captioning
                 isCaptionSessionActive = true
             } else {
                 finishCaptionSessionTiming()
+                sleepPreventionController.stopPreventingSleep()
                 captionSessionStatus = .failed
             }
         }
@@ -467,6 +477,7 @@ struct ContentView: View {
             if captionSessionStatus == .stopping {
                 captionSessionStatus = .completed
             }
+            sleepPreventionController.stopPreventingSleep()
             return
         }
 
@@ -482,6 +493,7 @@ struct ContentView: View {
         }
 
         self.subtitleExportSession = nil
+        sleepPreventionController.stopPreventingSleep()
     }
 
     private func writeFallbackSubtitleFiles(
@@ -523,5 +535,94 @@ struct ContentView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+    }
+}
+
+private struct KeyboardEventBlocker: NSViewRepresentable {
+    let isEnabled: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.installMonitor()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.isEnabled = isEnabled
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.removeMonitor()
+    }
+
+    final class Coordinator {
+        var isEnabled = false
+        private var monitor: Any?
+
+        func installMonitor() {
+            guard monitor == nil else {
+                return
+            }
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+                self?.isEnabled == true ? nil : event
+            }
+        }
+
+        func removeMonitor() {
+            guard let monitor else {
+                return
+            }
+
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+
+        deinit {
+            removeMonitor()
+        }
+    }
+}
+
+private final class SleepPreventionController {
+    private var assertionIDs: [IOPMAssertionID] = []
+
+    func startPreventingSleep() {
+        guard assertionIDs.isEmpty else {
+            return
+        }
+
+        assertionIDs = [
+            createAssertion(type: kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString),
+            createAssertion(type: kIOPMAssertionTypePreventUserIdleSystemSleep as CFString)
+        ].compactMap { $0 }
+    }
+
+    func stopPreventingSleep() {
+        assertionIDs.forEach { IOPMAssertionRelease($0) }
+        assertionIDs.removeAll()
+    }
+
+    deinit {
+        stopPreventingSleep()
+    }
+
+    private func createAssertion(type: CFString) -> IOPMAssertionID? {
+        var assertionID = IOPMAssertionID(0)
+        let result = IOPMAssertionCreateWithName(
+            type,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "LiveCaption Portal caption session" as CFString,
+            &assertionID
+        )
+
+        guard result == kIOReturnSuccess else {
+            return nil
+        }
+
+        return assertionID
     }
 }

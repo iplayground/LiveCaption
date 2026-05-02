@@ -6,6 +6,7 @@ struct ControlSidebar: View {
     @Binding var subtitleFileSettings: SubtitleFileSettings
     @Binding var subtitleFileAccessStatus: SubtitleFileAccessStatus
     let captionSessionStatus: CaptionSessionStatus
+    let areConfigurationControlsLocked: Bool
     let speechAuthorizationStatus: SpeechAuthorizationStatus
     let relayConnectionStatus: RelayConnectionStatus
     let onLogEvent: (LogLevel, String, String) -> Void
@@ -43,7 +44,7 @@ struct ControlSidebar: View {
                         .font(.caption)
                         .toggleStyle(.switch)
                         .controlSize(.small)
-                        .disabled(!audioInputController.canToggleCapture)
+                        .disabled(areConfigurationControlsLocked || !audioInputController.canToggleCapture)
                 } content: {
                     VStack(alignment: .leading, spacing: 14) {
                         VStack(alignment: .leading, spacing: 6) {
@@ -60,6 +61,7 @@ struct ControlSidebar: View {
                                     Image(systemName: "arrow.clockwise")
                                 }
                                 .buttonStyle(.borderless)
+                                .disabled(areConfigurationControlsLocked)
                                 .help(L10n.text("audio.rescanSources"))
                             }
 
@@ -67,7 +69,7 @@ struct ControlSidebar: View {
                                 devices: audioInputController.devices,
                                 selectedDeviceID: audioInputController.selectedDeviceID,
                                 selectedDeviceName: audioInputController.selectedDeviceName,
-                                isDisabled: audioInputController.devices.isEmpty
+                                isDisabled: areConfigurationControlsLocked || audioInputController.devices.isEmpty
                             ) { deviceID in
                                 audioInputController.selectDevice(id: deviceID)
                             }
@@ -86,6 +88,7 @@ struct ControlSidebar: View {
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                                 .controlSize(.small)
+                                .disabled(areConfigurationControlsLocked)
                         }
 
                         VStack(alignment: .leading, spacing: 8) {
@@ -132,6 +135,7 @@ struct ControlSidebar: View {
                                 Label(L10n.text("subtitle.chooseFolder"), systemImage: "folder.badge.gearshape")
                                     .frame(maxWidth: .infinity)
                             }
+                            .disabled(areConfigurationControlsLocked)
 
                             Button {
                                 clearSubtitleStorageDirectory()
@@ -139,7 +143,7 @@ struct ControlSidebar: View {
                                 Image(systemName: "xmark")
                                     .frame(width: 24)
                             }
-                            .disabled(subtitleFileSettings.storageDirectoryURL == nil)
+                            .disabled(areConfigurationControlsLocked || subtitleFileSettings.storageDirectoryURL == nil)
                             .help(L10n.text("subtitle.clearStorageLocation"))
                         }
 
@@ -176,6 +180,10 @@ struct ControlSidebar: View {
     }
 
     private func chooseSubtitleStorageDirectory() {
+        guard !areConfigurationControlsLocked else {
+            return
+        }
+
         let panel = NSOpenPanel()
         panel.title = L10n.text("subtitle.chooseStoragePanel.title")
         panel.prompt = L10n.text("common.choose")
@@ -202,6 +210,10 @@ struct ControlSidebar: View {
     }
 
     private func clearSubtitleStorageDirectory() {
+        guard !areConfigurationControlsLocked else {
+            return
+        }
+
         subtitleFileSettings.clearStorageDirectory()
         subtitleFileSettingsErrorMessage = nil
         onLogEvent(.info, L10n.text("log.subtitle.storageCleared"), L10n.text("subtitle.storage.notConfigured"))
@@ -248,6 +260,7 @@ struct ControlSidebar: View {
 struct CaptionWorkspace: View {
     @Binding var sessionTitle: String
     @Binding var inputLanguage: InputLanguage
+    let areConfigurationControlsLocked: Bool
     let outputLanguages: [SpeechOutputLanguage]
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @FocusState private var focusedField: FocusedField?
@@ -309,6 +322,7 @@ struct CaptionWorkspace: View {
                             .labelsHidden()
                             .pickerStyle(.segmented)
                             .fixedSize(horizontal: true, vertical: false)
+                            .disabled(areConfigurationControlsLocked)
                         }
                         .padding(.trailing, 8)
                     }
@@ -327,6 +341,7 @@ struct CaptionWorkspace: View {
                         }
                         .focused($focusedField, equals: .sessionTitle)
                         .frame(height: 28)
+                        .disabled(areConfigurationControlsLocked)
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -1527,6 +1542,7 @@ final class MouseFocusedNSTextField: NSTextField {
 struct StatusSidebar: View {
     let inputLanguage: InputLanguage
     let captionSessionStatus: CaptionSessionStatus
+    let areConfigurationControlsLocked: Bool
     @Binding var speechSettings: SpeechSettings
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @Binding var speechAuthorizationStatus: SpeechAuthorizationStatus
@@ -1541,7 +1557,7 @@ struct StatusSidebar: View {
     @State private var isRelaySettingsPresented = false
 
     private var areProjectionSettingsLocked: Bool {
-        captionSessionStatus.locksProjectionSettings
+        areConfigurationControlsLocked
     }
 
     var body: some View {
@@ -1573,6 +1589,7 @@ struct StatusSidebar: View {
                             Label(L10n.text("settings.open"), systemImage: "gearshape")
                                 .frame(maxWidth: .infinity)
                         }
+                        .disabled(areConfigurationControlsLocked)
                     }
                 }
                 .sheet(isPresented: $isSpeechSettingsPresented) {
@@ -1611,6 +1628,7 @@ struct StatusSidebar: View {
                             Label(L10n.text("settings.open"), systemImage: "gearshape")
                                 .frame(maxWidth: .infinity)
                         }
+                        .disabled(areConfigurationControlsLocked)
                     }
                 }
                 .sheet(isPresented: $isRelaySettingsPresented) {
@@ -1654,6 +1672,8 @@ struct StatusSidebar: View {
         .onChange(of: areProjectionSettingsLocked) {
             if areProjectionSettingsLocked {
                 projectionSettingsPanelPresenter.close()
+                isSpeechSettingsPresented = false
+                isRelaySettingsPresented = false
             }
         }
     }

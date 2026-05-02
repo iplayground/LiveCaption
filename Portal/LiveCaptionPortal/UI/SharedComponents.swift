@@ -349,6 +349,14 @@ enum CaptionSessionStatus {
     }
 
     var locksProjectionSettings: Bool {
+        locksConfigurationControls
+    }
+
+    var blocksKeyboardEvents: Bool {
+        locksConfigurationControls
+    }
+
+    var locksConfigurationControls: Bool {
         switch self {
         case .captioning, .stopping:
             true
