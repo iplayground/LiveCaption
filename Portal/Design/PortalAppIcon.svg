@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Portal App Icon</title>
+  <desc id="desc">A macOS app icon for Portal, combining the iPlayground geometric logo with a microphone and caption output.</desc>
+  <defs>
+    <linearGradient id="background" x1="112" y1="86" x2="916" y2="932" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6590ff"/>
+      <stop offset="0.54" stop-color="#507cf5"/>
+      <stop offset="1" stop-color="#3f61d9"/>
+    </linearGradient>
+    <radialGradient id="highlight" cx="38%" cy="22%" r="70%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="logoShadow" x="-20%" y="-22%" width="140%" height="148%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#1d3173" flood-opacity="0.28"/>
+    </filter>
+    <filter id="micShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#173370" flood-opacity="0.34"/>
+    </filter>
+    <filter id="panelShadow" x="-16%" y="-18%" width="132%" height="148%">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#172f72" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#background)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#highlight)"/>
+
+  <g filter="url(#logoShadow)" transform="translate(590 54) scale(0.6)">
+    <circle cx="82" cy="168" r="92" fill="#4b51e9"/>
+    <path d="M206 78 L206 258 L386 258 Z" fill="#ffc20a"/>
+    <rect x="378" y="100" width="132" height="132" rx="14" fill="#e85aa2" transform="rotate(45 444 166)"/>
+  </g>
+
+  <g filter="url(#micShadow)">
+    <rect x="384" y="230" width="256" height="384" rx="128" fill="#ffffff"/>
+    <rect x="432" y="284" width="160" height="240" rx="80" fill="#6ee7f2"/>
+    <path d="M320 482 C320 588 404 672 512 672 C620 672 704 588 704 482"
+          fill="none" stroke="#ffffff" stroke-width="52" stroke-linecap="round"/>
+    <path d="M512 672 L512 746" fill="none" stroke="#ffffff" stroke-width="52" stroke-linecap="round"/>
+    <path d="M418 746 L606 746" fill="none" stroke="#ffffff" stroke-width="52" stroke-linecap="round"/>
+  </g>
+
+  <path d="M316 592 C374 550 436 550 494 592 C552 634 614 634 672 592"
+        fill="none" stroke="#ffc20a" stroke-width="24" stroke-linecap="round"/>
+
+  <g filter="url(#panelShadow)">
+    <path d="M190 690 C190 652 221 620 260 620 H764 C803 620 834 652 834 690 V796 C834 835 803 866 764 866 H372 L286 926 V866 H260 C221 866 190 835 190 796 Z"
+          fill="#172f77"/>
+    <path d="M190 690 C190 652 221 620 260 620 H764 C803 620 834 652 834 690 V796 C834 835 803 866 764 866 H372 L286 926 V866 H260 C221 866 190 835 190 796 Z"
+          fill="#ffffff" opacity="0.13"/>
+  </g>
+
+  <rect x="270" y="698" width="244" height="32" rx="16" fill="#ffffff"/>
+  <rect x="546" y="698" width="210" height="32" rx="16" fill="#6ee7f2"/>
+  <rect x="270" y="764" width="172" height="32" rx="16" fill="#ffffff" opacity="0.92"/>
+  <rect x="474" y="764" width="282" height="32" rx="16" fill="#ffffff" opacity="0.92"/>
+
+  <rect x="3" y="3" width="1018" height="1018" rx="221" fill="none" stroke="#ffffff" stroke-opacity="0.24" stroke-width="6"/>
+</svg>
