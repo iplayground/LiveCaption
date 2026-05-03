@@ -11,6 +11,9 @@ GET /api/health
 
 此 endpoint 不需要授權，不讀取 Azure Speech key，也不發布 Azure Web PubSub 訊息。
 回應不得包含機密、逐字稿、使用者識別資料或可回推身分的事件內容。
+此 endpoint 可被部署流程公開輪詢，因此不得新增 app settings、環境變數、URL、headers、部署參數或任何可協助外部使用者取得敏感資料的欄位。
+
+Relay 另提供 `GET /` 重新導向到 LiveCaption GitHub repository；健康檢查流程應使用 `GET /api/health`，不得依賴根路徑 redirect。
 
 成功回應：
 

@@ -1,44 +1,8 @@
 # 字幕事件 API
 
-本文件定義 Portal 傳送字幕事件到 Relay 的第一版 API 契約。Relay 先負責驗證、正規化與發布事件，不負責執行語音辨識、翻譯或保存完整逐字稿。
+本文定義 Portal 傳送字幕事件到 Relay 的 API 契約。Relay 負責驗證、正規化與發布事件，不負責語音辨識、翻譯或保存完整逐字稿。
 
-## 目標
-
-- 固定 Portal 與 Relay 之間的事件輸入邊界。
-- 讓 Relay 可以在發布到 Azure Web PubSub 前驗證來源、語言、時間碼與事件內容。
-- 以單一活動為前提，使用 `trackNumber` 區分同時進行的字幕軌，並用允許空字串的 `roomName` 提供觀眾端顯示用的會議室名稱。
-- 避免 Relay 記錄完整逐字稿、翻譯內容、權杖或可回推身分的資料。
-- 保持 Portal 語音輸入語言、字幕輸出語言與 App 介面在地化語言互相獨立。
-
-## Portal Relay 設定
-
-第一版 Portal 只需要設定 Relay 的最小連線與路由資訊：
-
-- Relay URL
-- `trackNumber`
-- `roomName`，可留空
-
-Portal 不應設定 Azure Web PubSub hub、連線字串、SAS token、group name 或 Azure 發布細節。
-
-## 會議室與軌道識別
-
-`trackNumber` 是同一場活動中的字幕軌編號，型別必須是 JSON integer。Relay 以 `trackNumber` 作為同時段字幕來源的主要識別值；當需要判斷某個 Relay 設定是否可用時，應判斷該 `trackNumber` 是否已被佔用，而不是判斷 `roomName` 是否重複。若未使用多軌，Portal 應送 `1`。
-
-`roomName` 是會議室名稱欄位，由 Portal 操作者設定，允許空字串，並隨字幕事件送到 Relay。Relay 不應使用 `roomName` 判斷設定唯一性或佔用狀態；觀眾端可用它顯示目前字幕軌所在的會議室。
-
-字幕事件 API 本身只驗證 `trackNumber` 格式與範圍，不應在每一筆字幕事件上做軌道互斥，避免同一個 Portal 後續送出的字幕被誤判為佔用衝突。軌道佔用判斷應放在 Relay 設定檢查或未來的軌道租用流程。
-
-建議限制：
-
-- `trackNumber` 必須大於 0。
-- `roomName` 欄位必須存在，但允許空字串。
-- Relay 應去除 `roomName` 前後空白；若去除後為空，正規化為空字串。
-- 若 `roomName` 非空，長度 1 到 80 字元。
-- 若 `roomName` 非空，不得包含換行、控制字元、URL 保留分隔字元 `/`、`?`、`#`。
-- Relay 不應將完整 `roomName` 寫入一般 log；若需要診斷，可記錄長度或遮蔽後的值。
-- Relay 可以記錄 `trackNumber`。
-
-## 發送字幕事件
+## Endpoint
 
 ```http
 POST /api/caption-events
@@ -47,9 +11,25 @@ X-LiveCaption-Timestamp: <utc-iso-8601-timestamp>
 X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
 ```
 
-### 授權
+Portal 使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
 
-第一版 Relay 使用 Azure Speech key 衍生的 HMAC 簽章驗證 Portal 請求。Portal 不得把 Speech key 直接送進 Relay；Portal 必須用本機設定的 Speech key 對請求產生簽章，Relay 則透過 Azure Speech resource 定位資訊向 Azure 讀取實際 Speech key 後驗章。
+```http
+HEAD /api/caption-events
+X-LiveCaption-Timestamp: <utc-iso-8601-timestamp>
+X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
+```
+
+`HEAD` body 為空 bytes。成功時 Relay 不發布字幕，只回傳觀眾端 access code：
+
+```http
+HTTP/1.1 204 No Content
+X-LiveCaption-Viewer-Access-Code: <viewer-access-code>
+X-LiveCaption-Viewer-Access-Expires-At: 2026-05-01T00:00:00.000Z
+```
+
+## 授權
+
+第一版 Relay 使用 Azure Speech key 衍生的 HMAC 簽章驗證 Portal 請求。Portal 不得把 Speech key 直接送進 Relay；Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，並用 Managed Identity 讀取 Speech key 驗章。
 
 簽章規則：
 
@@ -58,38 +38,7 @@ message = X-LiveCaption-Timestamp + "." + raw request body bytes
 signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 ```
 
-`X-LiveCaption-Timestamp` 必須是 UTC ISO 8601 時間，例如 `2026-04-29T12:34:56.789Z`。Relay 應拒絕超出允許時間窗的請求，避免簽章被重放。
-
-Relay 收到請求時必須驗證：
-
-- Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，並取得 Azure
-  Speech key。正式環境由 Bicep 寫入此非機密設定。
-- `X-LiveCaption-Timestamp` 存在且在允許時間窗內。
-- `X-LiveCaption-Signature` 存在且與 request body 驗算結果一致。
-
-Relay 使用 Azure SDK 的 `DefaultAzureCredential` 讀取 Azure Speech resource key。正式環境應使用 Managed Identity；本機開發可讓 `DefaultAzureCredential` 使用目前的 Azure CLI 登入身分。
-
-## Portal 連線測試
-
-Portal 應使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
-
-```http
-HEAD /api/caption-events
-X-LiveCaption-Timestamp: <utc-iso-8601-timestamp>
-X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
-```
-
-`HEAD` 簽章規則與 `POST` 相同，但 request body 為空 bytes。Relay 收到 `HEAD` 後只驗證 Portal HMAC、確認可讀取 Azure Speech key 與 Web PubSub 設定，並回傳觀眾端 access code headers；Relay 不會解析字幕 JSON，也不會發布任何 Web PubSub 訊息。
-
-成功回應：
-
-```http
-HTTP/1.1 204 No Content
-X-LiveCaption-Viewer-Access-Code: 482913
-X-LiveCaption-Viewer-Access-Expires-At: 2026-05-01T00:00:00.000Z
-```
-
-`X-LiveCaption-Viewer-Access-Code` 由 Relay 以 Azure Speech key、UTC 日期、Web PubSub hub 與 group 衍生，不需要 DB。Portal 可顯示此 code 給觀眾端 App 使用；當 Relay 要求觀眾端 access code 時，觀眾端 App 呼叫 `POST /api/viewer/negotiate` 需放在同名 request header。`POST /api/caption-events` 的 request 與 response 都不傳 access code。
+`X-LiveCaption-Timestamp` 必須是 UTC ISO 8601 時間，例如 `2026-04-29T12:34:56.789Z`。Relay 應拒絕超出允許時間窗的請求，避免重放。
 
 ## 請求格式
 
@@ -116,53 +65,53 @@ X-LiveCaption-Viewer-Access-Expires-At: 2026-05-01T00:00:00.000Z
 }
 ```
 
-### 欄位說明
+## 欄位
 
 | 欄位 | 必填 | 說明 |
 | --- | --- | --- |
-| `roomName` | 是 | 同一場活動中的會議室名稱，可為空字串；不得作為唯一性或佔用判斷依據。 |
-| `trackNumber` | 是 | 同一場活動中的字幕軌編號，必須是 JSON integer 且大於 0。 |
+| `roomName` | 是 | 會議室名稱，可為空字串；不得作為唯一性或佔用判斷依據。 |
+| `trackNumber` | 是 | 字幕軌編號，必須是 JSON integer 且大於 0。未使用多軌時送 `1`。 |
 | `createdAt` | 是 | Portal 建立事件的 UTC ISO 8601 時間。 |
-| `source.bundleIdentifier` | 是 | Portal App 的 bundle identifier，目前為 `io.iplayground.LiveCaptionPortal`。 |
-| `source.appVersion` | 否 | Portal App 版本，對應 Xcode 專案的 `MARKETING_VERSION`，用於診斷相容性，不得含使用者識別資料。 |
+| `source.bundleIdentifier` | 是 | Portal App bundle identifier，目前為 `io.iplayground.LiveCaptionPortal`。 |
+| `source.appVersion` | 否 | Portal App 版本，用於診斷相容性，不得含使用者識別資料。 |
 | `speech.inputLanguage` | 是 | 語音輸入語言，目前允許 `zh-TW` 或 `en-US`。 |
 | `speech.offsetTicks` | 是 | Azure Speech SDK 回傳的 offset ticks，1 tick = 100 ns。 |
 | `speech.durationTicks` | 是 | Azure Speech SDK 回傳的 duration ticks，1 tick = 100 ns。 |
-| `speech.text` | 是 | 最終辨識文字，只供 Relay 發布，不得完整寫入 log。 |
-| `captions` | 是 | 以字幕輸出語言代碼為 key、字幕文字為 value 的 object，至少包含 `zh-Hant` 與 `en`。 |
-| `captions.<language>` | 是 | 字幕輸出語言目前允許 `zh-Hant`、`en`、`ja`、`ko`；value 是對應語言字幕文字，不得完整寫入 log。 |
+| `speech.text` | 是 | 最終辨識文字，只供 Relay 發布或轉換，不得完整寫入 log。 |
+| `captions` | 是 | 字幕輸出語言 object，至少包含 `zh-Hant` 與 `en`。 |
+| `captions.<language>` | 是 | 字幕文字，目前允許 `zh-Hant`、`en`、`ja`、`ko`。 |
 
 ## 語言規則
 
-語音輸入語言只描述 Speech 辨識來源，目前允許：
+語音輸入語言：
 
 - `zh-TW`
 - `en-US`
 
-字幕輸出語言只描述要發布給觀眾端的字幕，目前允許：
+字幕輸出語言：
 
 - `zh-Hant`，必要
 - `en`，必要
 - `ja`，選用
 - `ko`，選用
 
-Relay 不應使用 App 介面在地化語言推論語音輸入或字幕輸出。Portal 必須在每個事件中明確送出 `speech.inputLanguage`，並在 `captions` 以語言代碼作為 key。
+Relay 不應使用 App 介面在地化語言推論語音輸入或字幕輸出。
 
 ## 驗證規則
 
-Relay 接收事件後必須先完成以下驗證，全部通過後才可發布到 Azure Web PubSub：
+Relay 接收事件後必須先驗證：
 
-- body 是 JSON object。
-- `trackNumber` 是 integer，且大於 0。
-- `roomName` 是 string，可為空字串；若非空，必須符合會議室名稱規則。
+- body 是 JSON object，且大小未超過上限。
+- `trackNumber` 是大於 0 的 integer。
+- `roomName` 是 string，可為空字串；若非空，去除前後空白後長度 1 到 80 字元，不得包含換行、控制字元、`/`、`?`、`#`。
 - `createdAt` 是有效 UTC 時間，且不能明顯來自未來。
 - `speech.inputLanguage` 在允許清單內。
 - `speech.offsetTicks` 與 `speech.durationTicks` 是非負整數，且 `durationTicks` 大於 0。
 - `speech.text` 去除前後空白後不可為空。
-- `captions` 是 JSON object，至少包含 `zh-Hant` 與 `en`。
-- `captions` 的 key 必須在字幕輸出語言允許清單內。
-- `captions` 的 value 必須是 string，且去除前後空白後不可為空。
-- body 大小、單欄文字長度與字幕語言數量不得超過 Relay 設定上限。
+- `captions` 至少包含 `zh-Hant` 與 `en`。
+- `captions` key 在字幕輸出語言允許清單內，value 是非空 string。
+
+軌道佔用判斷不在每一筆字幕事件上執行，應放在 Relay 設定檢查或未來的軌道租用流程。
 
 ## 成功回應
 
@@ -177,11 +126,9 @@ Content-Type: application/json
 }
 ```
 
-`202 Accepted` 代表 Relay 已接受事件並完成發布流程的排程或同步發布。若未來改成佇列式處理，語意仍可保持相容。
-
 ## 錯誤回應
 
-Relay 錯誤回應使用一致 JSON 格式：
+Relay 已知業務錯誤使用一致 JSON 格式。部分非預期 `500 Internal Server Error` 可能由 Azure Functions runtime 或外部服務層產生，不保證符合此 envelope。
 
 ```json
 {
@@ -198,40 +145,29 @@ Relay 錯誤回應使用一致 JSON 格式：
 }
 ```
 
-建議狀態碼：
-
 | 狀態碼 | 情境 |
 | --- | --- |
 | `400 Bad Request` | JSON 格式錯誤、缺少必要欄位或欄位值不合法。 |
 | `401 Unauthorized` | 缺少或無效的 HMAC 簽章，或 Relay 無法取得 Azure Speech key。 |
-| `413 Payload Too Large` | body 或文字欄位超過 Relay 設定上限。 |
-| `429 Too Many Requests` | 超過速率限制。 |
+| `413 Payload Too Large` | 保留狀態碼；未來 body 或文字欄位超過 Relay 設定上限時使用。 |
+| `429 Too Many Requests` | 保留狀態碼；未來實作速率限制時使用。 |
 | `500 Internal Server Error` | Relay 非預期錯誤。 |
 | `502 Bad Gateway` | Azure Web PubSub 發布失敗或逾時。 |
 
 錯誤訊息不得包含完整 `speech.text`、`captions` value、Speech key、簽章、連線字串或可識別個人的資料。
 
-## 發布邊界
+## Web PubSub 發布
 
-Relay 發布到 Azure Web PubSub 前可加入 Relay 自己的 metadata，例如 `receivedAt`。Relay 不應加入 Portal 本機路徑、音訊裝置名稱、使用者帳號、IP 位置或未經必要性評估的診斷資料。
-
-第一版 Azure Web PubSub group 建議使用固定 group：
+Relay 會把每筆字幕發布到 base group 與字幕軌專用 group：
 
 ```text
 caption-live
+caption-live-track-<trackNumber>
 ```
 
-Relay 會把每筆字幕發布到 base group 與該字幕軌的專用 group。Base group 保留相容性；多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber`，取得對應 track group 的 receive-only Web PubSub client access URL，避免收到其他會議室或字幕軌的事件。
+Portal 不需要知道 group 命名規則。多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber`，取得對應 track group 的 receive-only URL。
 
-Track group 命名規則：
-
-```text
-<base-group>-track-<trackNumber>
-```
-
-例如 `trackNumber=1` 會發布到 `caption-live-track-1`。觀眾端仍可用 payload 內的 `roomName` 顯示會議室名稱；`roomName` 為空字串時代表未設定。Portal 不需要知道 group 命名規則。當 Relay 要求觀眾端 access code 時，negotiate request 需在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 顯示的 access code。
-
-第一版建議 Web PubSub 發布 payload 保留 Portal 傳入的字幕欄位，並只加入 Relay metadata：
+發布 payload 保留 Portal 傳入的公開字幕欄位，並加入 Relay metadata：
 
 ```json
 {
@@ -253,41 +189,4 @@ Track group 命名規則：
 }
 ```
 
-發布給觀眾端時，若沒有產品需求需要顯示原始辨識文字，Relay 應省略 `speech.text`，只保留字幕輸出與時間碼。
-
-## Logging 規則
-
-Relay 可以記錄：
-
-- `roomName` 長度或遮蔽後的值
-- `trackNumber`
-- 語言代碼
-- 字幕數量
-- 文字長度
-- 驗證錯誤代碼
-- 發布成功或失敗狀態
-
-Relay 不得記錄：
-
-- 完整逐字稿或翻譯文字
-- 音訊內容
-- Speech key
-- HMAC 簽章
-- Azure Web PubSub 連線字串或 SAS token
-- 可識別個人的使用者資料
-- Portal 本機檔案路徑或裝置唯一識別資訊
-
-## 實作狀態
-
-已完成：
-
-- 在 `Relay/` 建立 Python 3.13 Azure Functions 專案骨架。
-- 實作字幕事件資料模型與 validator。
-- 為成功路徑、錯誤輸入、語言規則、授權邊界與發布失敗撰寫測試。
-- 實作 Azure Web PubSub publisher adapter，並隔離外部服務方便測試。
-- 實作觀眾端 receive-only Web PubSub negotiate endpoint。
-- 補上部署文件與必要環境變數範例。
-
-尚未完成：
-
-- 觀眾端 App Web PubSub 連線與字幕顯示介面。
+若沒有產品需求需要顯示原始辨識文字，Relay 應省略 `speech.text`，只保留字幕輸出與時間碼。

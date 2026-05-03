@@ -1,13 +1,26 @@
 # 觀眾端連線 API
 
-本文件定義觀眾端 App 取得 Azure Web PubSub client access URL 的 API。觀眾端字幕是公開接收，但不得發布字幕；字幕發布只能由 Portal 透過 Relay 的 `POST /api/caption-events` 完成。
+本文件定義觀眾端 App 取得 Azure Web PubSub client access URL 的 API。觀眾端字幕只能 receive-only，不得發布字幕；字幕發布只能由 Portal 透過 Relay 的 `POST /api/caption-events` 完成。
 
 ## 取得觀眾端連線 URL
+
+公開活動模式不需要 access code：
 
 ```http
 POST /api/viewer/negotiate
 Content-Type: application/json
-X-LiveCaption-Viewer-Access-Code: 482913
+
+{
+  "trackNumber": 1
+}
+```
+
+閒置模式或限制 negotiate 時需帶 Portal 顯示的 access code：
+
+```http
+POST /api/viewer/negotiate
+Content-Type: application/json
+X-LiveCaption-Viewer-Access-Code: <viewer-access-code>
 
 {
   "trackNumber": 1
@@ -52,7 +65,9 @@ Relay 驗證 negotiate request 時接受當日 access code，並允許前一日 
 
 Access code 不綁定 `trackNumber`；同一場活動可用同一組 access code 取得不同字幕軌的 viewer URL。字幕軌過濾由 Azure Web PubSub group 權限完成，觀眾端只會被加入 negotiate 指定的 group。
 
-Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 access code 由 `VIEWER_ACCESS_CODE_REQUIRED` app setting 控制，預設與無效值都視為 `true`；切換 Web PubSub 付費層時，部署或排程流程應同步更新這個 app setting。
+Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 access code 由 `VIEWER_ACCESS_CODE_REQUIRED` app setting 控制，預設與無效值都視為 `true`。
+
+`VIEWER_ACCESS_CODE_REQUIRED=false` 是 LiveCaption 活動模式規格，代表公開活動期間任何可呼叫此 endpoint 的觀眾端都可取得短效 viewer URL。這只開放接收字幕，不授予發布權限；短效 URL 仍是 bearer token，不得寫入 log 或長期保存。
 
 ## Token lifetime
 
@@ -63,6 +78,7 @@ Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 acc
 - 開啟字幕頁時呼叫 negotiate。
 - WebSocket 斷線、授權失敗或接近 `expiresAt` 時重新 negotiate。
 - 不把完整 `url` 寫入 log、crash report 或長期設定。
+- 不把 access code、完整 request headers 或完整 response body 寫入 log、crash report 或分析事件。
 
 ## 錯誤回應
 
