@@ -18,7 +18,7 @@ Portal 主畫面包含：
 - 工作階段狀態：顯示收音、Speech、Relay、檔案權限與字幕 session 生命週期。
 - 音訊輸入：列出本機輸入裝置，保存使用者選取來源，並顯示麥克風權限與音量。
 - 語音分析預覽：顯示目前語音語言的 recognizing/final 結果與其他字幕語言 final 翻譯。
-- Speech 設定：保存 Speech region、key、輸出語言與句子靜音分段設定。
+- Speech 設定：保存 Speech region、key、輸出語言、句子靜音分段設定與辨識詞彙提示。
 - Relay 設定：保存 Relay URL、會議室名稱與字幕軌道值。
 - 字幕檔案：保存 SRT 輸出根目錄 security-scoped bookmark。
 - 事件紀錄：顯示操作、錯誤與檔案輸出狀態，但不得記錄完整字幕內容。
@@ -35,6 +35,22 @@ Portal 主畫面包含：
 開始後 Portal 會使用主控板選定的音訊來源建立 Azure Speech Translation recognizer。字幕預覽是最高優先 UI 工作；Relay 發布、SRT 累積、事件計數與事件紀錄可延後處理，避免阻塞現場字幕畫面。
 
 停止字幕時，Portal 會依工作階段開始時間建立 SRT 輸出資料夾，格式為 `MMdd_HHmm`，可附加清理後的工作階段標題。SRT 檔案依字幕語言代碼命名，例如 `zh-Hant.srt`、`en.srt`、`ja.srt`、`ko.srt`。若主要輸出位置失敗，Portal 會寫入 Application Support 下的 `LiveCaptionPortal/SRT Recovery/`。
+
+## Speech 辨識詞彙提示
+
+Portal 的 Speech 設定提供辨識詞彙提示編輯器，讓操作端可加入活動專有名詞、產品名稱或講者姓名，提升 Azure Speech Translation recognizer 對常見詞的辨識穩定性。
+
+詞彙提示分成三個範圍：
+
+- `shared`：套用所有語音輸入語言。
+- `zh-TW`：只套用 `zh-TW` 語音輸入。
+- `en-US`：只套用 `en-US` 語音輸入。
+
+建立 recognizer 時，Portal 會合併 `shared` 與目前語音輸入語言的詞彙，透過 Azure Speech SDK `SPXPhraseListGrammar` 加入 phrase list，並固定 `setWeight(2.0)`。詞彙只在 recognizer 建立或重建時套用；若字幕 session 已在執行中，編輯詞彙不會即時改變目前的 recognizer，需重新開始或觸發 recognizer 重建後才會生效。
+
+合併後每個語音輸入語言最多套用 250 筆詞彙。UI 會依 `shared + 語言專屬` 計算容量，例如 `shared` 已有 70 筆時，`zh-TW` 與 `en-US` 各自最多再新增 180 筆。預設詞彙只包含 `iPlayground`，避免開源專案內建活動以外的專有名詞。
+
+詞彙提示不會送往 Relay、字幕事件、SRT 檔案或事件紀錄。
 
 ## Relay 整合
 

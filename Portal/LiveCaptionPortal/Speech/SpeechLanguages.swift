@@ -10,6 +10,15 @@ enum InputLanguage: String, CaseIterable, Identifiable {
         rawValue
     }
 
+    var phraseHintScope: SpeechPhraseHintScope {
+        switch self {
+        case .mandarin:
+            .mandarin
+        case .english:
+            .english
+        }
+    }
+
     var matchingOutputLanguageID: String {
         switch self {
         case .mandarin:

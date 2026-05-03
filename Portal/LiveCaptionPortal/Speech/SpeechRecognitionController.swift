@@ -71,6 +71,7 @@ struct SpeechRecognitionRequest: Equatable {
     let inputLocale: String
     let audioDeviceID: String
     let outputLanguageIDs: [String]
+    let phraseHints: [String]
     let sentenceSilenceTimeoutMilliseconds: Int
 }
 
@@ -353,6 +354,7 @@ final class SpeechRecognitionController: ObservableObject {
     var onCaptionCountChanged: ((Int) -> Void)?
 
     private static let interimUpdateInterval: TimeInterval = 1.0 / 12.0
+    private static let phraseListWeight = 2.0
     private var recognizer: SPXTranslationRecognizer?
     private var activeRequest: SpeechRecognitionRequest?
     private var recognizedCaptionCount = 0
@@ -392,6 +394,7 @@ final class SpeechRecognitionController: ObservableObject {
         let outputLanguageIDs = settings.selectedOutputLanguages
             .map(\.id)
             .sorted()
+        let phraseHints = settings.phraseHints(for: inputLanguage)
 
         let request = SpeechRecognitionRequest(
             region: region,
@@ -399,6 +402,7 @@ final class SpeechRecognitionController: ObservableObject {
             inputLocale: inputLanguage.speechLocale,
             audioDeviceID: audioDeviceID,
             outputLanguageIDs: outputLanguageIDs,
+            phraseHints: phraseHints,
             sentenceSilenceTimeoutMilliseconds: settings.sentenceSilenceTimeoutMilliseconds
         )
 
@@ -434,6 +438,7 @@ final class SpeechRecognitionController: ObservableObject {
                 audioConfiguration: audioConfiguration
             )
 
+            applyPhraseHints(phraseHints, to: translationRecognizer)
             configureEventHandlers(for: translationRecognizer)
 
             try translationRecognizer.startContinuousRecognition()
@@ -445,6 +450,17 @@ final class SpeechRecognitionController: ObservableObject {
             recognizer = nil
             captionPreviewState.setFailure(error.localizedDescription)
         }
+    }
+
+    private func applyPhraseHints(_ phraseHints: [String], to recognizer: SPXTranslationRecognizer) {
+        guard !phraseHints.isEmpty,
+              let phraseList = SPXPhraseListGrammar(recognizer: recognizer)
+        else {
+            return
+        }
+
+        phraseHints.forEach { phraseList.addPhrase($0) }
+        phraseList.setWeight(Self.phraseListWeight)
     }
 
     func stopRecognition(keepsCurrentTranscript: Bool = false) {

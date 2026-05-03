@@ -106,7 +106,7 @@ curl -X POST \
 
 ## Portal 本機設定
 
-Portal 使用 `UserDefaults` 保存 Speech 設定：
+Portal 使用 `UserDefaults` 保存短小的 Speech 設定：
 
 | Key | 說明 |
 | --- | --- |
@@ -117,3 +117,21 @@ Portal 使用 `UserDefaults` 保存 Speech 設定：
 | `speech.authorizationStatus` | 上次 Speech 授權測試狀態。 |
 
 `speech.key` 是機密，不得提交、不得寫入文件，也不得輸出到事件紀錄。若後續改由後端提供短效 token，Portal 應重新設計設定項與憑證保存方式，不沿用目前的本機 Speech key 流程。
+
+辨識詞彙提示不放在 `UserDefaults`。Portal 啟動時會從 Application Support 讀取：
+
+```text
+~/Library/Application Support/LiveCaptionPortal/speech-phrase-hints.json
+```
+
+若檔案不存在，Portal 使用預設詞彙設定：`shared` 只有 `iPlayground`。使用者透過 Speech 設定中的 GUI 編輯器更新詞彙後，Portal 會把內容寫回同一個 JSON 檔案。
+
+詞彙提示資料以 `phraseHintsByScope` 結構管理，範圍包含：
+
+| Scope | 說明 |
+| --- | --- |
+| `shared` | 套用所有語音輸入語言。 |
+| `zh-TW` | 只套用 `zh-TW` 語音輸入。 |
+| `en-US` | 只套用 `en-US` 語音輸入。 |
+
+每次建立 Azure Speech Translation recognizer 時，Portal 會合併 `shared` 與目前語音輸入語言的詞彙，最多 250 筆，並以 `SPXPhraseListGrammar` 加入 recognizer。Phrase list weight 固定為 `2.0`，不提供 GUI 或 `UserDefaults` 設定。詞彙不應寫入 log、字幕事件、Relay request 或文件範例。

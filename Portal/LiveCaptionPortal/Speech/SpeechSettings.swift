@@ -21,9 +21,46 @@ enum SpeechSettingsValidationError: LocalizedError {
     }
 }
 
+enum SpeechPhraseHintScope: String, CaseIterable, Codable, Identifiable {
+    case shared
+    case mandarin = "zh-TW"
+    case english = "en-US"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .shared:
+            L10n.text("speechSettings.phraseHints.scope.shared")
+        case .mandarin:
+            L10n.text("speechSettings.phraseHints.scope.mandarin")
+        case .english:
+            L10n.text("speechSettings.phraseHints.scope.english")
+        }
+    }
+}
+
+struct SpeechPhraseHint: Codable, Equatable, Identifiable {
+    var id: UUID
+    var text: String
+
+    init(id: UUID = UUID(), text: String) {
+        self.id = id
+        self.text = text
+    }
+}
+
 struct SpeechSettings: Equatable {
     static let requiredOutputLanguageIDs: Set<String> = ["zh-Hant", "en"]
     static let defaultOutputLanguageIDs: Set<String> = ["zh-Hant", "en", "ja"]
+    static let maximumPhraseHintsPerRecognition = 250
+    static let defaultPhraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]] = [
+        .shared: [
+            SpeechPhraseHint(text: "iPlayground")
+        ],
+        .mandarin: [],
+        .english: []
+    ]
     static let minimumSentenceSilenceTimeoutMilliseconds = 100
     static let maximumSentenceSilenceTimeoutMilliseconds = 5_000
     static let defaultSentenceSilenceTimeoutMilliseconds = 800
@@ -31,6 +68,7 @@ struct SpeechSettings: Equatable {
 
     var region = ""
     var speechKey = ""
+    var phraseHintsByScope = defaultPhraseHintsByScope
     var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMilliseconds {
         didSet {
             sentenceSilenceTimeoutMilliseconds = Self.clampedSentenceSilenceTimeoutMilliseconds(
@@ -60,6 +98,12 @@ struct SpeechSettings: Equatable {
         availableSpeechOutputLanguages.filter {
             selectedOutputLanguageIDs.contains($0.id)
         }
+    }
+
+    func phraseHints(for inputLanguage: InputLanguage) -> [String] {
+        Self.normalizedPhraseHintTexts(
+            from: phraseHintsByScope[.shared, default: []] + phraseHintsByScope[inputLanguage.phraseHintScope, default: []]
+        )
     }
 
     func testConnection() async throws -> SpeechConnectionTestResult {
@@ -111,6 +155,7 @@ struct SpeechSettings: Equatable {
 
         settings.region = userDefaults.string(forKey: UserDefaultsKey.region.rawValue) ?? ""
         settings.speechKey = userDefaults.string(forKey: UserDefaultsKey.speechKey.rawValue) ?? ""
+        settings.phraseHintsByScope = loadPhraseHintsByScope()
 
         if let outputLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.outputLanguageIDs.rawValue) as? [String] {
             settings.selectedOutputLanguageIDs = Set(outputLanguageIDs).union(requiredOutputLanguageIDs)
@@ -129,6 +174,7 @@ struct SpeechSettings: Equatable {
         sentenceSilenceTimeoutMilliseconds = Self.clampedSentenceSilenceTimeoutMilliseconds(
             sentenceSilenceTimeoutMilliseconds
         )
+        phraseHintsByScope = Self.normalizedPhraseHintsByScope(phraseHintsByScope)
         Self.userDefaults.set(region, forKey: UserDefaultsKey.region.rawValue)
         Self.userDefaults.set(
             Array(selectedOutputLanguageIDs.union(Self.requiredOutputLanguageIDs)).sorted(),
@@ -138,11 +184,146 @@ struct SpeechSettings: Equatable {
             sentenceSilenceTimeoutMilliseconds,
             forKey: UserDefaultsKey.sentenceSilenceTimeoutMilliseconds.rawValue
         )
+        Self.savePhraseHintsByScope(phraseHintsByScope)
         if speechKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Self.userDefaults.removeObject(forKey: UserDefaultsKey.speechKey.rawValue)
         } else {
             Self.userDefaults.set(speechKey, forKey: UserDefaultsKey.speechKey.rawValue)
         }
+    }
+
+    static func normalizedPhraseHintsByScope(
+        _ phraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]]
+    ) -> [SpeechPhraseHintScope: [SpeechPhraseHint]] {
+        var normalizedPhraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]] = [:]
+
+        SpeechPhraseHintScope.allCases.forEach { scope in
+            let hints = phraseHintsByScope[scope, default: []]
+            normalizedPhraseHintsByScope[scope] = normalizedPhraseHints(from: hints)
+        }
+
+        return normalizedPhraseHintsByScope
+    }
+
+    static func phraseHintRecognitionCount(
+        for scope: SpeechPhraseHintScope,
+        in phraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]]
+    ) -> Int {
+        let normalizedPhraseHintsByScope = normalizedPhraseHintsByScope(phraseHintsByScope)
+        let sharedCount = normalizedPhraseHintsByScope[.shared, default: []].count
+
+        switch scope {
+        case .shared:
+            return sharedCount
+        case .mandarin, .english:
+            return sharedCount + normalizedPhraseHintsByScope[scope, default: []].count
+        }
+    }
+
+    static func remainingPhraseHintCapacity(
+        for scope: SpeechPhraseHintScope,
+        in phraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]]
+    ) -> Int {
+        let normalizedPhraseHintsByScope = normalizedPhraseHintsByScope(phraseHintsByScope)
+        let sharedCount = normalizedPhraseHintsByScope[.shared, default: []].count
+        let mandarinCount = normalizedPhraseHintsByScope[.mandarin, default: []].count
+        let englishCount = normalizedPhraseHintsByScope[.english, default: []].count
+
+        switch scope {
+        case .shared:
+            return max(
+                0,
+                min(
+                    maximumPhraseHintsPerRecognition - sharedCount - mandarinCount,
+                    maximumPhraseHintsPerRecognition - sharedCount - englishCount
+                )
+            )
+        case .mandarin:
+            return max(0, maximumPhraseHintsPerRecognition - sharedCount - mandarinCount)
+        case .english:
+            return max(0, maximumPhraseHintsPerRecognition - sharedCount - englishCount)
+        }
+    }
+
+    private static func normalizedPhraseHints(from hints: [SpeechPhraseHint]) -> [SpeechPhraseHint] {
+        var seenPhrases: Set<String> = []
+
+        return hints.compactMap { hint in
+            let normalizedText = hint.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedText.isEmpty else {
+                return nil
+            }
+
+            let key = normalizedText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            guard seenPhrases.insert(key).inserted else {
+                return nil
+            }
+
+            return SpeechPhraseHint(id: hint.id, text: normalizedText)
+        }
+    }
+
+    private static func normalizedPhraseHintTexts(from hints: [SpeechPhraseHint]) -> [String] {
+        normalizedPhraseHints(from: hints).map(\.text)
+    }
+
+    private static func loadPhraseHintsByScope() -> [SpeechPhraseHintScope: [SpeechPhraseHint]] {
+        guard let fileURL = phraseHintsFileURL,
+              let data = try? Data(contentsOf: fileURL),
+              let storageValue = try? JSONDecoder().decode([String: [SpeechPhraseHint]].self, from: data)
+        else {
+            return defaultPhraseHintsByScope
+        }
+
+        var phraseHintsByScope = defaultPhraseHintsByScope
+        storageValue.forEach { rawScope, hints in
+            guard let scope = SpeechPhraseHintScope(rawValue: rawScope) else {
+                return
+            }
+
+            phraseHintsByScope[scope] = hints
+        }
+
+        return normalizedPhraseHintsByScope(phraseHintsByScope)
+    }
+
+    private static func savePhraseHintsByScope(_ phraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]]) {
+        guard let fileURL = phraseHintsFileURL,
+              let data = try? JSONEncoder().encode(storageValue(from: phraseHintsByScope))
+        else {
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: fileURL, options: [.atomic])
+        } catch {
+            return
+        }
+    }
+
+    private static func storageValue(
+        from phraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]]
+    ) -> [String: [SpeechPhraseHint]] {
+        Dictionary(uniqueKeysWithValues: SpeechPhraseHintScope.allCases.map { scope in
+            (scope.rawValue, phraseHintsByScope[scope, default: []])
+        })
+    }
+
+    private static var phraseHintsFileURL: URL? {
+        guard let applicationSupportURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            return nil
+        }
+
+        return applicationSupportURL
+            .appendingPathComponent("LiveCaptionPortal", isDirectory: true)
+            .appendingPathComponent("speech-phrase-hints.json", isDirectory: false)
     }
 
     private static func clampedSentenceSilenceTimeoutMilliseconds(_ value: Int) -> Int {
