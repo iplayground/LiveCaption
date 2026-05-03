@@ -20,6 +20,8 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F28BC4D12F9E030B008AD6B2 /* LiveCaptionPortal */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = LiveCaptionPortal;
 			sourceTree = "<group>";
 		};
@@ -150,13 +152,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -350,6 +348,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_INCREMENTAL_COMPILATION = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};

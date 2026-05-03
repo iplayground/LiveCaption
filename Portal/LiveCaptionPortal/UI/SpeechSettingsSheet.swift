@@ -255,7 +255,7 @@ struct SpeechSettingsHeader: View {
 
             Spacer()
 
-            StatusPill(title: "SDK 1.43.0", systemImage: "shippingbox", tint: .blue)
+            StatusPill(title: SpeechSDKAvailability.versionLabel, systemImage: "shippingbox", tint: .blue)
         }
         .padding(24)
     }
