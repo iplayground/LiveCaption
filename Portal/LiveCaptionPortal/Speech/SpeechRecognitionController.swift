@@ -77,7 +77,12 @@ struct SpeechRecognitionRequest: Equatable {
 
 @MainActor
 final class SpeechCaptionPreviewState: ObservableObject {
-    @Published private var snapshot = SpeechCaptionPreviewSnapshot()
+    private static let projectionAppendLineLimitKey = "projectionCapture.appendLineLimit"
+    private static let defaultRetainedHistoryCount = 3
+    private static let minimumRetainedHistoryCount = 1
+    private static let maximumRetainedHistoryCount = 10
+
+    private var snapshot = SpeechCaptionPreviewSnapshot()
 
     var state: SpeechRecognitionState {
         snapshot.state
@@ -260,6 +265,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
             snapshot.finalTranscript = normalizedText
             Self.mergeNonEmptyTranslations(translations, into: &snapshot.finalTranslations)
             snapshot.finalTranscriptHistory.append(normalizedText)
+            Self.trimRetainedHistory(&snapshot.finalTranscriptHistory, limit: Self.retainedHistoryLimit())
             snapshot.lastFinalOffsetTicks = offsetTicks
             snapshot.projectionOverrideText = nil
 
@@ -270,6 +276,10 @@ final class SpeechCaptionPreviewState: ObservableObject {
 
                 snapshot.interimTranslations.removeValue(forKey: languageID)
                 snapshot.finalTranslationHistory[languageID, default: []].append(translation)
+                Self.trimRetainedHistory(
+                    &snapshot.finalTranslationHistory[languageID, default: []],
+                    limit: Self.retainedHistoryLimit()
+                )
             }
             snapshot.state = .listening
         }
@@ -320,9 +330,8 @@ final class SpeechCaptionPreviewState: ObservableObject {
     }
 
     private func updateSnapshot(_ update: (inout SpeechCaptionPreviewSnapshot) -> Void) {
-        var nextSnapshot = snapshot
-        update(&nextSnapshot)
-        snapshot = nextSnapshot
+        objectWillChange.send()
+        update(&snapshot)
     }
 
     private static func mergeNonEmptyTranslations(
@@ -344,6 +353,26 @@ final class SpeechCaptionPreviewState: ObservableObject {
         }
 
         target.append(text)
+        trimRetainedHistory(&target, limit: retainedHistoryLimit())
+    }
+
+    private static func trimRetainedHistory(_ target: inout [String], limit: Int) {
+        let overflowCount = target.count - limit
+        guard overflowCount > 0 else {
+            return
+        }
+
+        target.removeFirst(overflowCount)
+    }
+
+    private static func retainedHistoryLimit() -> Int {
+        let storedValue = UserDefaults.standard.double(forKey: projectionAppendLineLimitKey)
+        let rawLimit = storedValue == 0 ? defaultRetainedHistoryCount : Int(storedValue.rounded())
+
+        return min(
+            max(rawLimit, minimumRetainedHistoryCount),
+            maximumRetainedHistoryCount
+        )
     }
 }
 
