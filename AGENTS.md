@@ -30,6 +30,37 @@ Portal 的責任：
 - Portal 沒有對外散佈需求時，Xcode 專案應使用本機 ad-hoc 簽署，不設定 `DEVELOPMENT_TEAM` 或個人 Apple ID 相關資訊。
 - 避免把後端發布、連線廣播、Azure Web PubSub 細節放進 Portal，除非是呼叫 Relay 所需的最小整合。
 
+### Portal Swift 程式碼組織
+
+Portal 的 Swift 程式碼應以「主要型別或單一功能責任」作為檔案邊界，避免為了就近修改而把不相關的 UI、平台橋接、狀態模型與服務邏輯塞進同一個檔案。
+
+開發 Portal Swift 時應遵守：
+
+- `ContentView.swift` 只負責主視窗的根層組合、主要狀態持有與流程協調；不可長期放置可重用 UI 元件、AppKit bridge、繪圖邏輯、文字排版演算法、音訊處理或網路整合細節。
+- `UI/` 內的 SwiftUI 檔案應以主要畫面、面板或可重用元件命名；同一檔案若同時包含多個大型 view、設定面板、狀態列、繪圖 view 或 helper 型別，應拆成獨立檔案。
+- AppKit / Foundation bridge，例如 `NSViewRepresentable`、`NSWindowDelegate`、`NSPanel` presenter、事件 monitor、睡眠防止 helper 或自訂 `NSView`，應放在明確命名的支援檔案中，除非只有該 view 私有使用且檔案仍保持小型清楚。
+- 純資料型別、狀態模型、演算法與格式化邏輯應從 SwiftUI view 拆出；例如字幕預覽狀態、投影文字截斷、音訊輸入支援型別，不應藏在大型畫面檔中。
+- 控制器或服務檔案應以外部整合或流程控制為主；若同時包含模型、delegate、低階取樣處理與狀態呈現邏輯，應拆出 `Support`、`Models` 或明確命名的同層支援檔。
+- 單一 Swift 檔案超過約 500 行時，新增功能前必須先評估是否拆檔；超過約 800 行通常應視為需要拆分，除非能明確說明該檔仍是單一責任且拆分會降低可讀性。
+- 新增大型 SwiftUI 區塊、設定 sheet、inspector、panel、繪圖/排版邏輯或平台 helper 時，優先建立新檔案，不要附加到既有綜合檔案。
+- 拆檔應保持行為不變，先用純搬移與必要 import / 存取層級調整完成，再另行處理行為改動。
+- Portal Swift 重構後應至少執行可用的 macOS build；若無法執行，需在回覆中明確說明原因與未驗證風險。
+
+### Portal Xcode 建置工具使用
+
+Portal 的 Xcode 建置與診斷應優先減少冗長輸出與重複設定，讓協作者能快速定位第一個真實錯誤。
+
+處理 Portal Xcode build、scheme discovery、執行或診斷時應遵守：
+
+- 若 Codex session 中可用 Apple Xcode MCP bridge（`xcode`，命令為 `xcrun mcpbridge`），應優先使用它取得 Xcode 目前開啟 workspace、scheme、build diagnostics、執行狀態與 logs，避免直接讀取完整 `xcodebuild` 大量輸出。
+- 若 Apple Xcode MCP 不可用，但 `xcodebuildmcp` 可用，且任務符合其 macOS build / diagnostics 能力，應優先使用 `xcodebuildmcp`；若它偏向 iOS simulator 工作流或無法乾淨支援 Portal macOS App，才退回 shell-first。
+- Xcode 的 Agent Activity 顯示 `Codex Inactive` 不代表設定失敗，只表示目前沒有 active Codex session 正在呼叫 Xcode MCP。若 `codex mcp list` 已顯示 `xcode` enabled，但 session 沒有露出 Xcode MCP tools，應提示重啟 Codex app 或開新 session 重新載入工具。
+- 使用 Xcode MCP 前，應確認 Xcode 已開啟 `Portal/LiveCaptionPortal.xcworkspace` 或正確 project；若 Xcode 未開啟目標 workspace，先提示使用者開啟或改用 shell-first 指定 workspace。
+- Xcode MCP 工具不可用、無法支援 macOS App 工作流或回傳資訊不足時，應立即退回 shell-first 流程，不得因等待 MCP 設定而阻塞工作。
+- 使用 shell-first `xcodebuild` 時，應優先用固定 workspace、scheme、configuration 與 `platform=macOS` destination；需要分析失敗時，先擷取最小必要錯誤片段，例如 `error:`、`warning:` 與第一個 failing command，避免把完整 build log 當成主要上下文。
+- 對 Portal 的例行驗證，除非正在診斷 Xcode 專案設定或簽署問題，回覆中只需摘要 build 是否成功、第一個錯誤與必要警告，不應貼上完整 `xcodebuild` 輸出。
+- 若使用 Xcode MCP 或 shell build 會啟動、停止或操作正在執行的 Portal App，需確認不會干擾使用者目前工作；必要時先說明即將操作的 app/process。
+
 ## Relay 開發邊界
 
 Relay 以 Python 實作 Azure Web PubSub 相關功能。
