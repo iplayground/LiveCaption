@@ -63,6 +63,7 @@ private struct SpeechCaptionPreviewSnapshot {
     var finalTranslationHistory: [String: [String]] = [:]
     var lastFinalOffsetTicks: UInt64?
     var projectionOverrideText: String?
+    var suppressesWelcomeText = false
 }
 
 struct SpeechRecognitionRequest: Equatable {
@@ -90,7 +91,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
 
     private var shouldShowWelcomeText: Bool {
         if case .idle = snapshot.state {
-            return true
+            return !snapshot.suppressesWelcomeText
         }
 
         return false
@@ -186,6 +187,21 @@ final class SpeechCaptionPreviewState: ObservableObject {
         }
     }
 
+    func clearLivePreviewAfterInputLanguageChange() {
+        updateSnapshot { snapshot in
+            snapshot.interimTranscript = ""
+            snapshot.visibleLiveTranscript = ""
+            snapshot.interimTranslations = [:]
+            snapshot.finalTranscript = ""
+            snapshot.finalTranslations = [:]
+            snapshot.finalTranscriptHistory = []
+            snapshot.finalTranslationHistory = [:]
+            snapshot.lastFinalOffsetTicks = nil
+            snapshot.projectionOverrideText = ""
+            snapshot.suppressesWelcomeText = true
+        }
+    }
+
     private func computedProjectionCaptionText(
         for language: SpeechOutputLanguage?,
         inputLanguage: InputLanguage,
@@ -244,6 +260,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
             snapshot.visibleLiveTranscript = normalizedText
             Self.mergeNonEmptyTranslations(translations, into: &snapshot.interimTranslations)
             snapshot.projectionOverrideText = nil
+            snapshot.suppressesWelcomeText = false
 
             if case .recognizing = snapshot.state {
                 return
@@ -268,6 +285,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
             Self.trimRetainedHistory(&snapshot.finalTranscriptHistory, limit: Self.retainedHistoryLimit())
             snapshot.lastFinalOffsetTicks = offsetTicks
             snapshot.projectionOverrideText = nil
+            snapshot.suppressesWelcomeText = false
 
             translations.forEach { languageID, translation in
                 guard !translation.isEmpty else {
@@ -302,6 +320,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
             snapshot.finalTranslationHistory = [:]
             snapshot.lastFinalOffsetTicks = nil
             snapshot.projectionOverrideText = nil
+            snapshot.suppressesWelcomeText = false
         }
     }
 

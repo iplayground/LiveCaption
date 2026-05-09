@@ -239,6 +239,7 @@ struct ContentView: View {
             updateSpeechRecognition()
         }
         .onChange(of: inputLanguage) {
+            speechRecognitionController.captionPreviewState.clearLivePreviewAfterInputLanguageChange()
             updateSpeechRecognition()
         }
         .onChange(of: speechSettings) {
