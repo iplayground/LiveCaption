@@ -70,6 +70,14 @@ struct SubtitleExportSession {
         try writeFiles(to: fallbackDirectoryURL)
     }
 
+    func fallbackFailureDetail(primaryError: Error, fallbackFileURLs: [URL]) -> String {
+        let fallbackLocation = fallbackFileURLs.isEmpty
+            ? fallbackDirectoryURL.path(percentEncoded: false)
+            : fallbackFileURLs.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
+
+        return L10n.text("srt.fallbackDetail", primaryError.localizedDescription, fallbackLocation)
+    }
+
     private func writeFiles(to directoryURL: URL) throws -> [URL] {
         var writtenFileURLs: [URL] = []
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)

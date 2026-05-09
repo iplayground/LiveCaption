@@ -76,6 +76,10 @@ struct ContentView: View {
         }
     }
 
+    private func appendLog(_ log: PortalWorkflowLog) {
+        appendLog(level: log.level, title: log.title, detail: log.detail)
+    }
+
     @MainActor
     private func verifySpeechAuthorizationOnLaunchIfNeeded() async {
         guard shouldVerifySpeechAuthorizationOnLaunch else {
@@ -83,19 +87,10 @@ struct ContentView: View {
         }
 
         shouldVerifySpeechAuthorizationOnLaunch = false
-        let settingsToTest = speechSettings
-
-        do {
-            let result = try await settingsToTest.testConnection()
-            speechAuthorizationStatus = .authorized
-            speechAuthorizationStatus.save()
-            appendLog(level: .info, title: L10n.text("log.speech.reauthorizationSucceeded"), detail: "Region \(result.region)")
-        } catch {
-            let message = error.localizedDescription
-            speechAuthorizationStatus = .failed
-            speechAuthorizationStatus.save()
-            appendLog(level: .error, title: L10n.text("log.speech.reauthorizationFailed"), detail: message)
-        }
+        let result = await PortalLaunchVerifier.verifySpeechAuthorization(settings: speechSettings)
+        speechAuthorizationStatus = result.status
+        speechAuthorizationStatus.save()
+        appendLog(result.log)
     }
 
     @MainActor
@@ -105,158 +100,109 @@ struct ContentView: View {
         }
 
         shouldVerifyRelayConnectionOnLaunch = false
-        let settingsToTest = relaySettings
-        let speechKey = speechSettings.speechKey
-
-        do {
-            let result = try await settingsToTest.testConnection(speechKey: speechKey)
-            relayConnectionStatus = .connected
-            relayConnectionStatus.save()
-            appendLog(
-                level: .info,
-                title: L10n.text("log.relay.connectionTestSucceeded"),
-                detail: result.logDetail
-            )
-        } catch {
-            let message = error.localizedDescription
-            relayConnectionStatus = .failed
-            relayConnectionStatus.save()
-            appendLog(level: .error, title: L10n.text("log.relay.connectionTestFailed"), detail: message)
-        }
+        let result = await PortalLaunchVerifier.verifyRelayConnection(
+            relaySettings: relaySettings,
+            speechKey: speechSettings.speechKey
+        )
+        relayConnectionStatus = result.status
+        relayConnectionStatus.save()
+        appendLog(result.log)
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                HeaderView(
-                    isCaptionSessionActive: isCaptionSessionActive,
-                    captionSessionStartedAt: captionSessionStartedAt,
-                    captionSessionElapsedTime: captionSessionElapsedTime,
-                    canToggleCaptionSession: canToggleCaptionSession,
-                    captionSessionDisabledReason: captionSessionDisabledReason,
-                    onToggleCaptionSession: toggleCaptionSession
-                )
-
-                Divider()
-
-                ProjectionCaptureSection(
-                    inputLanguage: inputLanguage,
-                    outputLanguages: speechSettings.selectedOutputLanguages,
-                    captionPreviewState: speechRecognitionController.captionPreviewState
-                )
-
-                Divider()
-
-                HStack(alignment: .top, spacing: 0) {
-                    ControlSidebar(
-                        audioInputController: audioInputController,
-                        subtitleFileSettings: $subtitleFileSettings,
-                        subtitleFileAccessStatus: $subtitleFileAccessStatus,
-                        captionSessionStatus: captionSessionStatus,
-                        areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
-                        speechAuthorizationStatus: speechAuthorizationStatus,
-                        relayConnectionStatus: relayConnectionStatus
-                    ) { level, title, detail in
-                        appendLog(level: level, title: title, detail: detail)
-                    }
-
-                    Divider()
-
-                    CaptionWorkspace(
-                        sessionTitle: $sessionTitle,
-                        inputLanguage: $inputLanguage,
-                        areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
-                        outputLanguages: speechSettings.selectedOutputLanguages,
-                        captionPreviewState: speechRecognitionController.captionPreviewState
-                    )
-
-                    Divider()
-
-                    StatusSidebar(
-                        inputLanguage: inputLanguage,
-                        captionSessionStatus: captionSessionStatus,
-                        areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
-                        speechSettings: $speechSettings,
-                        captionPreviewState: speechRecognitionController.captionPreviewState,
-                        speechAuthorizationStatus: $speechAuthorizationStatus,
-                        relaySettings: $relaySettings,
-                        relayConnectionStatus: $relayConnectionStatus,
-                        recognizedCaptionCount: recognizedCaptionCount,
-                        relayLastPublishedAt: relayLastPublishedAt,
-                        logEntries: logEntries
-                    ) { level, title, detail in
-                        appendLog(level: level, title: title, detail: detail)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        ContentViewLayout(
+            audioInputController: audioInputController,
+            captionPreviewState: speechRecognitionController.captionPreviewState,
+            sessionTitle: $sessionTitle,
+            inputLanguage: $inputLanguage,
+            subtitleFileSettings: $subtitleFileSettings,
+            subtitleFileAccessStatus: $subtitleFileAccessStatus,
+            speechSettings: $speechSettings,
+            speechAuthorizationStatus: $speechAuthorizationStatus,
+            relaySettings: $relaySettings,
+            relayConnectionStatus: $relayConnectionStatus,
+            isLogDrawerExpanded: $isLogDrawerExpanded,
+            selectedLogLevel: $selectedLogLevel,
+            isCaptionSessionActive: isCaptionSessionActive,
+            captionSessionStatus: captionSessionStatus,
+            captionSessionStartedAt: captionSessionStartedAt,
+            captionSessionElapsedTime: captionSessionElapsedTime,
+            canToggleCaptionSession: canToggleCaptionSession,
+            captionSessionDisabledReason: captionSessionDisabledReason,
+            recognizedCaptionCount: recognizedCaptionCount,
+            relayLastPublishedAt: relayLastPublishedAt,
+            logEntries: logEntries,
+            filteredLogEntries: filteredLogEntries,
+            onToggleCaptionSession: toggleCaptionSession
+        ) { level, title, detail in
+            appendLog(level: level, title: title, detail: detail)
+        }
+            .frame(minWidth: windowMinimumSize.width, minHeight: windowMinimumSize.height)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .background(KeyboardEventBlocker(isEnabled: captionSessionStatus.blocksKeyboardEvents))
+            .task {
+                audioInputController.activate()
+                await verifySpeechAuthorizationOnLaunchIfNeeded()
+                await verifyRelayConnectionOnLaunchIfNeeded()
             }
-            .padding(.bottom, WindowLayout.logDrawerHeaderHeight)
-
-            LogDrawer(
-                isExpanded: $isLogDrawerExpanded,
-                selectedLevel: $selectedLogLevel,
-                entries: filteredLogEntries
-            )
-            .zIndex(100)
-        }
-        .frame(minWidth: windowMinimumSize.width, minHeight: windowMinimumSize.height)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .background(KeyboardEventBlocker(isEnabled: captionSessionStatus.blocksKeyboardEvents))
-        .task {
-            audioInputController.activate()
-            await verifySpeechAuthorizationOnLaunchIfNeeded()
-            await verifyRelayConnectionOnLaunchIfNeeded()
-        }
-        .onAppear {
-            configureSpeechCallbacks()
-        }
-        .onDisappear {
-            finishCaptionSessionTiming()
-            finishSubtitleExportSession()
-            sleepPreventionController.stopPreventingSleep()
-            audioInputController.stopCapture()
-            speechRecognitionController.stopRecognition()
-        }
-        .onChange(of: isCaptionSessionActive) {
-            updateSpeechRecognition()
-        }
-        .onChange(of: audioInputController.isCapturing) {
-            if !audioInputController.isCapturing {
-                if isCaptionSessionActive {
-                    captionSessionStatus = .stopping
-                }
-                finishCaptionSessionTiming()
-                finishSubtitleExportSession()
-                isCaptionSessionActive = false
-            } else {
+            .onAppear {
+                configureSpeechCallbacks()
+            }
+            .onDisappear {
+                handleDisappear()
+            }
+            .onChange(of: isCaptionSessionActive) {
                 updateSpeechRecognition()
             }
+            .onChange(of: audioInputController.isCapturing) {
+                handleAudioCaptureStateChange()
+            }
+            .onChange(of: audioInputController.selectedDeviceID) {
+                updateSpeechRecognition()
+            }
+            .onChange(of: inputLanguage) {
+                speechRecognitionController.captionPreviewState.clearLivePreviewAfterInputLanguageChange()
+                updateSpeechRecognition()
+            }
+            .onChange(of: speechSettings) {
+                updateSpeechRecognition()
+            }
+            .onChange(of: speechAuthorizationStatus) {
+                updateSpeechRecognition()
+                refreshCaptionSessionReadiness()
+            }
+            .onChange(of: subtitleFileAccessStatus) {
+                refreshCaptionSessionReadiness()
+            }
+            .onChange(of: relayConnectionStatus) {
+                refreshCaptionSessionReadiness()
+            }
+            .onChange(of: relaySettings) {
+                relayLastPublishedAt = nil
+            }
+    }
 
-            refreshCaptionSessionReadiness()
-        }
-        .onChange(of: audioInputController.selectedDeviceID) {
+    private func handleDisappear() {
+        finishCaptionSessionTiming()
+        finishSubtitleExportSession()
+        sleepPreventionController.stopPreventingSleep()
+        audioInputController.stopCapture()
+        speechRecognitionController.stopRecognition()
+    }
+
+    private func handleAudioCaptureStateChange() {
+        if !audioInputController.isCapturing {
+            if isCaptionSessionActive {
+                captionSessionStatus = .stopping
+            }
+            finishCaptionSessionTiming()
+            finishSubtitleExportSession()
+            isCaptionSessionActive = false
+        } else {
             updateSpeechRecognition()
         }
-        .onChange(of: inputLanguage) {
-            speechRecognitionController.captionPreviewState.clearLivePreviewAfterInputLanguageChange()
-            updateSpeechRecognition()
-        }
-        .onChange(of: speechSettings) {
-            updateSpeechRecognition()
-        }
-        .onChange(of: speechAuthorizationStatus) {
-            updateSpeechRecognition()
-            refreshCaptionSessionReadiness()
-        }
-        .onChange(of: subtitleFileAccessStatus) {
-            refreshCaptionSessionReadiness()
-        }
-        .onChange(of: relayConnectionStatus) {
-            refreshCaptionSessionReadiness()
-        }
-        .onChange(of: relaySettings) {
-            relayLastPublishedAt = nil
-        }
+
+        refreshCaptionSessionReadiness()
     }
 
     private var canToggleCaptionSession: Bool {
@@ -436,37 +382,23 @@ struct ContentView: View {
         )
 
         Task.detached {
-            for attempt in 1...relayPublishRetryLimit {
-                do {
-                    let result = try await settingsToPublish.publishCaptionEvent(
-                        relayInput,
-                        speechKey: speechKey
-                    )
+            let outcome = await RelayCaptionPublisher.publish(
+                relayInput,
+                settings: settingsToPublish,
+                speechKey: speechKey,
+                retryLimit: relayPublishRetryLimit
+            )
 
-                    await MainActor.run {
-                        relayLastPublishedAt = result.publishedAt
-                    }
-                    return
-                } catch {
-                    let message = error.localizedDescription
+            await MainActor.run {
+                if let publishedAt = outcome.publishedAt {
+                    relayLastPublishedAt = publishedAt
+                }
 
-                    await MainActor.run {
-                        appendLog(
-                            level: attempt == relayPublishRetryLimit ? .error : .warning,
-                            title: L10n.text("log.relay.publishFailed"),
-                            detail: L10n.text("log.relay.publishFailedDetail", attempt, relayPublishRetryLimit, message)
-                        )
-                    }
+                outcome.logs.forEach(appendLog)
 
-                    guard attempt < relayPublishRetryLimit else {
-                        await MainActor.run {
-                            relayConnectionStatus = .failed
-                            relayConnectionStatus.save()
-                        }
-                        return
-                    }
-
-                    try? await Task.sleep(for: .seconds(attempt))
+                if let connectionStatus = outcome.connectionStatus {
+                    relayConnectionStatus = connectionStatus
+                    relayConnectionStatus.save()
                 }
             }
         }
@@ -502,10 +434,9 @@ struct ContentView: View {
     ) {
         do {
             let writtenFileURLs = try subtitleExportSession.writeFallbackFiles()
-            let detail = fallbackSubtitleExportDetail(
+            let detail = subtitleExportSession.fallbackFailureDetail(
                 primaryError: primaryError,
-                fallbackFileURLs: writtenFileURLs,
-                fallbackDirectoryURL: subtitleExportSession.fallbackDirectoryURL
+                fallbackFileURLs: writtenFileURLs
             )
             appendLog(level: .warning, title: L10n.text("log.srt.outputSavedToFallback"), detail: detail)
             captionSessionStatus = .completedWithWarning
@@ -517,23 +448,5 @@ struct ContentView: View {
             )
             captionSessionStatus = .failed
         }
-    }
-
-    private func fallbackSubtitleExportDetail(
-        primaryError: Error,
-        fallbackFileURLs: [URL],
-        fallbackDirectoryURL: URL
-    ) -> String {
-        let fallbackLocation = fallbackFileURLs.isEmpty
-            ? fallbackDirectoryURL.path(percentEncoded: false)
-            : fallbackFileURLs.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
-
-        return L10n.text("srt.fallbackDetail", primaryError.localizedDescription, fallbackLocation)
-    }
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
     }
 }
