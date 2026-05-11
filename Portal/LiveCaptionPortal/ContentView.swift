@@ -31,6 +31,8 @@ struct ContentView: View {
     @State private var selectedLogLevel = LogLevel.all
     @State private var logEntries: [LogEntry] = []
     @State private var sleepPreventionController = SleepPreventionController()
+    @State private var projectionCaptureWindowPresenter = ProjectionCaptureWindowPresenter()
+    @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
     private let windowMinimumSize = WindowLayout.minimumSize
     private let relayPublishRetryLimit = 3
     private let maximumLogEntryCount = 300
@@ -63,6 +65,10 @@ struct ContentView: View {
         }
 
         return logEntries.filter { $0.level == selectedLogLevel }
+    }
+
+    private var usesInlineProjectionCapture: Bool {
+        ProjectionPreviewDisplayMode.mode(for: projectionCaptureDisplayMode) == .inline
     }
 
     private func appendLog(level: LogLevel, title: String, detail: String) {
@@ -129,6 +135,7 @@ struct ContentView: View {
             captionSessionElapsedTime: captionSessionElapsedTime,
             canToggleCaptionSession: canToggleCaptionSession,
             captionSessionDisabledReason: captionSessionDisabledReason,
+            usesInlineProjectionCapture: usesInlineProjectionCapture,
             recognizedCaptionCount: recognizedCaptionCount,
             relayLastPublishedAt: relayLastPublishedAt,
             logEntries: logEntries,
@@ -140,6 +147,12 @@ struct ContentView: View {
             .frame(minWidth: windowMinimumSize.width, minHeight: windowMinimumSize.height)
             .background(Color(nsColor: .windowBackgroundColor))
             .background(KeyboardEventBlocker(isEnabled: captionSessionStatus.blocksKeyboardEvents))
+            .background(
+                WindowFrameRestorationBridge(
+                    storageKey: "portal.mainWindow",
+                    minimumSize: windowMinimumSize
+                )
+            )
             .task {
                 audioInputController.activate()
                 await verifySpeechAuthorizationOnLaunchIfNeeded()
@@ -147,9 +160,12 @@ struct ContentView: View {
             }
             .onAppear {
                 configureSpeechCallbacks()
+                refreshProjectionCaptureWindow()
             }
             .onDisappear {
+                projectionCaptureWindowPresenter.close()
                 handleDisappear()
+                NSApp.terminate(nil)
             }
             .onChange(of: isCaptionSessionActive) {
                 updateSpeechRecognition()
@@ -162,10 +178,15 @@ struct ContentView: View {
             }
             .onChange(of: inputLanguage) {
                 speechRecognitionController.captionPreviewState.clearLivePreviewAfterInputLanguageChange()
+                refreshProjectionCaptureWindow()
                 updateSpeechRecognition()
             }
             .onChange(of: speechSettings) {
+                refreshProjectionCaptureWindow()
                 updateSpeechRecognition()
+            }
+            .onChange(of: projectionCaptureDisplayMode) {
+                refreshProjectionCaptureWindow()
             }
             .onChange(of: speechAuthorizationStatus) {
                 updateSpeechRecognition()
@@ -275,6 +296,15 @@ struct ContentView: View {
         case .captioning, .stopping, .completed, .completedWithWarning, .failed:
             break
         }
+    }
+
+    private func refreshProjectionCaptureWindow() {
+        projectionCaptureWindowPresenter.update(
+            inputLanguage: inputLanguage,
+            outputLanguages: speechSettings.selectedOutputLanguages,
+            captionPreviewState: speechRecognitionController.captionPreviewState,
+            isPresented: !usesInlineProjectionCapture
+        )
     }
 
     private func toggleCaptionSession() {

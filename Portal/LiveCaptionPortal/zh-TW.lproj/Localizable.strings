@@ -34,7 +34,12 @@
 "caption.projectionAppendMode" = "累加字幕內容";
 "caption.projectionAppendLineLimit" = "保留字幕筆數";
 "caption.projectionAppendLineLimitUnit" = "筆";
+"caption.projectionArrangement" = "排列";
+"caption.projectionArrangement.horizontal" = "左右";
+"caption.projectionArrangement.vertical" = "上下";
 "caption.projectionClear" = "清空";
+"caption.projectionDisplay.inline" = "主畫面";
+"caption.projectionDisplay.window" = "獨立視窗";
 "caption.projectionFill" = "填入";
 "caption.projectionFont" = "字體";
 "caption.projectionFont.appleSDGothicNeo" = "Apple SD Gothic Neo";
@@ -46,8 +51,12 @@
 "caption.projectionHeight" = "高度";
 "caption.projectionLanguage" = "語言";
 "caption.projectionLineSpacing" = "行距";
+"caption.projectionOpenInWindow" = "以獨立視窗顯示字幕預覽";
 "caption.projectionPaddingHorizontal" = "左右間距";
+"caption.projectionPrimaryLanguage" = "優先語言";
+"caption.projectionVisibleLanguages" = "顯示語言";
 "caption.projectionWidth" = "寬度";
+"caption.projectionWindow.title" = "字幕預覽";
 "caption.start" = "開始字幕";
 "caption.stop" = "停止字幕";
 "caption.timer.accessibilityLabel" = "字幕計時";
@@ -86,6 +95,7 @@
 "panel.session" = "工作階段";
 "panel.subtitleFiles" = "字幕檔案";
 "projectionSettings.panelTitle" = "字幕預覽";
+"projectionSettings.showPreviewWindow" = "顯示預覽視窗";
 "projectionSettings.title" = "字幕預覽設定";
 "relay.environment" = "環境";
 "relay.lastPublishedAt" = "最後發佈時間";

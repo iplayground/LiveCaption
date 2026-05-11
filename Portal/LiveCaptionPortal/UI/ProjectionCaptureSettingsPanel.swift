@@ -5,7 +5,10 @@ struct ProjectionCaptureSettingsInspector: View {
     let outputLanguages: [SpeechOutputLanguage]
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     let maximumWidth: Double
+    var preferredWidth: CGFloat? = 330
     @AppStorage("projectionCapture.languageID") private var projectionCaptureLanguageID = "zh-Hant"
+    @AppStorage("projectionCapture.visibleLanguageIDs") private var projectionCaptureVisibleLanguageIDs = ""
+    @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
     @AppStorage("projectionCapture.width") private var projectionCaptureWidth = 720.0
     @AppStorage("projectionCapture.height") private var projectionCaptureHeight = 180.0
     @AppStorage("projectionCapture.fontID") private var projectionCaptureFontID = ProjectionCaptionFontChoice.systemID
@@ -15,10 +18,29 @@ struct ProjectionCaptureSettingsInspector: View {
     @AppStorage("projectionCapture.appendLineLimit") private var projectionCaptureAppendLineLimit = 3.0
     @AppStorage("projectionCapture.paddingHorizontal") private var projectionCapturePaddingHorizontal = 28.0
 
+    private var usesWideLayout: Bool {
+        preferredWidth == nil
+    }
+
     private var selectedLanguageID: Binding<String> {
         Binding(
             get: { validatedLanguageID },
             set: { projectionCaptureLanguageID = $0 }
+        )
+    }
+
+    private var selectedWindowLanguageIDs: [String] {
+        ProjectionCaptureLanguageSelection.selectedIDs(
+            from: projectionCaptureVisibleLanguageIDs,
+            outputLanguages: outputLanguages,
+            fallbackID: validatedLanguageID
+        )
+    }
+
+    private var selectedPreviewArrangement: Binding<String> {
+        Binding(
+            get: { validatedPreviewArrangement.rawValue },
+            set: { projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.arrangement(for: $0).rawValue }
         )
     }
 
@@ -76,6 +98,10 @@ struct ProjectionCaptureSettingsInspector: View {
             return projectionCaptureLanguageID
         }
 
+        if outputLanguages.contains(where: { $0.id == inputLanguage.matchingOutputLanguageID }) {
+            return inputLanguage.matchingOutputLanguageID
+        }
+
         return outputLanguages.first?.id ?? projectionCaptureLanguageID
     }
 
@@ -87,138 +113,314 @@ struct ProjectionCaptureSettingsInspector: View {
         return ProjectionCaptionFontChoice.systemID
     }
 
+    private var validatedPreviewArrangement: ProjectionCapturePreviewArrangement {
+        ProjectionCapturePreviewArrangement.arrangement(for: projectionCapturePreviewArrangement)
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionLanguage")) {
-                        Picker(L10n.text("caption.projectionLanguage"), selection: selectedLanguageID) {
-                            ForEach(outputLanguages) { language in
-                                Text(language.nativeName).tag(language.id)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+            if usesWideLayout {
+                wideLayout
+            } else {
+                narrowLayout
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .frame(width: preferredWidth)
+        .background(.regularMaterial)
+        .onAppear(perform: normalizeStoredValues)
+    }
+
+    private var narrowLayout: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                ProjectionInspectorRow(title: L10n.text("caption.projectionLanguage")) {
+                    languagePicker
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                appendModeToggle
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                ProjectionInspectorRow(title: L10n.text("caption.projectionFont")) {
+                    fontPicker(width: 170)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                fontSizeField
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                widthField
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionAppendMode")) {
-                        Toggle(L10n.text("caption.projectionAppendMode"), isOn: $projectionCaptureAppendsText)
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                            .frame(height: 26, alignment: .leading)
-                    }
+                heightField
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                lineSpacingField
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                paddingField
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            appendLineLimitField
+
+            actionButtons(compact: false)
+        }
+        .padding(16)
+    }
+
+    private var wideLayout: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                windowLanguageControls
+
+                appendModeToggle
+                    .frame(width: 132, alignment: .leading)
+
+                Spacer(minLength: 0)
+
+                ProjectionInspectorRow(title: L10n.text("caption.projectionFont")) {
+                    fontPicker(width: 150)
                 }
 
-                HStack(alignment: .top, spacing: 12) {
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionFont")) {
-                        Picker(L10n.text("caption.projectionFont"), selection: selectedFontID) {
-                            ForEach(ProjectionCaptionFontChoice.availableChoices) { fontChoice in
-                                Text(fontChoice.localizedName).tag(fontChoice.id)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .frame(width: 170, alignment: .leading)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                fontSizeField
+            }
 
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionFontSize")) {
-                        ProjectionDimensionField(
-                            value: fontSize,
-                            range: WindowLayout.projectionCaptureMinimumFontSize...WindowLayout.projectionCaptureMaximumFontSize,
-                            step: 2
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .top, spacing: 12) {
+                widthField
+
+                heightField
+
+                lineSpacingField
+
+                paddingField
+
+                appendLineLimitField
+
+                actionButtons(compact: true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var languagePicker: some View {
+        Picker(L10n.text("caption.projectionLanguage"), selection: selectedLanguageID) {
+            ForEach(outputLanguages) { language in
+                Text(language.nativeName).tag(language.id)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var windowLanguageSelection: some View {
+        HStack(spacing: 10) {
+            ForEach(outputLanguages) { language in
+                Toggle(language.nativeName, isOn: windowLanguageSelection(for: language))
+                    .toggleStyle(.checkbox)
+                    .disabled(isWindowLanguageSelectionDisabled(for: language))
+                    .fixedSize()
+            }
+        }
+        .frame(minHeight: 26, alignment: .leading)
+    }
+
+    private var windowLanguageControls: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ProjectionInspectorRow(title: L10n.text("caption.projectionVisibleLanguages")) {
+                windowLanguageSelection
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            if selectedWindowLanguageIDs.count == 2 {
+                previewArrangementPicker
+                    .frame(width: 132, alignment: .leading)
+            }
+        }
+    }
+
+    private var previewArrangementPicker: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionArrangement")) {
+            Picker(L10n.text("caption.projectionArrangement"), selection: selectedPreviewArrangement) {
+                ForEach(ProjectionCapturePreviewArrangement.allCases) { arrangement in
+                    Text(arrangement.localizedName).tag(arrangement.rawValue)
                 }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 120)
+        }
+    }
 
-                HStack(alignment: .top, spacing: 12) {
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionWidth")) {
-                        ProjectionDimensionField(
-                            value: width,
-                            range: WindowLayout.projectionCaptureMinimumWidth...maximumWidth,
-                            step: 20
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private var appendModeToggle: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionAppendMode")) {
+            Toggle(L10n.text("caption.projectionAppendMode"), isOn: $projectionCaptureAppendsText)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .fixedSize()
+                .frame(width: 54, height: 26, alignment: .leading)
+        }
+    }
 
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionHeight")) {
-                        ProjectionDimensionField(
-                            value: height,
-                            range: WindowLayout.projectionCaptureMinimumHeight...WindowLayout.projectionCaptureMaximumHeight,
-                            step: 10
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+    private var fontSizeField: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionFontSize")) {
+            ProjectionDimensionField(
+                value: fontSize,
+                range: WindowLayout.projectionCaptureMinimumFontSize...WindowLayout.projectionCaptureMaximumFontSize,
+                step: 2
+            )
+        }
+    }
 
-                HStack(alignment: .top, spacing: 12) {
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionLineSpacing")) {
-                        ProjectionDimensionField(
-                            value: lineSpacing,
-                            range: WindowLayout.projectionCaptureMinimumLineSpacing...WindowLayout.projectionCaptureMaximumLineSpacing,
-                            step: 1
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private var widthField: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionWidth")) {
+            ProjectionDimensionField(
+                value: width,
+                range: WindowLayout.projectionCaptureMinimumWidth...maximumWidth,
+                step: 20
+            )
+        }
+    }
 
-                    ProjectionInspectorRow(title: L10n.text("caption.projectionPaddingHorizontal")) {
-                        ProjectionDimensionField(
-                            value: paddingHorizontal,
-                            range: WindowLayout.projectionCaptureMinimumPadding...WindowLayout.projectionCaptureMaximumPadding,
-                            step: 2
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+    private var heightField: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionHeight")) {
+            ProjectionDimensionField(
+                value: height,
+                range: WindowLayout.projectionCaptureMinimumHeight...WindowLayout.projectionCaptureMaximumHeight,
+                step: 10
+            )
+        }
+    }
 
-                ProjectionInspectorRow(title: L10n.text("caption.projectionAppendLineLimit")) {
-                    ProjectionDimensionField(
-                        value: appendLineLimit,
-                        range: WindowLayout.projectionCaptureMinimumAppendLineLimit...WindowLayout.projectionCaptureMaximumAppendLineLimit,
-                        step: 1,
-                        unit: L10n.text("caption.projectionAppendLineLimitUnit")
-                    )
-                }
+    private var lineSpacingField: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionLineSpacing")) {
+            ProjectionDimensionField(
+                value: lineSpacing,
+                range: WindowLayout.projectionCaptureMinimumLineSpacing...WindowLayout.projectionCaptureMaximumLineSpacing,
+                step: 1
+            )
+        }
+    }
 
-                HStack(spacing: 8) {
-                    Button {
-                        captionPreviewState.clearProjectionCaption()
-                    } label: {
+    private var paddingField: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionPaddingHorizontal")) {
+            ProjectionDimensionField(
+                value: paddingHorizontal,
+                range: WindowLayout.projectionCaptureMinimumPadding...WindowLayout.projectionCaptureMaximumPadding,
+                step: 2
+            )
+        }
+    }
+
+    private var appendLineLimitField: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionAppendLineLimit")) {
+            ProjectionDimensionField(
+                value: appendLineLimit,
+                range: WindowLayout.projectionCaptureMinimumAppendLineLimit...WindowLayout.projectionCaptureMaximumAppendLineLimit,
+                step: 1,
+                unit: L10n.text("caption.projectionAppendLineLimitUnit")
+            )
+        }
+    }
+
+    private func fontPicker(width: CGFloat) -> some View {
+        Picker(L10n.text("caption.projectionFont"), selection: selectedFontID) {
+            ForEach(ProjectionCaptionFontChoice.availableChoices) { fontChoice in
+                Text(fontChoice.localizedName).tag(fontChoice.id)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: width, alignment: .leading)
+    }
+
+    private func actionButtons(compact: Bool) -> some View {
+        ProjectionInspectorRow(title: compact ? " " : "") {
+            HStack(spacing: 8) {
+                Button {
+                    captionPreviewState.clearProjectionCaption()
+                } label: {
+                    if compact {
+                        Image(systemName: "trash")
+                    } else {
                         Text(L10n.text("caption.projectionClear"))
                             .frame(maxWidth: .infinity)
                     }
+                }
+                .help(L10n.text("caption.projectionClear"))
 
-                    Button {
-                        captionPreviewState.fillProjectionCaption()
-                    } label: {
+                Button {
+                    captionPreviewState.fillProjectionCaption()
+                } label: {
+                    if compact {
+                        Image(systemName: "text.append")
+                    } else {
                         Text(L10n.text("caption.projectionFill"))
                             .frame(maxWidth: .infinity)
                     }
                 }
+                .help(L10n.text("caption.projectionFill"))
             }
-            .padding(16)
-        }
-        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-        .frame(width: 330)
-        .background(.regularMaterial)
-        .onAppear {
-            projectionCaptureWidth = clampedWidth(projectionCaptureWidth)
-            projectionCaptureHeight = clampedHeight(projectionCaptureHeight)
-            projectionCaptureFontID = validatedFontID
-            projectionCaptureFontSize = clampedFontSize(projectionCaptureFontSize)
-            projectionCaptureLineSpacing = clampedLineSpacing(projectionCaptureLineSpacing)
-            projectionCapturePaddingHorizontal = clampedPadding(projectionCapturePaddingHorizontal)
-            projectionCaptureAppendLineLimit = clampedAppendLineLimit(projectionCaptureAppendLineLimit)
+            .frame(maxWidth: compact ? nil : .infinity)
         }
     }
 
-    private var selectedOutputLanguage: SpeechOutputLanguage? {
-        outputLanguages.first { $0.id == validatedLanguageID }
+    private func windowLanguageSelection(for language: SpeechOutputLanguage) -> Binding<Bool> {
+        Binding(
+            get: { selectedWindowLanguageIDs.contains(language.id) },
+            set: { isSelected in
+                var selectedIDs = selectedWindowLanguageIDs
+
+                if isSelected {
+                    guard !selectedIDs.contains(language.id), selectedIDs.count < 2 else {
+                        return
+                    }
+                    selectedIDs.append(language.id)
+                } else {
+                    guard selectedIDs.count > 1 else {
+                        return
+                    }
+                    selectedIDs.removeAll { $0 == language.id }
+                }
+
+                projectionCaptureVisibleLanguageIDs = ProjectionCaptureLanguageSelection.rawValue(from: selectedIDs)
+            }
+        )
+    }
+
+    private func isWindowLanguageSelectionDisabled(for language: SpeechOutputLanguage) -> Bool {
+        let selectedIDs = selectedWindowLanguageIDs
+        let isSelected = selectedIDs.contains(language.id)
+
+        if isSelected {
+            return selectedIDs.count <= 1
+        }
+
+        return selectedIDs.count >= 2
+    }
+
+    private func normalizeStoredValues() {
+        projectionCaptureLanguageID = validatedLanguageID
+        projectionCaptureVisibleLanguageIDs = ProjectionCaptureLanguageSelection.rawValue(from: selectedWindowLanguageIDs)
+        projectionCapturePreviewArrangement = validatedPreviewArrangement.rawValue
+        projectionCaptureWidth = clampedWidth(projectionCaptureWidth)
+        projectionCaptureHeight = clampedHeight(projectionCaptureHeight)
+        projectionCaptureFontID = validatedFontID
+        projectionCaptureFontSize = clampedFontSize(projectionCaptureFontSize)
+        projectionCaptureLineSpacing = clampedLineSpacing(projectionCaptureLineSpacing)
+        projectionCapturePaddingHorizontal = clampedPadding(projectionCapturePaddingHorizontal)
+        projectionCaptureAppendLineLimit = clampedAppendLineLimit(projectionCaptureAppendLineLimit)
     }
 
     private func clampedWidth(_ value: Double) -> Double {

@@ -19,6 +19,7 @@ struct ContentViewLayout: View {
     let captionSessionElapsedTime: TimeInterval
     let canToggleCaptionSession: Bool
     let captionSessionDisabledReason: String?
+    let usesInlineProjectionCapture: Bool
     let recognizedCaptionCount: Int
     let relayLastPublishedAt: Date?
     let logEntries: [LogEntry]
@@ -33,9 +34,11 @@ struct ContentViewLayout: View {
 
                 Divider()
 
-                projectionCapture
+                if usesInlineProjectionCapture {
+                    projectionCapture
 
-                Divider()
+                    Divider()
+                }
 
                 workspaceColumns
             }

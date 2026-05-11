@@ -34,7 +34,12 @@
 "caption.projectionAppendMode" = "Append Caption Text";
 "caption.projectionAppendLineLimit" = "Retained Lines";
 "caption.projectionAppendLineLimitUnit" = "lines";
+"caption.projectionArrangement" = "Arrangement";
+"caption.projectionArrangement.horizontal" = "Side by Side";
+"caption.projectionArrangement.vertical" = "Stacked";
 "caption.projectionClear" = "Clear";
+"caption.projectionDisplay.inline" = "Main Window";
+"caption.projectionDisplay.window" = "Separate Window";
 "caption.projectionFill" = "Fill";
 "caption.projectionFont" = "Font";
 "caption.projectionFont.appleSDGothicNeo" = "Apple SD Gothic Neo";
@@ -46,8 +51,12 @@
 "caption.projectionHeight" = "Height";
 "caption.projectionLanguage" = "Language";
 "caption.projectionLineSpacing" = "Line Spacing";
+"caption.projectionOpenInWindow" = "Show caption preview in a separate window";
 "caption.projectionPaddingHorizontal" = "Horizontal Spacing";
+"caption.projectionPrimaryLanguage" = "Primary Language";
+"caption.projectionVisibleLanguages" = "Visible Languages";
 "caption.projectionWidth" = "Width";
+"caption.projectionWindow.title" = "Caption Preview";
 "caption.start" = "Start Captions";
 "caption.stop" = "Stop Captions";
 "caption.timer.accessibilityLabel" = "Caption timer";
@@ -86,6 +95,7 @@
 "panel.session" = "Session";
 "panel.subtitleFiles" = "Subtitle Files";
 "projectionSettings.panelTitle" = "Caption Preview";
+"projectionSettings.showPreviewWindow" = "Show Preview Window";
 "projectionSettings.title" = "Caption Preview Settings";
 "relay.environment" = "Environment";
 "relay.lastPublishedAt" = "Last published at";

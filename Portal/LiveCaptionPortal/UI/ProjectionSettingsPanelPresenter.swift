@@ -68,10 +68,14 @@ final class ProjectionSettingsPanelPresenter: NSObject, NSWindowDelegate {
 
     private static func currentProjectionCaptureMaximumWidth() -> Double {
         let window = currentMainWindow()
-
-        return WindowLayout.projectionCaptureMaximumWidth(
+        let mainWindowMaximumWidth = WindowLayout.projectionCaptureMaximumWidth(
             for: window?.contentLayoutRect.width ?? WindowLayout.minimumSize.width
         )
+        let screenMaximumWidth = NSScreen.screens
+            .map { Double($0.visibleFrame.width - (WindowLayout.projectionCaptureHorizontalPadding * 2)) }
+            .max() ?? WindowLayout.projectionCaptureMinimumWidth
+
+        return max(mainWindowMaximumWidth, screenMaximumWidth, WindowLayout.projectionCaptureMinimumWidth)
     }
 
     private static func currentMainWindow() -> NSWindow? {

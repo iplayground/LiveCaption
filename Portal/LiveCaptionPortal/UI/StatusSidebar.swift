@@ -17,26 +17,21 @@ struct StatusSidebar: View {
     @State private var projectionSettingsPanelPresenter = ProjectionSettingsPanelPresenter()
     @State private var isSpeechSettingsPresented = false
     @State private var isRelaySettingsPresented = false
+    @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
 
     private var areProjectionSettingsLocked: Bool {
         areConfigurationControlsLocked
+    }
+
+    private var usesProjectionCaptureWindow: Bool {
+        ProjectionPreviewDisplayMode.mode(for: projectionCaptureDisplayMode) == .window
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Panel(title: L10n.text("projectionSettings.panelTitle"), systemImage: "rectangle.dashed") {
-                    Button {
-                        projectionSettingsPanelPresenter.show(
-                            inputLanguage: inputLanguage,
-                            outputLanguages: speechSettings.selectedOutputLanguages,
-                            captionPreviewState: captionPreviewState
-                        )
-                    } label: {
-                        Label(L10n.text("settings.open"), systemImage: "slider.horizontal.3")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .disabled(areProjectionSettingsLocked)
+                    projectionControls
                 }
 
                 Panel(title: "Speech", systemImage: "waveform.badge.magnifyingglass") {
@@ -138,6 +133,40 @@ struct StatusSidebar: View {
                 isRelaySettingsPresented = false
             }
         }
+        .onChange(of: projectionCaptureDisplayMode) {
+            if usesProjectionCaptureWindow {
+                projectionSettingsPanelPresenter.close()
+            }
+        }
+    }
+
+    private var projectionControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if usesProjectionCaptureWindow {
+                Button {
+                    focusProjectionCaptureWindow()
+                } label: {
+                    Label(L10n.text("projectionSettings.showPreviewWindow"), systemImage: "macwindow")
+                        .frame(maxWidth: .infinity)
+                }
+            } else {
+                Button {
+                    openProjectionSettings()
+                } label: {
+                    Label(L10n.text("settings.open"), systemImage: "slider.horizontal.3")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(areProjectionSettingsLocked)
+
+                Button {
+                    openProjectionCaptureWindow()
+                } label: {
+                    Label(L10n.text("caption.projectionOpenInWindow"), systemImage: "macwindow")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(areProjectionSettingsLocked)
+            }
+        }
     }
 
     private var relayLastPublishedAtSummary: String {
@@ -182,6 +211,29 @@ struct StatusSidebar: View {
         formatter.timeStyle = .medium
         return formatter
     }()
+
+    private func openProjectionSettings() {
+        projectionSettingsPanelPresenter.show(
+            inputLanguage: inputLanguage,
+            outputLanguages: speechSettings.selectedOutputLanguages,
+            captionPreviewState: captionPreviewState
+        )
+    }
+
+    private func openProjectionCaptureWindow() {
+        projectionSettingsPanelPresenter.close()
+        projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.window.rawValue
+    }
+
+    private func focusProjectionCaptureWindow() {
+        guard let window = NSApp.windows.first(where: { $0.title == L10n.text("caption.projectionWindow.title") }) else {
+            openProjectionCaptureWindow()
+            return
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     private func testRelayConnectionAfterSpeechAuthorization() {
         guard relaySettings.isConfigured else {
