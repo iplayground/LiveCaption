@@ -147,6 +147,7 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
 
         if let window {
             window.contentView = NSHostingView(rootView: content)
+            clearTextFieldFocus(in: window)
             return
         }
 
@@ -166,6 +167,7 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        clearTextFieldFocus(in: window)
         self.window = window
     }
 
@@ -233,6 +235,12 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
         }
 
         WindowFrameRestoration.save(window: window, storageKey: frameStorageKey)
+    }
+
+    private func clearTextFieldFocus(in window: NSWindow) {
+        DispatchQueue.main.async { [weak window] in
+            window?.makeFirstResponder(nil)
+        }
     }
 }
 

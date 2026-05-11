@@ -38,6 +38,7 @@ struct ProjectionDimensionField: View {
     let range: ClosedRange<Double>
     let step: Double
     var unit = "pt"
+    @FocusState private var isTextFieldFocused: Bool
 
     private var integerValue: Binding<Int> {
         Binding(
@@ -52,8 +53,13 @@ struct ProjectionDimensionField: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.caption.monospacedDigit())
                 .frame(width: 64)
+                .focused($isTextFieldFocused)
                 .onSubmit {
                     value = clamped(value)
+                    isTextFieldFocused = false
+                }
+                .onExitCommand {
+                    isTextFieldFocused = false
                 }
 
             Stepper(
