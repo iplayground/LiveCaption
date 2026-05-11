@@ -539,6 +539,7 @@ struct ProjectionCaptureView: View {
     @AppStorage("projectionCapture.appendsText") private var projectionCaptureAppendsText = false
     @AppStorage("projectionCapture.appendLineLimit") private var projectionCaptureAppendLineLimit = 3.0
     @AppStorage("projectionCapture.paddingHorizontal") private var projectionCapturePaddingHorizontal = 28.0
+    @AppStorage("projectionCapture.verticalPlacement") private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
 
     private var selectedLanguage: SpeechOutputLanguage? {
         outputLanguages.first { $0.id == languageID }
@@ -599,6 +600,10 @@ struct ProjectionCaptureView: View {
         return EdgeInsets(top: vertical, leading: horizontal, bottom: vertical, trailing: horizontal)
     }
 
+    private var verticalPlacement: ProjectionCaptionVerticalPlacement {
+        ProjectionCaptionVerticalPlacement.placement(for: projectionCaptureVerticalPlacement)
+    }
+
     var body: some View {
         ZStack {
             Color.white
@@ -610,19 +615,21 @@ struct ProjectionCaptureView: View {
                     width: max(0, geometry.size.width - padding.leading - padding.trailing),
                     height: max(0, geometry.size.height - padding.top - padding.bottom)
                 )
-                let visibleText = ProjectionCaptionTextTruncator.visibleSuffix(
+                let visibleText = ProjectionCaptionTextTruncator.visibleText(
                     of: captionText,
                     fitting: availableSize,
                     font: captionNSFont,
-                    lineSpacing: lineSpacing
+                    lineSpacing: lineSpacing,
+                    verticalPlacement: verticalPlacement
                 )
 
                 ProjectionCaptionTextView(
                     text: visibleText,
                     font: captionNSFont,
-                    lineSpacing: lineSpacing
+                    lineSpacing: lineSpacing,
+                    verticalPlacement: verticalPlacement
                 )
-                    .frame(width: availableSize.width, height: availableSize.height, alignment: .bottomLeading)
+                    .frame(width: availableSize.width, height: availableSize.height, alignment: frameAlignment)
                     .padding(padding)
                     .clipped()
             }
@@ -633,6 +640,15 @@ struct ProjectionCaptureView: View {
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         }
         .accessibilityLabel(L10n.text("caption.projectionCapture"))
+    }
+
+    private var frameAlignment: Alignment {
+        switch verticalPlacement {
+        case .top:
+            return .topLeading
+        case .bottom:
+            return .bottomLeading
+        }
     }
 
     private func clampedPadding(_ value: Double) -> Double {

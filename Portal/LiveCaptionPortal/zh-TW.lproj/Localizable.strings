@@ -54,6 +54,9 @@
 "caption.projectionOpenInWindow" = "以獨立視窗顯示字幕預覽";
 "caption.projectionPaddingHorizontal" = "左右間距";
 "caption.projectionPrimaryLanguage" = "優先語言";
+"caption.projectionVerticalPlacement" = "字幕位置";
+"caption.projectionVerticalPlacement.bottom" = "置底";
+"caption.projectionVerticalPlacement.top" = "置頂";
 "caption.projectionVisibleLanguages" = "顯示語言";
 "caption.projectionWidth" = "寬度";
 "caption.projectionWindow.title" = "字幕預覽";

@@ -17,6 +17,7 @@ struct ProjectionCaptureSettingsInspector: View {
     @AppStorage("projectionCapture.appendsText") private var projectionCaptureAppendsText = false
     @AppStorage("projectionCapture.appendLineLimit") private var projectionCaptureAppendLineLimit = 3.0
     @AppStorage("projectionCapture.paddingHorizontal") private var projectionCapturePaddingHorizontal = 28.0
+    @AppStorage("projectionCapture.verticalPlacement") private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
 
     private var usesWideLayout: Bool {
         preferredWidth == nil
@@ -41,6 +42,13 @@ struct ProjectionCaptureSettingsInspector: View {
         Binding(
             get: { validatedPreviewArrangement.rawValue },
             set: { projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.arrangement(for: $0).rawValue }
+        )
+    }
+
+    private var selectedVerticalPlacement: Binding<String> {
+        Binding(
+            get: { validatedVerticalPlacement.rawValue },
+            set: { projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.placement(for: $0).rawValue }
         )
     }
 
@@ -117,6 +125,10 @@ struct ProjectionCaptureSettingsInspector: View {
         ProjectionCapturePreviewArrangement.arrangement(for: projectionCapturePreviewArrangement)
     }
 
+    private var validatedVerticalPlacement: ProjectionCaptionVerticalPlacement {
+        ProjectionCaptionVerticalPlacement.placement(for: projectionCaptureVerticalPlacement)
+    }
+
     var body: some View {
         ScrollView {
             if usesWideLayout {
@@ -169,7 +181,13 @@ struct ProjectionCaptureSettingsInspector: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            appendLineLimitField
+            HStack(alignment: .top, spacing: 12) {
+                verticalPlacementPicker
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                appendLineLimitField
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             actionButtons(compact: false)
         }
@@ -246,6 +264,9 @@ struct ProjectionCaptureSettingsInspector: View {
                 previewArrangementPicker
                     .frame(width: 132, alignment: .leading)
             }
+
+            verticalPlacementPicker
+                .frame(width: 102, alignment: .leading)
         }
     }
 
@@ -334,6 +355,19 @@ struct ProjectionCaptureSettingsInspector: View {
         }
     }
 
+    private var verticalPlacementPicker: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionVerticalPlacement")) {
+            Picker(L10n.text("caption.projectionVerticalPlacement"), selection: selectedVerticalPlacement) {
+                ForEach(ProjectionCaptionVerticalPlacement.allCases) { placement in
+                    Text(placement.localizedName).tag(placement.rawValue)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 90)
+        }
+    }
+
     private func fontPicker(width: CGFloat) -> some View {
         Picker(L10n.text("caption.projectionFont"), selection: selectedFontID) {
             ForEach(ProjectionCaptionFontChoice.availableChoices) { fontChoice in
@@ -414,6 +448,7 @@ struct ProjectionCaptureSettingsInspector: View {
         projectionCaptureLanguageID = validatedLanguageID
         projectionCaptureVisibleLanguageIDs = ProjectionCaptureLanguageSelection.rawValue(from: selectedWindowLanguageIDs)
         projectionCapturePreviewArrangement = validatedPreviewArrangement.rawValue
+        projectionCaptureVerticalPlacement = validatedVerticalPlacement.rawValue
         projectionCaptureWidth = clampedWidth(projectionCaptureWidth)
         projectionCaptureHeight = clampedHeight(projectionCaptureHeight)
         projectionCaptureFontID = validatedFontID

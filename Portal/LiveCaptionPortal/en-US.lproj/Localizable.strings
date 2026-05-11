@@ -54,6 +54,9 @@
 "caption.projectionOpenInWindow" = "Show caption preview in a separate window";
 "caption.projectionPaddingHorizontal" = "Horizontal Spacing";
 "caption.projectionPrimaryLanguage" = "Primary Language";
+"caption.projectionVerticalPlacement" = "Caption Position";
+"caption.projectionVerticalPlacement.bottom" = "Bottom";
+"caption.projectionVerticalPlacement.top" = "Top";
 "caption.projectionVisibleLanguages" = "Visible Languages";
 "caption.projectionWidth" = "Width";
 "caption.projectionWindow.title" = "Caption Preview";
