@@ -252,7 +252,7 @@ struct ProjectionCaptureWindowContent: View {
 
     private let languageHeaderHeight = 24.0
     private let languageHeaderPreviewSpacing = 6.0
-    private let previewBlockSpacing = 12.0
+    private let previewBlockSpacing = WindowLayout.projectionCapturePreviewBlockSpacing
     private let previewStageTopPadding = 10.0
     private let previewStageBottomPadding = 20.0
     private let dividerHeight = 1.0
@@ -362,7 +362,7 @@ struct ProjectionCaptureWindowContent: View {
                     inputLanguage: inputLanguage,
                     outputLanguages: outputLanguages,
                     captionPreviewState: captionPreviewState,
-                    maximumWidth: maximumContentWidth,
+                    maximumWidth: effectiveMaximumContentWidth,
                     preferredWidth: nil,
                     areConfigurationControlsLocked: areConfigurationControlsLocked
                 )

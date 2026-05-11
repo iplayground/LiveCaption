@@ -9,6 +9,7 @@ enum WindowLayout {
     static let headerEstimatedHeight: CGFloat = 86
     static let projectionCaptureHorizontalPadding: CGFloat = 20
     static let projectionCaptureVerticalPadding: CGFloat = 14
+    static let projectionCapturePreviewBlockSpacing = 12.0
     static let projectionCaptureMinimumWidth = 600.0
     static let projectionCaptureMinimumHeight = 100.0
     static let projectionCaptureMaximumHeight = 300.0

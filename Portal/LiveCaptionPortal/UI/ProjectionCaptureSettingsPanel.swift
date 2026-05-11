@@ -55,7 +55,7 @@ struct ProjectionCaptureSettingsInspector: View {
 
     private var width: Binding<Double> {
         Binding(
-            get: { projectionCaptureWidth },
+            get: { clampedWidth(projectionCaptureWidth) },
             set: { projectionCaptureWidth = clampedWidth($0) }
         )
     }
@@ -130,6 +130,15 @@ struct ProjectionCaptureSettingsInspector: View {
         ProjectionCaptionVerticalPlacement.placement(for: projectionCaptureVerticalPlacement)
     }
 
+    private var maximumPreviewWidth: Double {
+        guard usesWideLayout, selectedWindowLanguageIDs.count == 2, validatedPreviewArrangement == .horizontal else {
+            return maximumWidth
+        }
+
+        let availableBlockWidth = (maximumWidth - WindowLayout.projectionCapturePreviewBlockSpacing) / 2
+        return max(WindowLayout.projectionCaptureMinimumWidth, availableBlockWidth)
+    }
+
     var body: some View {
         ScrollView {
             if usesWideLayout {
@@ -143,6 +152,9 @@ struct ProjectionCaptureSettingsInspector: View {
         .background(.regularMaterial)
         .disabled(areConfigurationControlsLocked)
         .onAppear(perform: normalizeStoredValues)
+        .onChange(of: maximumPreviewWidth) {
+            projectionCaptureWidth = clampedWidth(projectionCaptureWidth)
+        }
     }
 
     private var narrowLayout: some View {
@@ -310,7 +322,7 @@ struct ProjectionCaptureSettingsInspector: View {
         ProjectionInspectorRow(title: L10n.text("caption.projectionWidth")) {
             ProjectionDimensionField(
                 value: width,
-                range: WindowLayout.projectionCaptureMinimumWidth...maximumWidth,
+                range: WindowLayout.projectionCaptureMinimumWidth...maximumPreviewWidth,
                 step: 20
             )
         }
@@ -461,7 +473,7 @@ struct ProjectionCaptureSettingsInspector: View {
     }
 
     private func clampedWidth(_ value: Double) -> Double {
-        min(max(value, WindowLayout.projectionCaptureMinimumWidth), maximumWidth)
+        min(max(value, WindowLayout.projectionCaptureMinimumWidth), maximumPreviewWidth)
     }
 
     private func clampedHeight(_ value: Double) -> Double {
