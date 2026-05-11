@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var relayConnectionStatus: RelayConnectionStatus
     @State private var shouldVerifyRelayConnectionOnLaunch: Bool
     @State private var relayLastPublishedAt: Date?
+    @State private var relayViewerAccessCode: String?
     @State private var subtitleFileSettings: SubtitleFileSettings
     @State private var subtitleExportSession: SubtitleExportSession?
     @State private var recognizedCaptionCount = 0
@@ -30,6 +31,7 @@ struct ContentView: View {
     @State private var isLogDrawerExpanded = false
     @State private var selectedLogLevel = LogLevel.all
     @State private var logEntries: [LogEntry] = []
+    @StateObject private var pubSubCaptionReceiver = PubSubCaptionReceiver()
     @State private var sleepPreventionController = SleepPreventionController()
     @State private var projectionCaptureWindowPresenter = ProjectionCaptureWindowPresenter()
     @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
@@ -111,6 +113,7 @@ struct ContentView: View {
             speechKey: speechSettings.speechKey
         )
         relayConnectionStatus = result.status
+        relayViewerAccessCode = result.connectionTestResult?.viewerAccessCode
         relayConnectionStatus.save()
         appendLog(result.log)
     }
@@ -138,9 +141,11 @@ struct ContentView: View {
             usesInlineProjectionCapture: usesInlineProjectionCapture,
             recognizedCaptionCount: recognizedCaptionCount,
             relayLastPublishedAt: relayLastPublishedAt,
+            pubSubCaptionReceiver: pubSubCaptionReceiver,
             logEntries: logEntries,
             filteredLogEntries: filteredLogEntries,
-            onToggleCaptionSession: toggleCaptionSession
+            onToggleCaptionSession: toggleCaptionSession,
+            onRelayConnectionTested: handleRelayConnectionTested
         ) { level, title, detail in
             appendLog(level: level, title: title, detail: detail)
         }
@@ -203,12 +208,15 @@ struct ContentView: View {
             }
             .onChange(of: relaySettings) {
                 relayLastPublishedAt = nil
+                relayViewerAccessCode = nil
+                pubSubCaptionReceiver.disconnect()
             }
     }
 
     private func handleDisappear() {
         finishCaptionSessionTiming()
         finishSubtitleExportSession()
+        pubSubCaptionReceiver.disconnect()
         sleepPreventionController.stopPreventingSleep()
         audioInputController.stopCapture()
         speechRecognitionController.stopRecognition()
@@ -317,16 +325,19 @@ struct ContentView: View {
             isCaptionSessionActive = false
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
+            pubSubCaptionReceiver.disconnect(keepsLatestCaption: true)
             sleepPreventionController.stopPreventingSleep()
         } else {
             captionSessionElapsedTime = 0
             relayLastPublishedAt = nil
             recognizedCaptionCount = 0
+            pubSubCaptionReceiver.disconnect()
             speechRecognitionController.resetCaptionSessionMetrics()
             let startedAt = Date()
             captionSessionStartedAt = startedAt
 
             if beginSubtitleExportSession(startedAt: startedAt) {
+                pubSubCaptionReceiver.connect(settings: relaySettings, viewerAccessCode: relayViewerAccessCode)
                 sleepPreventionController.startPreventingSleep()
                 captionSessionStatus = .captioning
                 isCaptionSessionActive = true
@@ -386,6 +397,10 @@ struct ContentView: View {
         speechRecognitionController.onCaptionEvent = { event in
             handleCaptionEvent(event)
         }
+    }
+
+    private func handleRelayConnectionTested(_ result: RelayConnectionTestResult) {
+        relayViewerAccessCode = result.viewerAccessCode
     }
 
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {

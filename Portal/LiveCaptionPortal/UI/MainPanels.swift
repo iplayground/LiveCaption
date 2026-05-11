@@ -263,6 +263,7 @@ struct CaptionWorkspace: View {
     let areConfigurationControlsLocked: Bool
     let outputLanguages: [SpeechOutputLanguage]
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
+    @ObservedObject var pubSubCaptionReceiver: PubSubCaptionReceiver
     @FocusState private var focusedField: FocusedField?
 
     private enum FocusedField: Hashable {
@@ -378,6 +379,11 @@ struct CaptionWorkspace: View {
                         }
                     }
 
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionLabel(title: L10n.text("pubSub.caption"), systemImage: "dot.radiowaves.left.and.right")
+
+                        PubSubCaptionCard(receiver: pubSubCaptionReceiver)
+                    }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {

@@ -100,6 +100,16 @@
 "projectionSettings.panelTitle" = "字幕預覽";
 "projectionSettings.showPreviewWindow" = "顯示預覽視窗";
 "projectionSettings.title" = "字幕預覽設定";
+"pubSub.caption" = "PubSub 字幕";
+"pubSub.caption.connected" = "正在接收 PubSub";
+"pubSub.caption.connectedDetail" = "正在監聽 %@。";
+"pubSub.caption.connecting" = "正在連接 PubSub";
+"pubSub.caption.connectingDetail" = "正在透過 Relay 協商唯讀觀眾端連線。";
+"pubSub.caption.empty" = "尚未從 PubSub 收到字幕。";
+"pubSub.caption.failed" = "PubSub 接收失敗";
+"pubSub.caption.idle" = "PubSub 接收閒置中";
+"pubSub.caption.idleDetail" = "開始字幕後，這裡會接收 Relay 發布出的字幕串流。";
+"pubSub.caption.latest" = "最新 PubSub 字幕";
 "relay.environment" = "環境";
 "relay.lastPublishedAt" = "最後發佈時間";
 "relay.connection.notConnected" = "未連線";
@@ -122,6 +132,7 @@
 "relaySettings.error.missingRelayURL" = "尚未設定 Relay URL";
 "relaySettings.error.missingSpeechKey" = "尚未設定 Speech Key，無法產生 Relay 簽章";
 "relaySettings.error.serviceRejected" = "Relay 拒絕連線，HTTP %d";
+"relaySettings.error.serviceRejectedWithMessage" = "Relay 拒絕連線，HTTP %d：%@";
 "relaySettings.relayURL" = "Relay URL";
 "relaySettings.relayURL.placeholder" = "例如：https://relay.example.com";
 "relaySettings.requirements.ready" = "Relay URL 與軌道設定完整，可測試 Relay 連線。";

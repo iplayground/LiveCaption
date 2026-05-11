@@ -100,6 +100,16 @@
 "projectionSettings.panelTitle" = "Caption Preview";
 "projectionSettings.showPreviewWindow" = "Show Preview Window";
 "projectionSettings.title" = "Caption Preview Settings";
+"pubSub.caption" = "PubSub Captions";
+"pubSub.caption.connected" = "Receiving from PubSub";
+"pubSub.caption.connectedDetail" = "Listening to %@.";
+"pubSub.caption.connecting" = "Connecting to PubSub";
+"pubSub.caption.connectingDetail" = "Negotiating a receive-only viewer connection through Relay.";
+"pubSub.caption.empty" = "No caption received from PubSub yet.";
+"pubSub.caption.failed" = "PubSub receive failed";
+"pubSub.caption.idle" = "PubSub receive is idle";
+"pubSub.caption.idleDetail" = "Start captions to receive the Relay-published subtitle stream.";
+"pubSub.caption.latest" = "Latest PubSub caption";
 "relay.environment" = "Environment";
 "relay.lastPublishedAt" = "Last published at";
 "relay.connection.notConnected" = "Not connected";
@@ -122,6 +132,7 @@
 "relaySettings.error.missingRelayURL" = "Relay URL is not configured";
 "relaySettings.error.missingSpeechKey" = "Speech Key is not configured, so Relay signing cannot be generated";
 "relaySettings.error.serviceRejected" = "Relay rejected the connection, HTTP %d";
+"relaySettings.error.serviceRejectedWithMessage" = "Relay rejected the connection, HTTP %d: %@";
 "relaySettings.relayURL" = "Relay URL";
 "relaySettings.relayURL.placeholder" = "Example: https://relay.example.com";
 "relaySettings.requirements.ready" = "Relay URL and track are configured. Relay connection can be tested.";

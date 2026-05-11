@@ -14,6 +14,7 @@ struct StatusSidebar: View {
     let relayLastPublishedAt: Date?
     let logEntries: [LogEntry]
     let onLogEvent: (LogLevel, String, String) -> Void
+    let onRelayConnectionTested: (RelayConnectionTestResult) -> Void
     @State private var projectionSettingsPanelPresenter = ProjectionSettingsPanelPresenter()
     @State private var isSpeechSettingsPresented = false
     @State private var isRelaySettingsPresented = false
@@ -99,6 +100,7 @@ struct StatusSidebar: View {
                     } onConnectionTested: { result in
                         relayConnectionStatus = .connected
                         relayConnectionStatus.save()
+                        onRelayConnectionTested(result)
                         onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.logDetail)
                     } onFailure: { message in
                         relayConnectionStatus = .failed
@@ -253,6 +255,7 @@ struct StatusSidebar: View {
                 await MainActor.run {
                     relayConnectionStatus = .connected
                     relayConnectionStatus.save()
+                    onRelayConnectionTested(result)
                     onLogEvent(.info, L10n.text("log.relay.connectionTestSucceeded"), result.logDetail)
                 }
             } catch {

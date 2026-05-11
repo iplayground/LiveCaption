@@ -2,6 +2,8 @@
 
 本文件定義觀眾端 App 取得 Azure Web PubSub client access URL 的 API。觀眾端字幕只能 receive-only，不得發布字幕；字幕發布只能由 Portal 透過 Relay 的 `POST /api/caption-events` 完成。
 
+Portal 主控板也可使用此 API 建立 receive-only 觀察連線，用來顯示 Relay 發布到 Azure Web PubSub 後再收到的字幕。這個連線只用於操作端確認 PubSub 實際輸出，不授予 Portal 任何 Web PubSub 發布權限。
+
 ## 取得觀眾端連線 URL
 
 公開活動模式不需要 access code：
@@ -27,9 +29,9 @@ X-LiveCaption-Viewer-Access-Code: <viewer-access-code>
 }
 ```
 
-當 Relay 設定 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 必須在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 透過 `HEAD /api/caption-events` 取得並顯示的 access code。Request body 可選；多軌活動時應帶入 `trackNumber` 做字幕軌過濾。
+當 Relay 設定 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 必須在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 透過 `HEAD /api/caption-events` 取得並顯示的 access code。Portal 主控板的 PubSub 觀察連線也使用同一個 Relay 回傳的 access code；Portal 不自行計算 access code。Request body 可選；多軌活動時應帶入 `trackNumber` 做字幕軌過濾。
 
-Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket URL。多軌活動時，觀眾端 App 應在 request body 帶入要收看的 `trackNumber`，Relay 會回傳該軌專用 group，例如 `caption-live-track-1`。未帶 `trackNumber` 時，Relay 保留舊行為，回傳可接收 `caption-live` base group 的 URL。
+Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket URL。多軌活動時，觀眾端 App 與 Portal 主控板觀察連線應在 request body 帶入要收看的 `trackNumber`，Relay 會回傳該軌專用 group，例如 `caption-live-track-1`。未帶 `trackNumber` 時，Relay 保留舊行為，回傳可接收 `caption-live` base group 的 URL。
 
 成功回應：
 
@@ -55,7 +57,7 @@ Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket UR
 
 Relay 產生的觀眾端 URL 只會讓 client 連線後加入 negotiate 回傳的 group，不會授予任何 `webpubsub.sendToGroup` 權限。
 
-觀眾端 App 不得直接取得 Web PubSub connection string、SAS token 或 server key。Portal 也不直接連 Web PubSub；Portal 發布字幕必須走 Relay 的 HMAC 驗證 API。
+觀眾端 App 不得直接取得 Web PubSub connection string、SAS token 或 server key。Portal 發布字幕必須走 Relay 的 HMAC 驗證 API；Portal 若為主控板顯示 PubSub 字幕而連線 Web PubSub，也只能使用此 endpoint 回傳的 receive-only URL。
 
 ## Access code
 
@@ -79,6 +81,13 @@ Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 acc
 - WebSocket 斷線、授權失敗或接近 `expiresAt` 時重新 negotiate。
 - 不把完整 `url` 寫入 log、crash report 或長期設定。
 - 不把 access code、完整 request headers 或完整 response body 寫入 log、crash report 或分析事件。
+
+Portal 主控板的 PubSub 觀察連線應：
+
+- 在字幕 session 開始時呼叫 negotiate，並帶入 Relay 連線測試取得的 access code 與目前 `trackNumber`。
+- 只顯示 Web PubSub 訊息中的 `captions` 欄位與必要接收狀態。
+- 字幕 session 停止或 Relay 設定變更時關閉 WebSocket。
+- 不記錄完整 WebSocket URL、access code、token、完整 headers 或完整 PubSub payload。
 
 ## 錯誤回應
 

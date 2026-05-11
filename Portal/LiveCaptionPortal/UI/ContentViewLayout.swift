@@ -22,9 +22,11 @@ struct ContentViewLayout: View {
     let usesInlineProjectionCapture: Bool
     let recognizedCaptionCount: Int
     let relayLastPublishedAt: Date?
+    @ObservedObject var pubSubCaptionReceiver: PubSubCaptionReceiver
     let logEntries: [LogEntry]
     let filteredLogEntries: [LogEntry]
     let onToggleCaptionSession: () -> Void
+    let onRelayConnectionTested: (RelayConnectionTestResult) -> Void
     let onLogEvent: (LogLevel, String, String) -> Void
 
     var body: some View {
@@ -87,7 +89,8 @@ struct ContentViewLayout: View {
                 inputLanguage: $inputLanguage,
                 areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                 outputLanguages: speechSettings.selectedOutputLanguages,
-                captionPreviewState: captionPreviewState
+                captionPreviewState: captionPreviewState,
+                pubSubCaptionReceiver: pubSubCaptionReceiver
             )
 
             Divider()
@@ -104,7 +107,8 @@ struct ContentViewLayout: View {
                 recognizedCaptionCount: recognizedCaptionCount,
                 relayLastPublishedAt: relayLastPublishedAt,
                 logEntries: logEntries,
-                onLogEvent: onLogEvent
+                onLogEvent: onLogEvent,
+                onRelayConnectionTested: onRelayConnectionTested
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -29,12 +29,14 @@ enum PortalLaunchVerifier {
 
     static func verifyRelayConnection(relaySettings: RelaySettings, speechKey: String) async -> (
         status: RelayConnectionStatus,
+        connectionTestResult: RelayConnectionTestResult?,
         log: PortalWorkflowLog
     ) {
         do {
             let result = try await relaySettings.testConnection(speechKey: speechKey)
             return (
                 .connected,
+                result,
                 PortalWorkflowLog(
                     level: .info,
                     title: L10n.text("log.relay.connectionTestSucceeded"),
@@ -44,6 +46,7 @@ enum PortalLaunchVerifier {
         } catch {
             return (
                 .failed,
+                nil,
                 PortalWorkflowLog(
                     level: .error,
                     title: L10n.text("log.relay.connectionTestFailed"),
