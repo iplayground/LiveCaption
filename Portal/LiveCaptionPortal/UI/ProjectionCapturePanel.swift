@@ -127,7 +127,8 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
         inputLanguage: InputLanguage,
         outputLanguages: [SpeechOutputLanguage],
         captionPreviewState: SpeechCaptionPreviewState,
-        isPresented: Bool
+        isPresented: Bool,
+        areConfigurationControlsLocked: Bool
     ) {
         guard isPresented else {
             close()
@@ -140,12 +141,12 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
             outputLanguages: outputLanguages,
             captionPreviewState: captionPreviewState,
             maximumContentWidth: maximumContentWidth,
-            settingsInspectorHeight: settingsInspectorHeight
+            settingsInspectorHeight: settingsInspectorHeight,
+            areConfigurationControlsLocked: areConfigurationControlsLocked
         )
 
         if let window {
             window.contentView = NSHostingView(rootView: content)
-            window.makeKeyAndOrderFront(nil)
             return
         }
 
@@ -241,6 +242,7 @@ struct ProjectionCaptureWindowContent: View {
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     let maximumContentWidth: Double
     let settingsInspectorHeight: Double
+    let areConfigurationControlsLocked: Bool
     @AppStorage("projectionCapture.languageID") private var projectionCaptureLanguageID = "zh-Hant"
     @AppStorage("projectionCapture.visibleLanguageIDs") private var projectionCaptureVisibleLanguageIDs = ""
     @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
@@ -361,7 +363,8 @@ struct ProjectionCaptureWindowContent: View {
                     outputLanguages: outputLanguages,
                     captionPreviewState: captionPreviewState,
                     maximumWidth: maximumContentWidth,
-                    preferredWidth: nil
+                    preferredWidth: nil,
+                    areConfigurationControlsLocked: areConfigurationControlsLocked
                 )
                 .frame(width: containerWidth, height: settingsInspectorHeight, alignment: .top)
 

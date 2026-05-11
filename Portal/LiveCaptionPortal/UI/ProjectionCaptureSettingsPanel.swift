@@ -6,6 +6,7 @@ struct ProjectionCaptureSettingsInspector: View {
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     let maximumWidth: Double
     var preferredWidth: CGFloat? = 330
+    var areConfigurationControlsLocked = false
     @AppStorage("projectionCapture.languageID") private var projectionCaptureLanguageID = "zh-Hant"
     @AppStorage("projectionCapture.visibleLanguageIDs") private var projectionCaptureVisibleLanguageIDs = ""
     @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
@@ -140,6 +141,7 @@ struct ProjectionCaptureSettingsInspector: View {
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .frame(width: preferredWidth)
         .background(.regularMaterial)
+        .disabled(areConfigurationControlsLocked)
         .onAppear(perform: normalizeStoredValues)
     }
 

@@ -170,6 +170,9 @@ struct ContentView: View {
             .onChange(of: isCaptionSessionActive) {
                 updateSpeechRecognition()
             }
+            .onChange(of: captionSessionStatus) {
+                refreshProjectionCaptureWindow()
+            }
             .onChange(of: audioInputController.isCapturing) {
                 handleAudioCaptureStateChange()
             }
@@ -303,7 +306,8 @@ struct ContentView: View {
             inputLanguage: inputLanguage,
             outputLanguages: speechSettings.selectedOutputLanguages,
             captionPreviewState: speechRecognitionController.captionPreviewState,
-            isPresented: !usesInlineProjectionCapture
+            isPresented: !usesInlineProjectionCapture,
+            areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls
         )
     }
 
