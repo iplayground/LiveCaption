@@ -455,7 +455,8 @@ struct ContentView: View {
         Task {
             let enrichedEvent = await eventWithAccurateCaptionIfAvailable(event)
             await MainActor.run {
-                appendCaptionToSubtitleExportSession(enrichedEvent)
+                appendCaptionToSubtitleExportSession(enrichedEvent, mode: .fast)
+                appendCaptionToSubtitleExportSession(enrichedEvent, mode: .accurate)
                 publishCaptionEventToRelay(enrichedEvent, mode: .fast)
                 publishCaptionEventToRelay(enrichedEvent, mode: .accurate)
             }
@@ -551,12 +552,12 @@ struct ContentView: View {
         return event.addingCaptionMode(.accurate, result: result)
     }
 
-    private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent) {
+    private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) {
         guard var subtitleExportSession else {
             return
         }
 
-        subtitleExportSession.append(event: event, inputLanguage: inputLanguage)
+        subtitleExportSession.append(event: event, inputLanguage: inputLanguage, mode: mode)
         self.subtitleExportSession = subtitleExportSession
     }
 

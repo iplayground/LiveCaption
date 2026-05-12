@@ -37,7 +37,12 @@ Portal 主畫面包含：
 
 上方字幕預覽的累加模式只保留 GUI 顯示所需的最近字幕筆數，保留數量與 `projectionCapture.appendLineLimit` 同步，範圍為 1 到 10 筆，預設 3 筆。此限制只影響投影截取區的累加顯示，不影響 SRT 輸出、Relay 發布或字幕事件計數。
 
-停止字幕時，Portal 會依工作階段開始時間建立 SRT 輸出資料夾，格式為 `MMdd_HHmm`，可附加清理後的工作階段標題。SRT 檔案依字幕語言代碼命名，例如 `zh-Hant.srt`、`en.srt`、`ja.srt`、`ko.srt`。若主要輸出位置失敗，Portal 會寫入 Application Support 下的 `LiveCaptionPortal/SRT Recovery/`。
+停止字幕時，Portal 會依工作階段開始時間建立 SRT 輸出資料夾，格式為 `MMdd_HHmm`，可附加清理後的工作階段標題。SRT 會依 final 字幕品質模式分別保存到子資料夾：
+
+- `fast/`：Azure Speech final 字幕。
+- `accurate/`：Azure OpenAI final 字幕。
+
+各模式底下的 SRT 檔案依字幕語言代碼命名，例如 `zh-Hant.srt`、`en.srt`、`ja.srt`、`ko.srt`。若某模式沒有產生可寫入的字幕，例如未啟用精準模式或 Azure OpenAI 尚未回傳 final 結果，Portal 不會為該模式產生空檔案。若主要輸出位置失敗，Portal 會寫入 Application Support 下的 `LiveCaptionPortal/SRT Recovery/`，並維持相同的模式子資料夾結構。
 
 ## 字幕品質模式
 

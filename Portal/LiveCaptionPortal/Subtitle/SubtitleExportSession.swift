@@ -8,8 +8,8 @@ struct SubtitleExportSession {
     let fallbackDirectoryURL: URL
     private let rootDirectoryURL: URL
     private let outputLanguages: [SpeechOutputLanguage]
-    private var offsetBaselineTicks: UInt64?
-    private var cuesByLanguageID: [String: [SubtitleCue]]
+    private var offsetBaselineTicksByMode: [CaptionQualityMode: UInt64] = [:]
+    private var cuesByModeAndLanguageID: [CaptionQualityMode: [String: [SubtitleCue]]]
 
     init(
         rootDirectoryURL: URL,
@@ -23,24 +23,41 @@ struct SubtitleExportSession {
             .appendingPathComponent(sessionDirectoryName, isDirectory: true)
         self.rootDirectoryURL = rootDirectoryURL
         self.outputLanguages = outputLanguages
-        cuesByLanguageID = Dictionary(uniqueKeysWithValues: outputLanguages.map { ($0.id, []) })
+        cuesByModeAndLanguageID = Dictionary(
+            uniqueKeysWithValues: CaptionQualityMode.allCases.map { mode in
+                (
+                    mode,
+                    Dictionary(uniqueKeysWithValues: outputLanguages.map { ($0.id, []) })
+                )
+            }
+        )
     }
 
-    mutating func append(event: RecognizedCaptionEvent, inputLanguage: InputLanguage) {
-        if offsetBaselineTicks == nil {
-            offsetBaselineTicks = event.offsetTicks
+    mutating func append(
+        event: RecognizedCaptionEvent,
+        inputLanguage: InputLanguage,
+        mode: CaptionQualityMode
+    ) {
+        guard let captionMode = event.captionModes[mode] else {
+            return
         }
 
-        let startTime = timeInterval(from: event.offsetTicks)
+        if offsetBaselineTicksByMode[mode] == nil {
+            offsetBaselineTicksByMode[mode] = event.offsetTicks
+        }
+
+        let startTime = timeInterval(from: event.offsetTicks, mode: mode)
         let duration = Self.timeInterval(fromTicks: event.durationTicks)
         let endTime = startTime + max(duration, Self.minimumCueDuration)
 
         for language in outputLanguages {
             let text: String?
-            if language.id == inputLanguage.matchingOutputLanguageID {
-                text = event.text
+            if let languageText = captionMode.translations[language.id] {
+                text = languageText
+            } else if language.id == inputLanguage.matchingOutputLanguageID {
+                text = captionMode.text
             } else {
-                text = event.translations[language.id]
+                text = nil
             }
 
             guard let normalizedText = text?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -49,8 +66,10 @@ struct SubtitleExportSession {
                 continue
             }
 
-            cuesByLanguageID[language.id, default: []].append(
-                SubtitleCue(startTime: startTime, endTime: endTime, text: normalizedText)
+            appendCue(
+                SubtitleCue(startTime: startTime, endTime: endTime, text: normalizedText),
+                mode: mode,
+                languageID: language.id
             )
         }
     }
@@ -82,27 +101,112 @@ struct SubtitleExportSession {
         var writtenFileURLs: [URL] = []
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
-        for language in outputLanguages {
-            let cues = cuesByLanguageID[language.id, default: []]
-            guard !cues.isEmpty else {
-                continue
-            }
+        for mode in CaptionQualityMode.allCases {
+            let modeDirectoryURL = directoryURL.appendingPathComponent(mode.rawValue, isDirectory: true)
 
-            let fileURL = directoryURL.appendingPathComponent("\(language.id).srt")
-            try Self.renderSRT(cues: cues).write(to: fileURL, atomically: true, encoding: .utf8)
-            writtenFileURLs.append(fileURL)
+            for language in outputLanguages {
+                let cues = cuesByModeAndLanguageID[mode]?[language.id, default: []] ?? []
+                guard !cues.isEmpty else {
+                    continue
+                }
+
+                try FileManager.default.createDirectory(at: modeDirectoryURL, withIntermediateDirectories: true)
+                let fileURL = modeDirectoryURL.appendingPathComponent("\(language.id).srt")
+                try Self.renderSRT(cues: cues).write(to: fileURL, atomically: true, encoding: .utf8)
+                writtenFileURLs.append(fileURL)
+            }
         }
 
         return writtenFileURLs
     }
 
-    private func timeInterval(from ticks: UInt64) -> TimeInterval {
-        let baseline = offsetBaselineTicks ?? ticks
+    private func timeInterval(from ticks: UInt64, mode: CaptionQualityMode) -> TimeInterval {
+        let baseline = offsetBaselineTicksByMode[mode] ?? ticks
         guard ticks >= baseline else {
             return 0
         }
 
         return Self.timeInterval(fromTicks: ticks - baseline)
+    }
+
+    private mutating func appendCue(_ cue: SubtitleCue, mode: CaptionQualityMode, languageID: String) {
+        var cues = cuesByModeAndLanguageID[mode, default: [:]][languageID, default: []]
+        if mode == .accurate,
+           let lastCue = cues.last,
+           Self.shouldMergeAccurateCue(lastCue, with: cue) {
+            cues[cues.count - 1] = SubtitleCue(
+                startTime: lastCue.startTime,
+                endTime: max(lastCue.endTime, cue.endTime),
+                text: Self.mergedText(lastCue.text, cue.text)
+            )
+            cuesByModeAndLanguageID[mode, default: [:]][languageID] = cues
+            return
+        }
+
+        if let lastCue = cues.last, lastCue.endTime > cue.startTime {
+            cues[cues.count - 1] = SubtitleCue(
+                startTime: lastCue.startTime,
+                endTime: cue.startTime,
+                text: lastCue.text
+            )
+        }
+
+        cues.append(cue)
+        cuesByModeAndLanguageID[mode, default: [:]][languageID] = cues
+    }
+
+    private static func shouldMergeAccurateCue(_ previousCue: SubtitleCue, with nextCue: SubtitleCue) -> Bool {
+        let maximumGap: TimeInterval = 0.35
+        guard nextCue.startTime - previousCue.endTime <= maximumGap else {
+            return false
+        }
+
+        return !endsWithSentenceBoundary(previousCue.text)
+    }
+
+    private static func endsWithSentenceBoundary(_ value: String) -> Bool {
+        guard let lastCharacter = value.trimmingCharacters(in: .whitespacesAndNewlines).last else {
+            return false
+        }
+
+        return ".。！？!?".contains(lastCharacter)
+    }
+
+    private static func mergedText(_ first: String, _ second: String) -> String {
+        let trimmedFirst = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSecond = second.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedFirst.isEmpty else {
+            return trimmedSecond
+        }
+
+        guard !trimmedSecond.isEmpty else {
+            return trimmedFirst
+        }
+
+        if let firstCharacter = trimmedSecond.first,
+           ",.。！？!?、，；;：:)）]」』".contains(firstCharacter) {
+            return trimmedFirst + trimmedSecond
+        }
+
+        if let lastCharacter = trimmedFirst.last,
+           "（([「『".contains(lastCharacter) {
+            return trimmedFirst + trimmedSecond
+        }
+
+        if containsCJKText(trimmedFirst) || containsCJKText(trimmedSecond) {
+            return trimmedFirst + trimmedSecond
+        }
+
+        return trimmedFirst + " " + trimmedSecond
+    }
+
+    private static func containsCJKText(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            (0x3040...0x30FF).contains(scalar.value)
+                || (0x3400...0x9FFF).contains(scalar.value)
+                || (0xF900...0xFAFF).contains(scalar.value)
+        }
     }
 
     private static func timeInterval(fromTicks ticks: UInt64) -> TimeInterval {
