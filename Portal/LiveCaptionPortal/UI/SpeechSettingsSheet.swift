@@ -7,13 +7,23 @@ struct SpeechSettingsSheet: View {
     let onFailure: (String) -> Void
     let onAuthorizationSettingsChanged: () -> Void
     let onSpeechKeyChanged: () -> Void
+    let onAzureOpenAIConnectionTesting: () -> Void
+    let onAzureOpenAIConnectionTested: () -> Void
+    let onAzureOpenAIConnectionFailed: (String) -> Void
+    let onAzureOpenAISettingsChanged: () -> Void
     @State private var connectionTestStatus = SpeechConnectionTestStatus.idle
+    @State private var azureOpenAIConnectionTestStatus = AzureOpenAIConnectionTestStatus.idle
     @State private var activeConnectionTestID: UUID?
+    @State private var activeAzureOpenAIConnectionTestID: UUID?
     @State private var selectedPhraseHintScope = SpeechPhraseHintScope.shared
     @State private var newPhraseHintText = ""
 
     private var canTestConnection: Bool {
         settings.hasAuthorizationMaterial && !settings.region.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canTestAzureOpenAIConnection: Bool {
+        settings.hasAzureOpenAIRealtimeConfiguration
     }
 
     private var buildRequirementMessage: String {
@@ -82,10 +92,51 @@ struct SpeechSettingsSheet: View {
         }
     }
 
+    private func testAzureOpenAIConnection() {
+        settings.save()
+        let testID = UUID()
+        activeAzureOpenAIConnectionTestID = testID
+        azureOpenAIConnectionTestStatus = .testing
+        onAzureOpenAIConnectionTesting()
+        let settingsToTest = settings
+
+        Task {
+            do {
+                try await settingsToTest.testAzureOpenAIConnection()
+
+                await MainActor.run {
+                    guard activeAzureOpenAIConnectionTestID == testID else {
+                        return
+                    }
+
+                    azureOpenAIConnectionTestStatus = .success
+                    onAzureOpenAIConnectionTested()
+                }
+            } catch {
+                let message = error.localizedDescription
+
+                await MainActor.run {
+                    guard activeAzureOpenAIConnectionTestID == testID else {
+                        return
+                    }
+
+                    azureOpenAIConnectionTestStatus = .failure(message)
+                    onAzureOpenAIConnectionFailed(message)
+                }
+            }
+        }
+    }
+
     private func markConnectionTestChanged() {
         activeConnectionTestID = nil
         connectionTestStatus = .idle
         onAuthorizationSettingsChanged()
+    }
+
+    private func markAzureOpenAIConnectionTestChanged() {
+        activeAzureOpenAIConnectionTestID = nil
+        azureOpenAIConnectionTestStatus = .idle
+        onAzureOpenAISettingsChanged()
     }
 
     var body: some View {
@@ -149,6 +200,53 @@ struct SpeechSettingsSheet: View {
                         }
                     }
 
+                    SpeechSettingsSection(title: L10n.text("speechSettings.section.accurateCaption"), systemImage: "sparkles") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Toggle(L10n.text("azureOpenAI.accurateCaptionEnabled"), isOn: $settings.isAccurateCaptionEnabled)
+
+                            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
+                                SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.endpoint")) {
+                                    TextField(L10n.text("azureOpenAI.endpoint.placeholder"), text: $settings.azureOpenAIEndpointURLString)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+
+                                SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.deployment")) {
+                                    TextField(L10n.text("azureOpenAI.deployment.placeholder"), text: $settings.azureOpenAIDeploymentName)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+
+                                SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.apiKey")) {
+                                    SecureField(L10n.text("azureOpenAI.apiKey.placeholder"), text: $settings.azureOpenAIAPIKey)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+                            }
+
+                            SpeechSettingsStatusRow(
+                                title: L10n.text("azureOpenAI.connectionTest"),
+                                state: azureOpenAIConnectionTestStatus.title,
+                                tint: azureOpenAIConnectionTestStatus.tint
+                            )
+
+                            HStack {
+                                SpeechConnectionTestButton(
+                                    title: L10n.text("azureOpenAI.testConnection"),
+                                    isEnabled: canTestAzureOpenAIConnection && !azureOpenAIConnectionTestStatus.isTesting,
+                                    accessibilityHint: L10n.text("azureOpenAI.testConnection.hint"),
+                                    disabledAccessibilityHint: L10n.text("azureOpenAI.testConnection.disabledHint"),
+                                    action: testAzureOpenAIConnection
+                                )
+
+                                Spacer()
+                            }
+                            .controlSize(.large)
+
+                            Text(azureOpenAIConnectionTestStatus.message)
+                                .font(.caption)
+                                .foregroundStyle(azureOpenAIConnectionTestStatus.tint)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
                     SpeechSettingsSection(title: L10n.text("speechSettings.section.segmentation"), systemImage: "timer") {
                         SpeechSegmentationTimeoutControl(
                             timeoutMilliseconds: $settings.sentenceSilenceTimeoutMilliseconds
@@ -190,6 +288,18 @@ struct SpeechSettingsSheet: View {
             markConnectionTestChanged()
             onSpeechKeyChanged()
         }
+        .onChange(of: settings.isAccurateCaptionEnabled) {
+            markAzureOpenAIConnectionTestChanged()
+        }
+        .onChange(of: settings.azureOpenAIEndpointURLString) {
+            markAzureOpenAIConnectionTestChanged()
+        }
+        .onChange(of: settings.azureOpenAIDeploymentName) {
+            markAzureOpenAIConnectionTestChanged()
+        }
+        .onChange(of: settings.azureOpenAIAPIKey) {
+            markAzureOpenAIConnectionTestChanged()
+        }
     }
 }
 
@@ -220,6 +330,60 @@ enum SpeechConnectionTestStatus {
             L10n.text("speechConnection.message.testing")
         case .success:
             L10n.text("speechConnection.message.success")
+        case .failure(let message):
+            message
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .idle:
+            .secondary
+        case .testing:
+            .blue
+        case .success:
+            .green
+        case .failure:
+            .red
+        }
+    }
+
+    var isTesting: Bool {
+        if case .testing = self {
+            return true
+        }
+
+        return false
+    }
+}
+
+enum AzureOpenAIConnectionTestStatus {
+    case idle
+    case testing
+    case success
+    case failure(String)
+
+    var title: String {
+        switch self {
+        case .idle:
+            L10n.text("speechConnection.idle")
+        case .testing:
+            L10n.text("speechConnection.testing")
+        case .success:
+            L10n.text("speechConnection.success")
+        case .failure:
+            L10n.text("speechConnection.failure")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .idle:
+            L10n.text("azureOpenAI.connection.message.idle")
+        case .testing:
+            L10n.text("azureOpenAI.connection.message.testing")
+        case .success:
+            L10n.text("azureOpenAI.connection.message.success")
         case .failure(let message):
             message
         }
@@ -302,7 +466,10 @@ struct SpeechSettingsFieldRow<Content: View>: View {
 }
 
 struct SpeechConnectionTestButton: View {
+    var title = L10n.text("speechSettings.testConnection")
     let isEnabled: Bool
+    var accessibilityHint = L10n.text("speechSettings.testConnection.hint")
+    var disabledAccessibilityHint = L10n.text("speechSettings.testConnection.disabledHint")
     let action: () -> Void
 
     var body: some View {
@@ -313,7 +480,7 @@ struct SpeechConnectionTestButton: View {
 
             action()
         } label: {
-            Label(L10n.text("speechSettings.testConnection"), systemImage: "network")
+            Label(title, systemImage: "network")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isEnabled ? Color.white : Color.secondary)
                 .padding(.horizontal, 14)
@@ -333,7 +500,7 @@ struct SpeechConnectionTestButton: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.62)
-        .accessibilityHint(isEnabled ? L10n.text("speechSettings.testConnection.hint") : L10n.text("speechSettings.testConnection.disabledHint"))
+        .accessibilityHint(isEnabled ? accessibilityHint : disabledAccessibilityHint)
     }
 }
 

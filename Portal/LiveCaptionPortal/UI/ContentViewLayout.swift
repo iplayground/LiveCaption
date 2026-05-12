@@ -10,6 +10,7 @@ struct ContentViewLayout: View {
     @Binding var subtitleFileAccessStatus: SubtitleFileAccessStatus
     @Binding var speechSettings: SpeechSettings
     @Binding var speechAuthorizationStatus: SpeechAuthorizationStatus
+    @Binding var azureOpenAIConnectionStatus: AzureOpenAIConnectionStatus
     @Binding var relaySettings: RelaySettings
     @Binding var relayConnectionStatus: RelayConnectionStatus
     @Binding var isLogDrawerExpanded: Bool
@@ -77,6 +78,7 @@ struct ContentViewLayout: View {
                 captionSessionStatus: captionSessionStatus,
                 areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                 speechAuthorizationStatus: speechAuthorizationStatus,
+                azureOpenAIConnectionStatus: azureOpenAIConnectionStatus,
                 relayConnectionStatus: relayConnectionStatus,
                 onLogEvent: onLogEvent
             )
@@ -101,6 +103,7 @@ struct ContentViewLayout: View {
                 speechSettings: $speechSettings,
                 captionPreviewState: captionPreviewState,
                 speechAuthorizationStatus: $speechAuthorizationStatus,
+                azureOpenAIConnectionStatus: $azureOpenAIConnectionStatus,
                 relaySettings: $relaySettings,
                 relayConnectionStatus: $relayConnectionStatus,
                 recognizedCaptionCount: recognizedCaptionCount,

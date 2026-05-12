@@ -28,12 +28,19 @@ struct RelayViewerAccess {
 }
 
 extension RelaySettings {
-    nonisolated func negotiateViewerAccess(accessCode: String?) async throws -> RelayViewerAccess {
+    nonisolated func negotiateViewerAccess(
+        accessCode: String?,
+        captionMode: CaptionQualityMode? = nil
+    ) async throws -> RelayViewerAccess {
         let relayURL = try validatedRelayURL()
         let trackNumber = try validatedTrackNumber()
         let endpointURL = relayURL.appending(path: "api/viewer/negotiate")
+        var payload: [String: Any] = ["trackNumber": trackNumber]
+        if let captionMode {
+            payload["captionMode"] = captionMode.rawValue
+        }
         let body = try JSONSerialization.data(
-            withJSONObject: ["trackNumber": trackNumber],
+            withJSONObject: payload,
             options: [.sortedKeys, .withoutEscapingSlashes]
         )
 

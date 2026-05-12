@@ -71,6 +71,7 @@ struct RelayCaptionPublishInput: Sendable {
     let inputLanguageSpeechLocale: String
     let inputLanguageOutputID: String
     let outputLanguageIDs: [String]
+    let captionModes: [CaptionQualityMode: CaptionModeResult]
 
     init(
         event: RecognizedCaptionEvent,
@@ -84,6 +85,7 @@ struct RelayCaptionPublishInput: Sendable {
         inputLanguageSpeechLocale = inputLanguage.speechLocale
         inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
         outputLanguageIDs = outputLanguages.map(\.id)
+        captionModes = event.captionModes
     }
 }
 
@@ -297,6 +299,7 @@ struct RelaySettings: Equatable {
                 "text": input.text,
             ],
             "captions": Self.captions(from: input),
+            "captionModes": Self.captionModes(from: input),
         ]
 
         try await send(payload: payload, speechKey: speechKey, createdAt: publishedAt)
@@ -423,13 +426,54 @@ struct RelaySettings: Equatable {
         return payload
     }
 
-    nonisolated private static func captions(from input: RelayCaptionPublishInput) -> [String: String] {
-        Dictionary(uniqueKeysWithValues: input.outputLanguageIDs.compactMap { languageID in
-            let text = languageID == input.inputLanguageOutputID
-                ? input.text
-                : input.translations[languageID]
+    nonisolated private static func captionModes(from input: RelayCaptionPublishInput) -> [String: Any] {
+        var payload: [String: Any] = [:]
 
-            guard let normalizedText = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+        for mode in CaptionQualityMode.allCases {
+            guard let result = input.captionModes[mode] else {
+                continue
+            }
+
+            let captions = captions(
+                text: result.text,
+                translations: result.translations,
+                inputLanguageOutputID: input.inputLanguageOutputID,
+                outputLanguageIDs: input.outputLanguageIDs
+            )
+            guard !captions.isEmpty else {
+                continue
+            }
+
+            payload[mode.rawValue] = [
+                "provider": result.providerID,
+                "captions": captions,
+            ]
+        }
+
+        return payload
+    }
+
+    nonisolated private static func captions(from input: RelayCaptionPublishInput) -> [String: String] {
+        captions(
+            text: input.text,
+            translations: input.translations,
+            inputLanguageOutputID: input.inputLanguageOutputID,
+            outputLanguageIDs: input.outputLanguageIDs
+        )
+    }
+
+    nonisolated private static func captions(
+        text: String,
+        translations: [String: String],
+        inputLanguageOutputID: String,
+        outputLanguageIDs: [String]
+    ) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: outputLanguageIDs.compactMap { languageID in
+            let captionText = languageID == inputLanguageOutputID
+                ? text
+                : translations[languageID]
+
+            guard let normalizedText = captionText?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !normalizedText.isEmpty else {
                 return nil
             }

@@ -8,6 +8,7 @@ struct ControlSidebar: View {
     let captionSessionStatus: CaptionSessionStatus
     let areConfigurationControlsLocked: Bool
     let speechAuthorizationStatus: SpeechAuthorizationStatus
+    let azureOpenAIConnectionStatus: AzureOpenAIConnectionStatus
     let relayConnectionStatus: RelayConnectionStatus
     let onLogEvent: (LogLevel, String, String) -> Void
     @State private var subtitleFileSettingsErrorMessage: String?
@@ -34,6 +35,7 @@ struct ControlSidebar: View {
                         SessionStatusValue(status: captionSessionStatus)
                         SessionCaptureValue(isCapturing: audioInputController.isCapturing)
                         SpeechAuthorizationValue(status: speechAuthorizationStatus)
+                        AzureOpenAIConnectionValue(status: azureOpenAIConnectionStatus)
                         RelayConnectionValue(status: relayConnectionStatus)
                         SubtitleFileAccessValue(status: subtitleFileAccessStatus)
                     }

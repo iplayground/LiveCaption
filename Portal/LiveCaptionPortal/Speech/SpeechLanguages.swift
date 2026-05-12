@@ -1,6 +1,6 @@
 import Foundation
 
-enum InputLanguage: String, CaseIterable, Identifiable {
+enum InputLanguage: String, CaseIterable, Identifiable, Sendable {
     case mandarin = "zh-TW"
     case english = "en-US"
 
@@ -62,11 +62,11 @@ enum InputLanguage: String, CaseIterable, Identifiable {
     }
 }
 
-struct SpeechOutputLanguage: Identifiable {
+struct SpeechOutputLanguage: Identifiable, Equatable, Sendable {
     let code: String
     let name: String
     let nativeName: String
     let previewText: String
 
-    var id: String { code }
+    nonisolated var id: String { code }
 }

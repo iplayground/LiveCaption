@@ -8,6 +8,7 @@ struct StatusSidebar: View {
     @Binding var speechSettings: SpeechSettings
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @Binding var speechAuthorizationStatus: SpeechAuthorizationStatus
+    @Binding var azureOpenAIConnectionStatus: AzureOpenAIConnectionStatus
     @Binding var relaySettings: RelaySettings
     @Binding var relayConnectionStatus: RelayConnectionStatus
     let recognizedCaptionCount: Int
@@ -40,6 +41,7 @@ struct StatusSidebar: View {
                         LabeledValue(label: "Region", value: speechSettings.regionSummary)
                         LabeledValue(label: L10n.text("speech.inputLanguage"), value: inputLanguage.nativeName)
                         LabeledValue(label: L10n.text("speech.outputLanguages"), value: speechSettings.outputLanguageSummary)
+                        LabeledValue(label: L10n.text("azureOpenAI.status"), value: azureOpenAIConnectionStatus.title)
 
                         Button {
                             isSpeechSettingsPresented = true
@@ -69,6 +71,20 @@ struct StatusSidebar: View {
                     } onSpeechKeyChanged: {
                         relayConnectionStatus = .initial(for: relaySettings)
                         relayConnectionStatus.save()
+                    } onAzureOpenAIConnectionTesting: {
+                        azureOpenAIConnectionStatus = .testing
+                        azureOpenAIConnectionStatus.save()
+                    } onAzureOpenAIConnectionTested: {
+                        azureOpenAIConnectionStatus = .connected
+                        azureOpenAIConnectionStatus.save()
+                        onLogEvent(.info, L10n.text("log.azureOpenAI.connectionTestSucceeded"), "")
+                    } onAzureOpenAIConnectionFailed: { message in
+                        azureOpenAIConnectionStatus = .failed
+                        azureOpenAIConnectionStatus.save()
+                        onLogEvent(.error, L10n.text("log.azureOpenAI.connectionTestFailed"), message)
+                    } onAzureOpenAISettingsChanged: {
+                        azureOpenAIConnectionStatus = .initial(for: speechSettings)
+                        azureOpenAIConnectionStatus.save()
                     }
                 }
 

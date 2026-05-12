@@ -68,6 +68,10 @@ struct SpeechSettings: Equatable {
 
     var region = ""
     var speechKey = ""
+    var isAccurateCaptionEnabled = false
+    var azureOpenAIEndpointURLString = ""
+    var azureOpenAIDeploymentName = "realtime-translate"
+    var azureOpenAIAPIKey = ""
     var phraseHintsByScope = defaultPhraseHintsByScope
     var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMilliseconds {
         didSet {
@@ -84,6 +88,32 @@ struct SpeechSettings: Equatable {
 
     var hasAuthorizationMaterial: Bool {
         !speechKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasAzureOpenAIRealtimeConfiguration: Bool {
+        !azureOpenAIEndpointURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !azureOpenAIDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !azureOpenAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func azureOpenAIRealtimeConfiguration(
+        outputLanguages: [SpeechOutputLanguage]
+    ) -> AzureOpenAIRealtimeTranslationConfiguration {
+        AzureOpenAIRealtimeTranslationConfiguration(
+            endpointURLString: azureOpenAIEndpointURLString,
+            deploymentName: azureOpenAIDeploymentName,
+            apiKey: azureOpenAIAPIKey,
+            targetLanguages: outputLanguages
+        )
+    }
+
+    func testAzureOpenAIConnection() async throws {
+        let outputLanguages = Array(selectedOutputLanguages.prefix(1))
+        let configuration = azureOpenAIRealtimeConfiguration(outputLanguages: outputLanguages)
+        let service = AzureOpenAIRealtimeTranslationService()
+
+        try await service.start(configuration: configuration)
+        await service.stop()
     }
 
     var regionSummary: String {
@@ -155,6 +185,10 @@ struct SpeechSettings: Equatable {
 
         settings.region = userDefaults.string(forKey: UserDefaultsKey.region.rawValue) ?? ""
         settings.speechKey = userDefaults.string(forKey: UserDefaultsKey.speechKey.rawValue) ?? ""
+        settings.isAccurateCaptionEnabled = userDefaults.bool(forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
+        settings.azureOpenAIEndpointURLString = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue) ?? ""
+        settings.azureOpenAIDeploymentName = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue) ?? "realtime-translate"
+        settings.azureOpenAIAPIKey = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue) ?? ""
         settings.phraseHintsByScope = loadPhraseHintsByScope()
 
         if let outputLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.outputLanguageIDs.rawValue) as? [String] {
@@ -176,6 +210,9 @@ struct SpeechSettings: Equatable {
         )
         phraseHintsByScope = Self.normalizedPhraseHintsByScope(phraseHintsByScope)
         Self.userDefaults.set(region, forKey: UserDefaultsKey.region.rawValue)
+        Self.userDefaults.set(isAccurateCaptionEnabled, forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
+        Self.userDefaults.set(azureOpenAIEndpointURLString, forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue)
+        Self.userDefaults.set(azureOpenAIDeploymentName, forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue)
         Self.userDefaults.set(
             Array(selectedOutputLanguageIDs.union(Self.requiredOutputLanguageIDs)).sorted(),
             forKey: UserDefaultsKey.outputLanguageIDs.rawValue
@@ -189,6 +226,11 @@ struct SpeechSettings: Equatable {
             Self.userDefaults.removeObject(forKey: UserDefaultsKey.speechKey.rawValue)
         } else {
             Self.userDefaults.set(speechKey, forKey: UserDefaultsKey.speechKey.rawValue)
+        }
+        if azureOpenAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Self.userDefaults.removeObject(forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue)
+        } else {
+            Self.userDefaults.set(azureOpenAIAPIKey, forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue)
         }
     }
 
@@ -336,6 +378,10 @@ struct SpeechSettings: Equatable {
     private enum UserDefaultsKey: String {
         case region = "speech.region"
         case speechKey = "speech.key"
+        case accurateCaptionEnabled = "speech.accurateCaptionEnabled"
+        case azureOpenAIEndpoint = "speech.azureOpenAI.endpoint"
+        case azureOpenAIDeployment = "speech.azureOpenAI.deployment"
+        case azureOpenAIAPIKey = "speech.azureOpenAI.apiKey"
         case outputLanguageIDs = "speech.outputLanguageIDs"
         case sentenceSilenceTimeoutMilliseconds = "speech.sentenceSilenceTimeoutMilliseconds"
     }
@@ -401,6 +447,67 @@ enum SpeechAuthorizationStatus: String {
             .green
         case .failed:
             .red
+        }
+    }
+}
+
+enum AzureOpenAIConnectionStatus: String {
+    case disabled
+    case unconfigured
+    case unverified
+    case testing
+    case connected
+    case failed
+
+    private static let userDefaults = UserDefaults.standard
+    private static let userDefaultsKey = "speech.azureOpenAI.connectionStatus"
+
+    static func load(for settings: SpeechSettings) -> AzureOpenAIConnectionStatus {
+        guard settings.isAccurateCaptionEnabled else {
+            return .disabled
+        }
+
+        guard settings.hasAzureOpenAIRealtimeConfiguration else {
+            return .unconfigured
+        }
+
+        guard let rawValue = userDefaults.string(forKey: userDefaultsKey),
+              let status = AzureOpenAIConnectionStatus(rawValue: rawValue),
+              status != .disabled,
+              status != .unconfigured,
+              status != .testing else {
+            return .unverified
+        }
+
+        return status
+    }
+
+    static func initial(for settings: SpeechSettings) -> AzureOpenAIConnectionStatus {
+        guard settings.isAccurateCaptionEnabled else {
+            return .disabled
+        }
+
+        return settings.hasAzureOpenAIRealtimeConfiguration ? .unverified : .unconfigured
+    }
+
+    func save() {
+        Self.userDefaults.set(rawValue, forKey: Self.userDefaultsKey)
+    }
+
+    var title: String {
+        switch self {
+        case .disabled:
+            L10n.text("azureOpenAI.status.disabled")
+        case .unconfigured:
+            L10n.text("azureOpenAI.status.unconfigured")
+        case .unverified:
+            L10n.text("azureOpenAI.status.unverified")
+        case .testing:
+            L10n.text("azureOpenAI.status.testing")
+        case .connected:
+            L10n.text("azureOpenAI.status.connected")
+        case .failed:
+            L10n.text("azureOpenAI.status.failed")
         }
     }
 }

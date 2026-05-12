@@ -106,17 +106,21 @@ curl -X POST \
 
 ## Portal 本機設定
 
-Portal 使用 `UserDefaults` 保存短小的 Speech 設定：
+Portal 使用 `UserDefaults` 保存短小的 Speech 與 Azure OpenAI 設定：
 
 | Key | 說明 |
 | --- | --- |
 | `speech.region` | Azure Speech region，例如 `japaneast`。 |
 | `speech.key` | Azure Speech key，只保存在本機。 |
+| `speech.azureOpenAI.endpoint` | Azure OpenAI endpoint，例如 `https://<resource>.openai.azure.com`。 |
+| `speech.azureOpenAI.deployment` | Azure OpenAI realtime deployment name，例如 `realtime-translate`。 |
+| `speech.azureOpenAI.apiKey` | Azure OpenAI API key，只保存在本機。 |
+| `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI realtime 連線測試狀態。 |
 | `speech.outputLanguageIDs` | 字幕輸出語言清單。 |
 | `speech.sentenceSilenceTimeoutMilliseconds` | Speech 句子分段靜音時間，範圍 100 ms 到 5000 ms，預設 800 ms。 |
 | `speech.authorizationStatus` | 上次 Speech 授權測試狀態。 |
 
-`speech.key` 是機密，不得提交、不得寫入文件，也不得輸出到事件紀錄。若後續改由後端提供短效 token，Portal 應重新設計設定項與憑證保存方式，不沿用目前的本機 Speech key 流程。
+`speech.key` 與 `speech.azureOpenAI.apiKey` 是機密，不得提交、不得寫入文件，也不得輸出到事件紀錄。若後續改由後端提供短效 token，Portal 應重新設計設定項與憑證保存方式，不沿用目前的本機 key 流程。
 
 辨識詞彙提示不放在 `UserDefaults`。Portal 啟動時會從 Application Support 讀取：
 

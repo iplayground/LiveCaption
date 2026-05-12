@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var captionSessionElapsedTime: TimeInterval = 0
     @State private var speechSettings: SpeechSettings
     @State private var speechAuthorizationStatus: SpeechAuthorizationStatus
+    @State private var azureOpenAIConnectionStatus: AzureOpenAIConnectionStatus
     @State private var shouldVerifySpeechAuthorizationOnLaunch: Bool
     @State private var relaySettings: RelaySettings
     @State private var relayConnectionStatus: RelayConnectionStatus
@@ -32,6 +33,7 @@ struct ContentView: View {
     @State private var selectedLogLevel = LogLevel.all
     @State private var logEntries: [LogEntry] = []
     @StateObject private var pubSubCaptionReceiver = PubSubCaptionReceiver()
+    @State private var accurateCaptionService = AzureOpenAIRealtimeTranslationService()
     @State private var sleepPreventionController = SleepPreventionController()
     @State private var projectionCaptureWindowPresenter = ProjectionCaptureWindowPresenter()
     @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
@@ -42,6 +44,7 @@ struct ContentView: View {
     init() {
         let speechSettings = SpeechSettings.load()
         let authorizationStatus = SpeechAuthorizationStatus.load(for: speechSettings)
+        let azureOpenAIConnectionStatus = AzureOpenAIConnectionStatus.load(for: speechSettings)
         let shouldVerifySpeechAuthorizationOnLaunch = authorizationStatus == .authorized
         let relaySettings = RelaySettings.load()
         let relayConnectionStatus = RelayConnectionStatus.load(for: relaySettings)
@@ -52,6 +55,7 @@ struct ContentView: View {
         _speechAuthorizationStatus = State(
             initialValue: shouldVerifySpeechAuthorizationOnLaunch ? .verifying : authorizationStatus
         )
+        _azureOpenAIConnectionStatus = State(initialValue: azureOpenAIConnectionStatus)
         _shouldVerifySpeechAuthorizationOnLaunch = State(initialValue: shouldVerifySpeechAuthorizationOnLaunch)
         _relaySettings = State(initialValue: relaySettings)
         _relayConnectionStatus = State(
@@ -128,6 +132,7 @@ struct ContentView: View {
             subtitleFileAccessStatus: $subtitleFileAccessStatus,
             speechSettings: $speechSettings,
             speechAuthorizationStatus: $speechAuthorizationStatus,
+            azureOpenAIConnectionStatus: $azureOpenAIConnectionStatus,
             relaySettings: $relaySettings,
             relayConnectionStatus: $relayConnectionStatus,
             isLogDrawerExpanded: $isLogDrawerExpanded,
@@ -164,6 +169,7 @@ struct ContentView: View {
                 await verifyRelayConnectionOnLaunchIfNeeded()
             }
             .onAppear {
+                configureAudioCallbacks()
                 configureSpeechCallbacks()
                 refreshProjectionCaptureWindow()
             }
@@ -200,6 +206,9 @@ struct ContentView: View {
                 updateSpeechRecognition()
                 refreshCaptionSessionReadiness()
             }
+            .onChange(of: azureOpenAIConnectionStatus) {
+                refreshCaptionSessionReadiness()
+            }
             .onChange(of: subtitleFileAccessStatus) {
                 refreshCaptionSessionReadiness()
             }
@@ -216,6 +225,7 @@ struct ContentView: View {
     private func handleDisappear() {
         finishCaptionSessionTiming()
         finishSubtitleExportSession()
+        stopAccurateCaptionSession()
         pubSubCaptionReceiver.disconnect()
         sleepPreventionController.stopPreventingSleep()
         audioInputController.stopCapture()
@@ -229,6 +239,7 @@ struct ContentView: View {
             }
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
+            stopAccurateCaptionSession()
             isCaptionSessionActive = false
         } else {
             updateSpeechRecognition()
@@ -250,6 +261,7 @@ struct ContentView: View {
             && speechAuthorizationStatus == .authorized
             && subtitleFileAccessStatus == .authorized
             && relayConnectionStatus == .connected
+            && (!speechSettings.isAccurateCaptionEnabled || azureOpenAIConnectionStatus == .connected)
     }
 
     private var captionSessionDisabledReason: String? {
@@ -267,6 +279,10 @@ struct ContentView: View {
 
         if relayConnectionStatus != .connected {
             return L10n.text("caption.disabled.verifyRelayFirst")
+        }
+
+        if speechSettings.isAccurateCaptionEnabled, azureOpenAIConnectionStatus != .connected {
+            return L10n.text("caption.disabled.verifyAzureOpenAIFirst")
         }
 
         return nil
@@ -325,9 +341,15 @@ struct ContentView: View {
             isCaptionSessionActive = false
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
+            stopAccurateCaptionSession()
             pubSubCaptionReceiver.disconnect(keepsLatestCaption: true)
             sleepPreventionController.stopPreventingSleep()
         } else {
+            guard canStartCaptionSession else {
+                captionSessionStatus = .notStarted
+                return
+            }
+
             captionSessionElapsedTime = 0
             relayLastPublishedAt = nil
             recognizedCaptionCount = 0
@@ -337,14 +359,37 @@ struct ContentView: View {
             captionSessionStartedAt = startedAt
 
             if beginSubtitleExportSession(startedAt: startedAt) {
-                pubSubCaptionReceiver.connect(settings: relaySettings, viewerAccessCode: relayViewerAccessCode)
-                sleepPreventionController.startPreventingSleep()
-                captionSessionStatus = .captioning
-                isCaptionSessionActive = true
+                Task {
+                    await startCaptionSessionAfterPreparingOutput()
+                }
             } else {
                 finishCaptionSessionTiming()
                 sleepPreventionController.stopPreventingSleep()
                 captionSessionStatus = .failed
+            }
+        }
+    }
+
+    @MainActor
+    private func startCaptionSessionAfterPreparingOutput() async {
+        guard await startAccurateCaptionSessionIfNeeded() else {
+            subtitleExportSession = nil
+            finishCaptionSessionTiming()
+            sleepPreventionController.stopPreventingSleep()
+            captionSessionStatus = .failed
+            return
+        }
+
+        pubSubCaptionReceiver.connect(settings: relaySettings, viewerAccessCode: relayViewerAccessCode)
+        sleepPreventionController.startPreventingSleep()
+        captionSessionStatus = .captioning
+        isCaptionSessionActive = true
+    }
+
+    private func configureAudioCallbacks() {
+        audioInputController.onAudioPCM16Chunk = { [accurateCaptionService] chunk in
+            Task {
+                await accurateCaptionService.appendPCM16Audio(chunk)
             }
         }
     }
@@ -404,8 +449,102 @@ struct ContentView: View {
     }
 
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
-        appendCaptionToSubtitleExportSession(event)
-        publishCaptionEventToRelay(event)
+        Task {
+            let enrichedEvent = await eventWithAccurateCaptionIfAvailable(event)
+            await MainActor.run {
+                appendCaptionToSubtitleExportSession(enrichedEvent)
+                publishCaptionEventToRelay(enrichedEvent)
+            }
+        }
+    }
+
+    private func startAccurateCaptionSessionIfNeeded() async -> Bool {
+        guard speechSettings.isAccurateCaptionEnabled else {
+            return true
+        }
+
+        guard azureOpenAIConnectionStatus == .connected else {
+            appendLog(
+                level: .warning,
+                title: L10n.text("log.azureOpenAI.realtimeSkipped"),
+                detail: L10n.text("caption.disabled.verifyAzureOpenAIFirst")
+            )
+            return false
+        }
+
+        guard speechSettings.hasAzureOpenAIRealtimeConfiguration else {
+            appendLog(
+                level: .warning,
+                title: L10n.text("log.azureOpenAI.realtimeSkipped"),
+                detail: L10n.text("azureOpenAI.error.incompleteConfiguration")
+            )
+            return false
+        }
+
+        let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
+        let targetLanguages = speechSettings.selectedOutputLanguages.filter { language in
+            language.id != inputLanguageOutputID
+        }
+        let configuration = speechSettings.azureOpenAIRealtimeConfiguration(
+            outputLanguages: targetLanguages
+        )
+
+        do {
+            try await accurateCaptionService.start(configuration: configuration)
+            appendLog(
+                level: .info,
+                title: L10n.text("log.azureOpenAI.realtimeStarted"),
+                detail: configuration.normalizedEndpointURLString
+            )
+            return true
+        } catch {
+            azureOpenAIConnectionStatus = .failed
+            azureOpenAIConnectionStatus.save()
+            appendLog(
+                level: .error,
+                title: L10n.text("log.azureOpenAI.realtimeFailed"),
+                detail: error.localizedDescription
+            )
+            return false
+        }
+    }
+
+    private func stopAccurateCaptionSession() {
+        Task {
+            await accurateCaptionService.stop()
+        }
+    }
+
+    private func eventWithAccurateCaptionIfAvailable(_ event: RecognizedCaptionEvent) async -> RecognizedCaptionEvent {
+        guard speechSettings.isAccurateCaptionEnabled else {
+            return event
+        }
+
+        let translations = await accurateCaptionService.takeTranslations()
+        guard !translations.isEmpty else {
+            return event
+        }
+
+        let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
+        let selectedLanguageIDs = Set(speechSettings.selectedOutputLanguages.map(\.id))
+        let requiredLanguageIDs = SpeechSettings.requiredOutputLanguageIDs
+            .intersection(selectedLanguageIDs)
+            .filter { $0 != inputLanguageOutputID }
+        let missingRequiredLanguageIDs = requiredLanguageIDs.filter {
+            translations[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        }
+        guard missingRequiredLanguageIDs.isEmpty else {
+            return event
+        }
+
+        let accurateText = translations[inputLanguageOutputID]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = CaptionModeResult(
+            providerID: CaptionQualityMode.accurate.providerID,
+            text: accurateText?.isEmpty == false ? accurateText! : event.text,
+            translations: translations
+        )
+
+        return event.addingCaptionMode(.accurate, result: result)
     }
 
     private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent) {

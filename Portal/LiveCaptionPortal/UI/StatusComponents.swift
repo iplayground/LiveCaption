@@ -244,6 +244,58 @@ struct RelayConnectionValue: View {
     }
 }
 
+struct AzureOpenAIConnectionValue: View {
+    let status: AzureOpenAIConnectionStatus
+
+    private var systemImage: String {
+        switch status {
+        case .disabled:
+            "sparkles"
+        case .unconfigured:
+            "questionmark.circle.fill"
+        case .unverified:
+            "questionmark.circle.fill"
+        case .testing:
+            "arrow.triangle.2.circlepath"
+        case .connected:
+            "checkmark.seal.fill"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .disabled:
+            .secondary
+        case .unconfigured, .unverified:
+            .orange
+        case .testing:
+            .blue
+        case .connected:
+            .green
+        case .failed:
+            .red
+        }
+    }
+
+    var body: some View {
+        HStack {
+            Text(L10n.text("azureOpenAI.status"))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            SessionStatusBadge(
+                title: status.title,
+                systemImage: systemImage,
+                tint: tint
+            )
+        }
+        .font(.subheadline)
+    }
+}
+
 enum SubtitleFileAccessStatus {
     case notConfigured
     case authorized

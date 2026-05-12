@@ -26,6 +26,11 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
     @Published private(set) var errorMessage: String?
     @Published private(set) var isAutomaticNoiseCalibrationEnabled: Bool
     @Published var isMicrophoneSettingsPromptPresented = false
+    var onAudioPCM16Chunk: ((Data) -> Void)? {
+        didSet {
+            sampleDelegate.onAudioPCM16Chunk = onAudioPCM16Chunk
+        }
+    }
     let levelState = AudioLevelState()
 
     private static let selectedDeviceDefaultsKey = "audioInput.selectedDeviceID"
