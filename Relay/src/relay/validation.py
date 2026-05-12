@@ -3,16 +3,23 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from relay.models import CaptionEvent, CaptionSource, SpeechSegment
+from relay.models import CaptionEvent, CaptionModeContent, CaptionSource, SpeechSegment
 
 ALLOWED_INPUT_LANGUAGES = frozenset({"zh-TW", "en-US"})
 ALLOWED_OUTPUT_LANGUAGES = frozenset({"zh-Hant", "en", "ja", "ko"})
 REQUIRED_OUTPUT_LANGUAGES = frozenset({"zh-Hant", "en"})
+ALLOWED_CAPTION_MODES = frozenset({"fast", "accurate"})
+DEFAULT_CAPTION_MODE = "fast"
+DEFAULT_CAPTION_PROVIDER = "azure-speech"
+CAPTION_MODE_PROVIDERS = {
+    "fast": "azure-speech",
+    "accurate": "azure-openai-realtime-translate",
+}
 EXPECTED_BUNDLE_IDENTIFIER = "io.iplayground.LiveCaptionPortal"
 
 MAX_ROOM_NAME_LENGTH = 80
 MAX_TEXT_LENGTH = 4_000
-MAX_BODY_FIELD_COUNT = 8
+MAX_BODY_FIELD_COUNT = 9
 FUTURE_SKEW = timedelta(minutes=5)
 CONTROL_CHARACTER_CODES = frozenset(range(0x00, 0x20)) | {0x7F}
 ROOM_NAME_FORBIDDEN_CHARACTERS = frozenset({"/", "?", "#"})
@@ -41,7 +48,11 @@ def validate_caption_event(payload: Any, *, now: datetime | None = None) -> Capt
     created_at = _parse_created_at(_required_string(payload, "createdAt"), now=now)
     source = _validate_source(_required_object(payload, "source"))
     speech = _validate_speech(_required_object(payload, "speech"))
-    captions = _validate_captions(_required_object(payload, "captions"))
+    captions = _validate_captions(
+        _required_object(payload, "captions"),
+        require_required_languages=_requires_required_caption_languages(payload.get("captionModes")),
+    )
+    caption_modes = _validate_caption_modes(payload.get("captionModes"), fallback_captions=captions)
 
     return CaptionEvent(
         room_name=room_name,
@@ -50,6 +61,7 @@ def validate_caption_event(payload: Any, *, now: datetime | None = None) -> Capt
         source=source,
         speech=speech,
         captions=captions,
+        caption_modes=caption_modes,
     )
 
 
@@ -129,9 +141,24 @@ def _validate_speech(payload: dict[str, Any]) -> SpeechSegment:
     )
 
 
-def _validate_captions(payload: dict[str, Any]) -> dict[str, str]:
+def _requires_required_caption_languages(caption_modes_payload: Any) -> bool:
+    if caption_modes_payload is None:
+        return True
+    if not isinstance(caption_modes_payload, dict):
+        return False
+    return "fast" in caption_modes_payload
+
+
+def _validate_captions(
+    payload: dict[str, Any],
+    *,
+    require_required_languages: bool,
+) -> dict[str, str]:
+    if not payload:
+        raise CaptionEventValidationError("captions", "At least one caption language is required.")
+
     missing_languages = sorted(REQUIRED_OUTPUT_LANGUAGES.difference(payload.keys()))
-    if missing_languages:
+    if require_required_languages and missing_languages:
         raise CaptionEventValidationError(
             f"captions.{missing_languages[0]}",
             f"Required output language {missing_languages[0]} is missing.",
@@ -148,6 +175,61 @@ def _validate_captions(payload: dict[str, Any]) -> dict[str, str]:
     return normalized_captions
 
 
+def _validate_caption_modes(
+    payload: Any,
+    *,
+    fallback_captions: dict[str, str],
+) -> dict[str, CaptionModeContent]:
+    if payload is None:
+        return {
+            DEFAULT_CAPTION_MODE: CaptionModeContent(
+                provider=DEFAULT_CAPTION_PROVIDER,
+                captions=fallback_captions,
+            )
+        }
+
+    if not isinstance(payload, dict):
+        raise CaptionEventValidationError("captionModes", "Field must be a JSON object.")
+
+    if not payload:
+        raise CaptionEventValidationError("captionModes", "At least one caption mode is required.")
+
+    normalized_modes: dict[str, CaptionModeContent] = {}
+    for mode, mode_payload in payload.items():
+        if not isinstance(mode, str) or mode not in ALLOWED_CAPTION_MODES:
+            raise CaptionEventValidationError("captionModes", "Caption mode is not supported.")
+        if not isinstance(mode_payload, dict):
+            raise CaptionEventValidationError(
+                f"captionModes.{mode}",
+                "Caption mode value must be a JSON object.",
+            )
+
+        provider = mode_payload.get("provider", CAPTION_MODE_PROVIDERS[mode])
+        if not isinstance(provider, str):
+            raise CaptionEventValidationError(
+                f"captionModes.{mode}.provider",
+                "Caption provider must be a string.",
+            )
+
+        normalized_provider = provider.strip()
+        if normalized_provider != CAPTION_MODE_PROVIDERS[mode]:
+            raise CaptionEventValidationError(
+                f"captionModes.{mode}.provider",
+                "Caption provider does not match caption mode.",
+            )
+
+        captions = _validate_captions(
+            _required_object(mode_payload, "captions", prefix=f"captionModes.{mode}"),
+            require_required_languages=mode == "fast",
+        )
+        normalized_modes[mode] = CaptionModeContent(
+            provider=normalized_provider,
+            captions=captions,
+        )
+
+    return normalized_modes
+
+
 def _validate_text(value: str, field: str) -> str:
     text = value.strip()
     if not text:
@@ -157,10 +239,11 @@ def _validate_text(value: str, field: str) -> str:
     return text
 
 
-def _required_object(payload: dict[str, Any], field: str) -> dict[str, Any]:
+def _required_object(payload: dict[str, Any], field: str, *, prefix: str | None = None) -> dict[str, Any]:
     value = payload.get(field)
+    error_field = f"{prefix}.{field}" if prefix else field
     if not isinstance(value, dict):
-        raise CaptionEventValidationError(field, "Field must be a JSON object.")
+        raise CaptionEventValidationError(error_field, "Field must be a JSON object.")
     return value
 
 

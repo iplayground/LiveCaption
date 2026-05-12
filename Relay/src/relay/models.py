@@ -19,6 +19,12 @@ class SpeechSegment:
 
 
 @dataclass(frozen=True)
+class CaptionModeContent:
+    provider: str
+    captions: dict[str, str]
+
+
+@dataclass(frozen=True)
 class CaptionEvent:
     room_name: str
     track_number: int
@@ -26,3 +32,4 @@ class CaptionEvent:
     source: CaptionSource
     speech: SpeechSegment
     captions: dict[str, str]
+    caption_modes: dict[str, CaptionModeContent]

@@ -5,6 +5,7 @@ from typing import Any
 
 from relay.http import build_health_payload, build_publish_payload
 from relay.http import handle_caption_event_request
+from relay.http import handle_portal_negotiate_request
 from relay.http import handle_viewer_negotiate_request
 from relay.viewer_access import ViewerAccessError
 from relay.webpubsub import ViewerAccessToken
@@ -19,33 +20,63 @@ class FakePublisher:
         self.fail = fail
         self.payloads: list[dict[str, Any]] = []
 
-    def publish(self, payload: dict[str, Any], *, track_number: int | None = None) -> None:
+    def publish(
+        self,
+        payload: dict[str, Any],
+        *,
+        track_number: int | None = None,
+        caption_mode: str | None = None,
+    ) -> None:
         if self.fail:
             raise RelayWebPubSubError("boom")
-        self.payloads.append({"payload": payload, "track_number": track_number})
+        self.payloads.append(
+            {"payload": payload, "track_number": track_number, "caption_mode": caption_mode}
+        )
 
 
 class FakeViewerTokenProvider:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
-        self.requests: list[tuple[int | None, datetime | None]] = []
+        self.requests: list[tuple[int | None, str | None, datetime | None]] = []
 
     def get_viewer_access_token(
         self,
         *,
         track_number: int | None = None,
+        caption_mode: str | None = None,
         now: datetime | None = None,
     ) -> ViewerAccessToken:
-        self.requests.append((track_number, now))
+        self.requests.append((track_number, caption_mode, now))
         if self.fail:
             raise RelayWebPubSubError("boom")
         return ViewerAccessToken(
             url="wss://livecaption.webpubsub.azure.com/client/hubs/livecaption?access_token=fake",
             hub_name="livecaption",
-            group_name=(
-                f"caption-live-track-{track_number}"
-                if track_number is not None
-                else "caption-live"
+            group_name=_fake_group_name(
+                "caption-live",
+                track_number=track_number,
+                caption_mode=caption_mode,
+            ),
+            expires_at=datetime(2026, 4, 30, 13, 0, tzinfo=UTC),
+        )
+
+    def get_operator_access_token(
+        self,
+        *,
+        track_number: int | None = None,
+        caption_mode: str | None = None,
+        now: datetime | None = None,
+    ) -> ViewerAccessToken:
+        self.requests.append((track_number, caption_mode, now))
+        if self.fail:
+            raise RelayWebPubSubError("boom")
+        return ViewerAccessToken(
+            url="wss://livecaption.webpubsub.azure.com/client/hubs/livecaption?access_token=fake",
+            hub_name="livecaption",
+            group_name=_fake_group_name(
+                "caption-operator",
+                track_number=track_number,
+                caption_mode=caption_mode,
             ),
             expires_at=datetime(2026, 4, 30, 13, 0, tzinfo=UTC),
         )
@@ -62,6 +93,18 @@ class FakeViewerAccessCodeVerifier:
             raise ViewerAccessError("invalid")
 
 
+def _fake_group_name(
+    base_group_name: str,
+    *,
+    track_number: int | None,
+    caption_mode: str | None,
+) -> str:
+    group_name = f"{base_group_name}-{caption_mode}" if caption_mode else base_group_name
+    if track_number is None:
+        return group_name
+    return f"{group_name}-track-{track_number}"
+
+
 def test_handle_caption_event_request_accepts_valid_payload() -> None:
     publisher = FakePublisher()
 
@@ -75,8 +118,41 @@ def test_handle_caption_event_request_accepts_valid_payload() -> None:
     assert body == {"accepted": True}
     assert len(publisher.payloads) == 1
     assert publisher.payloads[0]["track_number"] == 1
+    assert publisher.payloads[0]["caption_mode"] == "fast"
     assert publisher.payloads[0]["payload"]["trackNumber"] == 1
+    assert publisher.payloads[0]["payload"]["captionMode"] == "fast"
+    assert publisher.payloads[0]["payload"]["captionProvider"] == "azure-speech"
     assert publisher.payloads[0]["payload"]["captions"]["en"] == "Welcome to today's event"
+
+
+def test_handle_caption_event_request_publishes_each_caption_mode() -> None:
+    payload = valid_payload()
+    payload["captionModes"] = {
+        "fast": {
+            "provider": "azure-speech",
+            "captions": payload["captions"],
+        },
+        "accurate": {
+            "provider": "azure-openai-realtime-translate",
+            "captions": {
+                "zh-Hant": "歡迎各位來到今天的活動",
+                "en": "Welcome, everyone, to today's event.",
+            },
+        },
+    }
+    publisher = FakePublisher()
+
+    status_code, body = handle_caption_event_request(
+        payload,
+        publisher=publisher,
+        now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+    )
+
+    assert status_code == 202
+    assert body == {"accepted": True}
+    assert [entry["caption_mode"] for entry in publisher.payloads] == ["fast", "accurate"]
+    assert publisher.payloads[1]["payload"]["captionProvider"] == "azure-openai-realtime-translate"
+    assert publisher.payloads[1]["payload"]["captions"]["en"] == "Welcome, everyone, to today's event."
 
 
 def test_handle_caption_event_request_returns_sanitized_error() -> None:
@@ -125,9 +201,12 @@ def test_build_publish_payload_omits_source_and_speech_text() -> None:
     payload = build_publish_payload(
         event,
         received_at=datetime(2026, 4, 29, 12, 35, 1, 123000, tzinfo=UTC),
+        caption_mode="fast",
     )
 
     assert payload["relay"] == {"receivedAt": "2026-04-29T12:35:01.123Z"}
+    assert payload["captionMode"] == "fast"
+    assert payload["captionProvider"] == "azure-speech"
     assert payload["roomName"] == "A101"
     assert payload["trackNumber"] == 1
     assert payload["speech"] == {
@@ -150,6 +229,7 @@ def test_build_publish_payload_keeps_empty_room_name() -> None:
     payload = build_publish_payload(
         event,
         received_at=datetime(2026, 4, 29, 12, 35, 1, 123000, tzinfo=UTC),
+        caption_mode="fast",
     )
 
     assert payload["roomName"] == ""
@@ -189,7 +269,7 @@ def test_handle_viewer_negotiate_request_returns_receive_url() -> None:
         "group": "caption-live",
         "expiresAt": "2026-04-30T13:00:00.000Z",
     }
-    assert provider.requests == [(None, now)]
+    assert provider.requests == [(None, None, now)]
     assert verifier.requests == [("123456", now)]
 
 
@@ -208,7 +288,26 @@ def test_handle_viewer_negotiate_request_accepts_track_filter() -> None:
 
     assert status_code == 200
     assert body["group"] == "caption-live-track-2"
-    assert provider.requests == [(2, now)]
+    assert provider.requests == [(2, None, now)]
+
+
+def test_handle_viewer_negotiate_request_accepts_caption_mode_filter() -> None:
+    provider = FakeViewerTokenProvider()
+    verifier = FakeViewerAccessCodeVerifier()
+    now = datetime(2026, 4, 30, 12, 0, tzinfo=UTC)
+
+    status_code, body = handle_viewer_negotiate_request(
+        "123456",
+        token_provider=provider,
+        access_code_verifier=verifier,
+        track_number=2,
+        caption_mode="accurate",
+        now=now,
+    )
+
+    assert status_code == 200
+    assert body["group"] == "caption-live-accurate-track-2"
+    assert provider.requests == [(2, "accurate", now)]
 
 
 def test_handle_viewer_negotiate_request_rejects_invalid_track_filter() -> None:
@@ -295,5 +394,55 @@ def test_handle_viewer_negotiate_request_skips_access_code_when_disabled() -> No
 
     assert status_code == 200
     assert body["url"].startswith("wss://livecaption.webpubsub.azure.com/")
-    assert provider.requests == [(None, now)]
+    assert provider.requests == [(None, None, now)]
     assert verifier.requests == []
+
+
+def test_handle_portal_negotiate_request_returns_operator_receive_url() -> None:
+    provider = FakeViewerTokenProvider()
+    now = datetime(2026, 4, 30, 12, 0, tzinfo=UTC)
+
+    status_code, body = handle_portal_negotiate_request(
+        token_provider=provider,
+        track_number=2,
+        now=now,
+    )
+
+    assert status_code == 200
+    assert body == {
+        "url": "wss://livecaption.webpubsub.azure.com/client/hubs/livecaption?access_token=fake",
+        "hub": "livecaption",
+        "group": "caption-operator-track-2",
+        "expiresAt": "2026-04-30T13:00:00.000Z",
+    }
+    assert provider.requests == [(2, None, now)]
+
+
+def test_handle_portal_negotiate_request_rejects_invalid_track_filter() -> None:
+    provider = FakeViewerTokenProvider()
+
+    status_code, body = handle_portal_negotiate_request(
+        token_provider=provider,
+        track_number="2",
+        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
+    )
+
+    assert status_code == 400
+    assert body["error"]["code"] == "invalid_portal_filter"
+    assert provider.requests == []
+
+
+def test_handle_portal_negotiate_request_returns_sanitized_error() -> None:
+    status_code, body = handle_portal_negotiate_request(
+        token_provider=FakeViewerTokenProvider(fail=True),
+        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
+    )
+
+    assert status_code == 502
+    assert body == {
+        "error": {
+            "code": "portal_negotiate_failed",
+            "message": "Portal connection could not be negotiated.",
+            "details": [],
+        }
+    }

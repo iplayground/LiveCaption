@@ -13,6 +13,7 @@ from relay.auth import SIGNATURE_HEADER, TIMESTAMP_HEADER, RelayAuthenticationEr
 from relay.auth import verify_speech_key_signature
 from relay.http import build_health_payload
 from relay.http import handle_caption_event_request
+from relay.http import handle_portal_negotiate_request
 from relay.http import handle_viewer_negotiate_request
 from relay.http import to_json_response_body
 from relay.speech_keys import AzureSpeechKeyProvider, RelaySpeechKeyError
@@ -127,8 +128,40 @@ def viewer_negotiate(req: func.HttpRequest) -> func.HttpResponse:
         req.headers.get(ACCESS_CODE_HEADER),
         token_provider=viewer_token_provider,
         access_code_verifier=RelayViewerAccessCodeVerifier(),
-        track_number=_read_viewer_track_number(req),
+        track_number=_read_track_number(req),
+        caption_mode=_read_caption_mode(req),
         access_code_required=is_viewer_access_code_required(),
+    )
+    return _json_response(body, status_code=status_code)
+
+
+@app.route(route="api/portal/negotiate", methods=["POST"])
+def portal_negotiate(req: func.HttpRequest) -> func.HttpResponse:
+    body_bytes = req.get_body()
+    try:
+        speech_keys = speech_key_provider.get_keys()
+        _verify_with_any_speech_key(
+            speech_keys=speech_keys,
+            timestamp=req.headers.get(TIMESTAMP_HEADER),
+            signature=req.headers.get(SIGNATURE_HEADER),
+            body=body_bytes,
+        )
+    except (RelayAuthenticationError, RelaySpeechKeyError):
+        return _json_response(
+            {
+                "error": {
+                    "code": "unauthorized",
+                    "message": "Request is not authorized.",
+                    "details": [],
+                }
+            },
+            status_code=401,
+        )
+
+    status_code, body = handle_portal_negotiate_request(
+        token_provider=viewer_token_provider,
+        track_number=_read_track_number(req),
+        caption_mode=_read_caption_mode(req),
     )
     return _json_response(body, status_code=status_code)
 
@@ -179,7 +212,15 @@ class RelayViewerAccessCodeVerifier:
         )
 
 
-def _read_viewer_track_number(req: func.HttpRequest):
+def _read_track_number(req: func.HttpRequest):
+    return _read_request_body_field(req, "trackNumber")
+
+
+def _read_caption_mode(req: func.HttpRequest):
+    return _read_request_body_field(req, "captionMode")
+
+
+def _read_request_body_field(req: func.HttpRequest, field: str):
     body_bytes = req.get_body()
     if not body_bytes:
         return None
@@ -191,7 +232,7 @@ def _read_viewer_track_number(req: func.HttpRequest):
 
     if not isinstance(payload, dict):
         return False
-    return payload.get("trackNumber")
+    return payload.get(field)
 
 
 def _json_response(payload: dict, *, status_code: int) -> func.HttpResponse:

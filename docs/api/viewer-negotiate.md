@@ -13,7 +13,8 @@ POST /api/viewer/negotiate
 Content-Type: application/json
 
 {
-  "trackNumber": 1
+  "trackNumber": 1,
+  "captionMode": "accurate"
 }
 ```
 
@@ -25,13 +26,14 @@ Content-Type: application/json
 X-LiveCaption-Viewer-Access-Code: <viewer-access-code>
 
 {
-  "trackNumber": 1
+  "trackNumber": 1,
+  "captionMode": "fast"
 }
 ```
 
-當 Relay 設定 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 必須在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 透過 `HEAD /api/caption-events` 取得並顯示的 access code。Portal 主控板的 PubSub 觀察連線也使用同一個 Relay 回傳的 access code；Portal 不自行計算 access code。Request body 可選；多軌活動時應帶入 `trackNumber` 做字幕軌過濾。
+當 Relay 設定 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 必須在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 透過 `HEAD /api/caption-events` 取得並顯示的 access code。Portal 主控板的 PubSub 觀察連線也使用同一個 Relay 回傳的 access code；Portal 不自行計算 access code。Request body 可選；多軌活動時應帶入 `trackNumber` 做字幕軌過濾。若觀眾端要選擇 final 字幕品質，應帶入 `captionMode`，允許值為 `fast` 或 `accurate`。
 
-Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket URL。多軌活動時，觀眾端 App 與 Portal 主控板觀察連線應在 request body 帶入要收看的 `trackNumber`，Relay 會回傳該軌專用 group，例如 `caption-live-track-1`。未帶 `trackNumber` 時，Relay 保留舊行為，回傳可接收 `caption-live` base group 的 URL。
+Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket URL。多軌活動時，觀眾端 App 與 Portal 主控板觀察連線應在 request body 帶入要收看的 `trackNumber`，Relay 會回傳該軌專用 group，例如 `caption-live-track-1`。帶入 `captionMode=accurate` 時，Relay 回傳 `caption-live-accurate-track-1`。未帶 `captionMode` 時，Relay 保留舊行為，回傳快速模式 group；未帶 `trackNumber` 時，Relay 回傳對應模式的 base group。
 
 成功回應：
 
@@ -39,7 +41,7 @@ Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket UR
 {
   "url": "wss://<web-pubsub-name>.webpubsub.azure.com/client/hubs/livecaption?access_token=<token>",
   "hub": "livecaption",
-  "group": "caption-live-track-1",
+  "group": "caption-live-accurate-track-1",
   "expiresAt": "2026-04-30T13:00:00.000Z"
 }
 ```
@@ -50,7 +52,7 @@ Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket UR
 | --- | --- |
 | `url` | 觀眾端 App 用來連線 Azure Web PubSub 的短效 WebSocket URL。包含 bearer token，不應寫入 log 或長期保存。 |
 | `hub` | Web PubSub hub 名稱，第一版為 `livecaption`。 |
-| `group` | Relay 發布字幕的 group 名稱。多軌過濾時格式為 `<base-group>-track-<trackNumber>`；未帶過濾時為 base group，例如 `caption-live`。 |
+| `group` | Relay 發布字幕的 group 名稱。多軌與模式過濾時格式為 `<base-group>-<captionMode>-track-<trackNumber>`；未帶模式時為快速模式相容 group，例如 `caption-live` 或 `caption-live-track-1`。 |
 | `expiresAt` | URL 內 token 的預期到期時間。觀眾端 App 應在到期前或斷線後重新 negotiate。 |
 
 ## 權限
@@ -65,7 +67,7 @@ Access code 由 Relay 以 Azure Speech key、UTC 日期、Web PubSub hub 與 gro
 
 Relay 驗證 negotiate request 時接受當日 access code，並允許前一日 access code 通過，避免活動跨 UTC 午夜時觀眾端立即失效。Access code 只用來限制公開 wss URL 的取得，不是使用者身份驗證。
 
-Access code 不綁定 `trackNumber`；同一場活動可用同一組 access code 取得不同字幕軌的 viewer URL。字幕軌過濾由 Azure Web PubSub group 權限完成，觀眾端只會被加入 negotiate 指定的 group。
+Access code 不綁定 `trackNumber` 或 `captionMode`；同一場活動可用同一組 access code 取得不同字幕軌與字幕品質模式的 viewer URL。字幕軌與模式過濾由 Azure Web PubSub group 權限完成，觀眾端只會被加入 negotiate 指定的 group。
 
 Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 access code 由 `VIEWER_ACCESS_CODE_REQUIRED` app setting 控制，預設與無效值都視為 `true`。
 
@@ -127,7 +129,7 @@ Content-Type: application/json
 }
 ```
 
-若 `trackNumber` 不是正整數：
+若 `trackNumber` 不是正整數，或 `captionMode` 不是 `fast` / `accurate`：
 
 ```http
 HTTP/1.1 400 Bad Request

@@ -11,6 +11,10 @@ X-LiveCaption-Timestamp: <utc-iso-8601-timestamp>
 X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
 ```
 
+Portal 會依 final 字幕品質模式分開呼叫同一個 endpoint。快速字幕與精準字幕是兩筆獨立
+POST；快速字幕的 `captionModes` 只包含 `fast`，精準字幕的 `captionModes` 只包含
+`accurate`。Relay 不應假設同一個字幕事件同時包含兩種模式。
+
 Portal 使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
 
 ```http
@@ -49,7 +53,9 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
   "createdAt": "2026-04-29T12:34:56.789Z",
   "source": {
     "bundleIdentifier": "io.iplayground.LiveCaptionPortal",
-    "appVersion": "1.0"
+    "appVersion": "1.0",
+    "captionQualityMode": "fast",
+    "captionProvider": "azure-speech"
   },
   "speech": {
     "inputLanguage": "zh-TW",
@@ -61,6 +67,47 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
     "zh-Hant": "歡迎來到今天的活動",
     "en": "Welcome to today's event",
     "ja": "本日のイベントへようこそ"
+  },
+  "captionModes": {
+    "fast": {
+      "provider": "azure-speech",
+      "captions": {
+        "zh-Hant": "歡迎來到今天的活動",
+        "en": "Welcome to today's event",
+        "ja": "本日のイベントへようこそ"
+      }
+    }
+  }
+}
+```
+
+精準字幕會另以獨立 POST 傳送。Azure OpenAI 由模型端決定 final 區段，因此精準字幕可依語言逐筆送出；`captions` 與 `captionModes.accurate.captions` 只需包含本次 OpenAI final 已產出的語言：
+
+```json
+{
+  "roomName": "A101",
+  "trackNumber": 1,
+  "createdAt": "2026-04-29T12:34:57.250Z",
+  "source": {
+    "bundleIdentifier": "io.iplayground.LiveCaptionPortal",
+    "appVersion": "1.0"
+  },
+  "speech": {
+    "inputLanguage": "zh-TW",
+    "offsetTicks": 120000000,
+    "durationTicks": 35000000,
+    "text": "Welcome, everyone, to today's event."
+  },
+  "captions": {
+    "en": "Welcome, everyone, to today's event."
+  },
+  "captionModes": {
+    "accurate": {
+      "provider": "azure-openai-realtime-translate",
+      "captions": {
+        "en": "Welcome, everyone, to today's event."
+      }
+    }
   }
 }
 ```
@@ -74,12 +121,18 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 | `createdAt` | 是 | Portal 建立事件的 UTC ISO 8601 時間。 |
 | `source.bundleIdentifier` | 是 | Portal App bundle identifier，目前為 `io.iplayground.LiveCaptionPortal`。 |
 | `source.appVersion` | 否 | Portal App 版本，用於診斷相容性，不得含使用者識別資料。 |
+| `source.captionQualityMode` | 否 | final 字幕品質模式；快速為 `fast`，精準為 `accurate`。 |
+| `source.captionProvider` | 否 | final 字幕實際來源；快速模式為 `azure-speech`，精準模式為 `azure-openai-realtime-translate`。 |
 | `speech.inputLanguage` | 是 | 語音輸入語言，目前允許 `zh-TW` 或 `en-US`。 |
-| `speech.offsetTicks` | 是 | Azure Speech SDK 回傳的 offset ticks，1 tick = 100 ns。 |
-| `speech.durationTicks` | 是 | Azure Speech SDK 回傳的 duration ticks，1 tick = 100 ns。 |
-| `speech.text` | 是 | 最終辨識文字，只供 Relay 發布或轉換，不得完整寫入 log。 |
-| `captions` | 是 | 字幕輸出語言 object，至少包含 `zh-Hant` 與 `en`。 |
+| `speech.offsetTicks` | 是 | 字幕區段起點 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式來自 Azure OpenAI 區段或 Portal 的保守時間估算。 |
+| `speech.durationTicks` | 是 | 字幕區段長度 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式來自 Azure OpenAI 區段或 Portal 的保守時間估算。 |
+| `speech.text` | 是 | 本筆事件的主要字幕文字，只供 Relay 驗證與發布流程使用，不得完整寫入 log。 |
+| `captions` | 是 | 向後相容欄位，代表本筆 POST 的 final 字幕輸出語言 object。快速 POST 至少包含 `zh-Hant` 與 `en`；精準 POST 可只包含本次 Azure OpenAI final 已產出的語言。 |
 | `captions.<language>` | 是 | 字幕文字，目前允許 `zh-Hant`、`en`、`ja`、`ko`。 |
+| `captionModes` | 否 | final 字幕模式 object；Portal 目前分開傳送 `fast` 與 `accurate`，因此通常每筆只包含一種模式。未提供時 Relay 視為只提供 `fast`。 |
+| `captionModes.fast.provider` | 否 | 必須為 `azure-speech`。 |
+| `captionModes.accurate.provider` | 否 | 必須為 `azure-openai-realtime-translate`。 |
+| `captionModes.<mode>.captions` | 是 | 該模式的字幕輸出語言 object。`fast` 至少包含 `zh-Hant` 與 `en`；`accurate` 可只包含本次 OpenAI final 已產出的語言。 |
 
 ## 語言規則
 
@@ -108,8 +161,13 @@ Relay 接收事件後必須先驗證：
 - `speech.inputLanguage` 在允許清單內。
 - `speech.offsetTicks` 與 `speech.durationTicks` 是非負整數，且 `durationTicks` 大於 0。
 - `speech.text` 去除前後空白後不可為空。
-- `captions` 至少包含 `zh-Hant` 與 `en`。
+- `captions` 不可為空；若事件未提供 `captionModes`，或 `captionModes` 包含 `fast`，則至少包含 `zh-Hant` 與 `en`。
 - `captions` key 在字幕輸出語言允許清單內，value 是非空 string。
+- `captionModes` 若存在，只允許 `fast` 與 `accurate`。
+- `captionModes.fast.provider` 必須為 `azure-speech`。
+- `captionModes.accurate.provider` 必須為 `azure-openai-realtime-translate`。
+- `captionModes.fast.captions` 必須符合字幕輸出語言與必要語言規則。
+- `captionModes.accurate.captions` 不可為空，且 key 必須在字幕輸出語言允許清單內。
 
 軌道佔用判斷不在每一筆字幕事件上執行，應放在 Relay 設定檢查或未來的軌道租用流程。
 
@@ -163,17 +221,31 @@ Relay 會把每筆字幕發布到 base group 與字幕軌專用 group：
 ```text
 caption-live
 caption-live-track-<trackNumber>
+caption-live-fast
+caption-live-fast-track-<trackNumber>
+caption-live-accurate
+caption-live-accurate-track-<trackNumber>
+caption-operator
+caption-operator-track-<trackNumber>
+caption-operator-fast
+caption-operator-fast-track-<trackNumber>
+caption-operator-accurate
+caption-operator-accurate-track-<trackNumber>
 ```
 
-Portal 不需要知道 group 命名規則。多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber`，取得對應 track group 的 receive-only URL。
+Portal 不需要自行組合 group 命名規則。多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber` 與選用的 `captionMode`，取得對應 track group 的 receive-only URL。未帶 `captionMode` 時維持舊行為，接收快速模式。Portal 若要在操作端觀察 Relay 實際發布出去的字幕，應透過 `POST /api/portal/negotiate` 取得 operator track group 的 receive-only URL。
 
-發布 payload 保留 Portal 傳入的公開字幕欄位，並加入 Relay metadata：
+發布 payload 保留 Portal 傳入的公開字幕欄位，並加入 Relay metadata。若 Portal 提供
+`source.captionQualityMode` 與 `source.captionProvider`，Relay 可保留這兩個非敏感欄位
+供觀眾端或 operator UI 判斷 final 字幕來源。
 
 ```json
 {
   "relay": {
     "receivedAt": "2026-04-29T12:34:56.900Z"
   },
+  "captionMode": "fast",
+  "captionProvider": "azure-speech",
   "roomName": "A101",
   "trackNumber": 1,
   "createdAt": "2026-04-29T12:34:56.789Z",
@@ -190,3 +262,17 @@ Portal 不需要知道 group 命名規則。多軌活動時，觀眾端應透過
 ```
 
 若沒有產品需求需要顯示原始辨識文字，Relay 應省略 `speech.text`，只保留字幕輸出與時間碼。
+
+## final 字幕品質模式
+
+Portal 的 final 字幕品質模式分為：
+
+- `fast`：final 字幕使用 Azure Speech 結果。
+- `accurate`：final 字幕使用 Azure OpenAI `gpt-realtime-translate` 結果。
+
+即時 recognizing / partial 解析一律由 Azure Speech 處理，不因 final 字幕品質模式而改變。
+Relay 不負責呼叫 Azure OpenAI 改寫字幕內容；Relay 只驗證並發布 Portal 傳入的 final 字幕。
+若 Portal 同時提供 `fast` 與 `accurate`，Relay 會分別發布到對應模式 group，讓觀眾端可透過 negotiate 選擇要接收快速或精準字幕。
+
+精準模式不得新增未經允許的字幕輸出語言。Portal、Relay 與部署流程都不得把完整音訊內容、
+逐字稿、字幕文字、Azure OpenAI token 或 realtime session secret 寫入 log。
