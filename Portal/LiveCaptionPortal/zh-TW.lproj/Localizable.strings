@@ -70,6 +70,7 @@
 "common.notConfigured" = "尚未設定";
 "common.openSystemSettings" = "開啟系統設定";
 "list.separator" = "、";
+"log.copySelected" = "複製選取項目";
 "log.events" = "事件紀錄";
 "log.level" = "Log Level";
 "log.noEvents" = "尚無事件紀錄";

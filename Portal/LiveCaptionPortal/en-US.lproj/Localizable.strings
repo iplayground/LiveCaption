@@ -70,6 +70,7 @@
 "common.notConfigured" = "Not configured";
 "common.openSystemSettings" = "Open System Settings";
 "list.separator" = ", ";
+"log.copySelected" = "Copy Selected";
 "log.events" = "Event Log";
 "log.level" = "Log Level";
 "log.noEvents" = "No events yet";

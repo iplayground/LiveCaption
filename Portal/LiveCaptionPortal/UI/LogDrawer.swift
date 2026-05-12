@@ -217,6 +217,9 @@ struct LogDrawerHeader: View {
 struct LogDrawerContent: View {
     let entries: [LogEntry]
     let height: CGFloat
+    @State private var selectedEntryIDs: Set<LogEntry.ID> = []
+    @State private var anchorEntryID: LogEntry.ID?
+    @FocusState private var isLogSelectionFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -230,7 +233,20 @@ struct LogDrawerContent: View {
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(entries) { entry in
-                            LogEntryRow(entry: entry)
+                            LogEntryRow(
+                                entry: entry,
+                                isSelected: selectedEntryIDs.contains(entry.id)
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                select(entry, using: NSApp.currentEvent?.modifierFlags ?? [])
+                            }
+                            .contextMenu {
+                                Button(L10n.text("log.copySelected")) {
+                                    copySelectedEntries()
+                                }
+                                .disabled(selectedEntries.isEmpty)
+                            }
 
                             if entry.id != entries.last?.id {
                                 Divider()
@@ -241,14 +257,98 @@ struct LogDrawerContent: View {
                     .padding(.vertical, 8)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                clearSelection()
+            }
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
+        .focusable()
+        .focused($isLogSelectionFocused)
+        .focusEffectDisabled()
+        .onCopyCommand {
+            guard !selectedEntries.isEmpty else {
+                return []
+            }
+
+            return [NSItemProvider(object: selectedEntriesText as NSString)]
+        }
+        .onChange(of: entries.map(\.id)) { _, visibleEntryIDs in
+            selectedEntryIDs.formIntersection(Set(visibleEntryIDs))
+
+            if let anchorEntryID, !visibleEntryIDs.contains(anchorEntryID) {
+                self.anchorEntryID = selectedEntryIDs.first
+            }
+        }
+    }
+
+    private var selectedEntries: [LogEntry] {
+        entries.filter { selectedEntryIDs.contains($0.id) }
+    }
+
+    private var selectedEntriesText: String {
+        selectedEntries
+            .map { entry in
+                "[\(entry.time)] \(entry.level.title) \(entry.title)\n\(entry.detail)"
+            }
+            .joined(separator: "\n\n")
+    }
+
+    private func select(_ entry: LogEntry, using modifiers: NSEvent.ModifierFlags) {
+        isLogSelectionFocused = true
+
+        if modifiers.contains(.shift), let anchorEntryID {
+            selectRange(from: anchorEntryID, to: entry.id)
+            return
+        }
+
+        if modifiers.contains(.command) {
+            if selectedEntryIDs.contains(entry.id) {
+                selectedEntryIDs.remove(entry.id)
+            } else {
+                selectedEntryIDs.insert(entry.id)
+            }
+            anchorEntryID = entry.id
+            return
+        }
+
+        selectedEntryIDs = [entry.id]
+        anchorEntryID = entry.id
+    }
+
+    private func clearSelection() {
+        selectedEntryIDs.removeAll()
+        anchorEntryID = nil
+    }
+
+    private func selectRange(from anchorID: LogEntry.ID, to targetID: LogEntry.ID) {
+        guard
+            let anchorIndex = entries.firstIndex(where: { $0.id == anchorID }),
+            let targetIndex = entries.firstIndex(where: { $0.id == targetID })
+        else {
+            selectedEntryIDs = [targetID]
+            anchorEntryID = targetID
+            return
+        }
+
+        let range = min(anchorIndex, targetIndex)...max(anchorIndex, targetIndex)
+        selectedEntryIDs = Set(entries[range].map(\.id))
+    }
+
+    private func copySelectedEntries() {
+        guard !selectedEntries.isEmpty else {
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(selectedEntriesText, forType: .string)
     }
 }
 
 struct LogEntryRow: View {
     let entry: LogEntry
+    let isSelected: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -274,9 +374,13 @@ struct LogEntryRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(nil)
                 .multilineTextAlignment(.leading)
-                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 8)
         .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Color.accentColor.opacity(0.22) : Color.clear)
+        )
     }
 }
