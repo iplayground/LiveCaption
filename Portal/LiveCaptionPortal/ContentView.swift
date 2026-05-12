@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var subtitleFileSettings: SubtitleFileSettings
     @State private var subtitleExportSession: SubtitleExportSession?
     @State private var recognizedCaptionCount = 0
+    @State private var relayPublishedCaptionCounts: [CaptionQualityMode: Int] = [:]
     @State private var sessionTitle = ""
     @State private var subtitleFileAccessStatus = SubtitleFileAccessStatus.notConfigured
     @State private var isLogDrawerExpanded = false
@@ -144,7 +145,7 @@ struct ContentView: View {
             canToggleCaptionSession: canToggleCaptionSession,
             captionSessionDisabledReason: captionSessionDisabledReason,
             usesInlineProjectionCapture: usesInlineProjectionCapture,
-            recognizedCaptionCount: recognizedCaptionCount,
+            relayPublishedCaptionCounts: relayPublishedCaptionCounts,
             relayLastPublishedAt: relayLastPublishedAt,
             pubSubCaptionReceiver: pubSubCaptionReceiver,
             logEntries: logEntries,
@@ -218,6 +219,7 @@ struct ContentView: View {
             .onChange(of: relaySettings) {
                 relayLastPublishedAt = nil
                 relayViewerAccessCode = nil
+                relayPublishedCaptionCounts.removeAll()
                 pubSubCaptionReceiver.disconnect()
             }
     }
@@ -352,6 +354,7 @@ struct ContentView: View {
 
             captionSessionElapsedTime = 0
             relayLastPublishedAt = nil
+            relayPublishedCaptionCounts.removeAll()
             recognizedCaptionCount = 0
             pubSubCaptionReceiver.disconnect()
             speechRecognitionController.resetCaptionSessionMetrics()
@@ -453,7 +456,8 @@ struct ContentView: View {
             let enrichedEvent = await eventWithAccurateCaptionIfAvailable(event)
             await MainActor.run {
                 appendCaptionToSubtitleExportSession(enrichedEvent)
-                publishCaptionEventToRelay(enrichedEvent)
+                publishCaptionEventToRelay(enrichedEvent, mode: .fast)
+                publishCaptionEventToRelay(enrichedEvent, mode: .accurate)
             }
         }
     }
@@ -556,18 +560,22 @@ struct ContentView: View {
         self.subtitleExportSession = subtitleExportSession
     }
 
-    private func publishCaptionEventToRelay(_ event: RecognizedCaptionEvent) {
+    private func publishCaptionEventToRelay(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) {
         guard isCaptionSessionActive, relayConnectionStatus == .connected else {
+            return
+        }
+
+        guard let relayInput = RelayCaptionPublishInput(
+            event: event,
+            mode: mode,
+            inputLanguage: inputLanguage,
+            outputLanguages: speechSettings.selectedOutputLanguages
+        ) else {
             return
         }
 
         let settingsToPublish = relaySettings
         let speechKey = speechSettings.speechKey
-        let relayInput = RelayCaptionPublishInput(
-            event: event,
-            inputLanguage: inputLanguage,
-            outputLanguages: speechSettings.selectedOutputLanguages
-        )
 
         Task.detached {
             let outcome = await RelayCaptionPublisher.publish(
@@ -580,6 +588,7 @@ struct ContentView: View {
             await MainActor.run {
                 if let publishedAt = outcome.publishedAt {
                     relayLastPublishedAt = publishedAt
+                    relayPublishedCaptionCounts[mode, default: 0] += 1
                 }
 
                 outcome.logs.forEach(appendLog)

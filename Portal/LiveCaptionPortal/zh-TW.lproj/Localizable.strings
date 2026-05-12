@@ -146,6 +146,8 @@
 "pubSub.caption.openAI" = "OpenAI 字幕";
 "pubSub.caption.speech" = "Speech 字幕";
 "relay.environment" = "環境";
+"relay.captionEvents.accurate" = "字幕事件（accurate）";
+"relay.captionEvents.fast" = "字幕事件（fast）";
 "relay.lastPublishedAt" = "最後發佈時間";
 "relay.connection.notConnected" = "未連線";
 "relay.notConnected" = "Relay 未連線";

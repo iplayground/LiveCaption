@@ -64,6 +64,7 @@ struct RelayPublishResult {
 }
 
 struct RelayCaptionPublishInput: Sendable {
+    let speechText: String
     let text: String
     let translations: [String: String]
     let offsetTicks: UInt64
@@ -78,14 +79,53 @@ struct RelayCaptionPublishInput: Sendable {
         inputLanguage: InputLanguage,
         outputLanguages: [SpeechOutputLanguage]
     ) {
-        text = event.text
-        translations = event.translations
+        self.init(
+            event: event,
+            inputLanguage: inputLanguage,
+            outputLanguages: outputLanguages,
+            text: event.text,
+            translations: event.translations,
+            captionModes: event.captionModes
+        )
+    }
+
+    init?(
+        event: RecognizedCaptionEvent,
+        mode: CaptionQualityMode,
+        inputLanguage: InputLanguage,
+        outputLanguages: [SpeechOutputLanguage]
+    ) {
+        guard let result = event.captionModes[mode] else {
+            return nil
+        }
+
+        self.init(
+            event: event,
+            inputLanguage: inputLanguage,
+            outputLanguages: outputLanguages,
+            text: result.text,
+            translations: result.translations,
+            captionModes: [mode: result]
+        )
+    }
+
+    private init(
+        event: RecognizedCaptionEvent,
+        inputLanguage: InputLanguage,
+        outputLanguages: [SpeechOutputLanguage],
+        text: String,
+        translations: [String: String],
+        captionModes: [CaptionQualityMode: CaptionModeResult]
+    ) {
+        speechText = event.text
+        self.text = text
+        self.translations = translations
         offsetTicks = event.offsetTicks
         durationTicks = event.durationTicks
         inputLanguageSpeechLocale = inputLanguage.speechLocale
         inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
         outputLanguageIDs = outputLanguages.map(\.id)
-        captionModes = event.captionModes
+        self.captionModes = captionModes
     }
 }
 
@@ -296,7 +336,7 @@ struct RelaySettings: Equatable {
                 "inputLanguage": input.inputLanguageSpeechLocale,
                 "offsetTicks": input.offsetTicks,
                 "durationTicks": input.durationTicks,
-                "text": input.text,
+                "text": input.speechText,
             ],
             "captions": Self.captions(from: input),
             "captionModes": Self.captionModes(from: input),

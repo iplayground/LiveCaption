@@ -146,6 +146,8 @@
 "pubSub.caption.openAI" = "OpenAI Captions";
 "pubSub.caption.speech" = "Speech Captions";
 "relay.environment" = "Environment";
+"relay.captionEvents.accurate" = "Caption events (accurate)";
+"relay.captionEvents.fast" = "Caption events (fast)";
 "relay.lastPublishedAt" = "Last published at";
 "relay.connection.notConnected" = "Not connected";
 "relay.notConnected" = "Relay not connected";

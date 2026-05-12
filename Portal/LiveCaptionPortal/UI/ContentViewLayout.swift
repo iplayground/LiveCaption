@@ -22,7 +22,7 @@ struct ContentViewLayout: View {
     let canToggleCaptionSession: Bool
     let captionSessionDisabledReason: String?
     let usesInlineProjectionCapture: Bool
-    let recognizedCaptionCount: Int
+    let relayPublishedCaptionCounts: [CaptionQualityMode: Int]
     let relayLastPublishedAt: Date?
     @ObservedObject var pubSubCaptionReceiver: PubSubCaptionReceiver
     let logEntries: [LogEntry]
@@ -106,7 +106,7 @@ struct ContentViewLayout: View {
                 azureOpenAIConnectionStatus: $azureOpenAIConnectionStatus,
                 relaySettings: $relaySettings,
                 relayConnectionStatus: $relayConnectionStatus,
-                recognizedCaptionCount: recognizedCaptionCount,
+                relayPublishedCaptionCounts: relayPublishedCaptionCounts,
                 relayLastPublishedAt: relayLastPublishedAt,
                 logEntries: logEntries,
                 onLogEvent: onLogEvent,

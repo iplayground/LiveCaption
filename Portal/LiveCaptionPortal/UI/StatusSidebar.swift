@@ -11,7 +11,7 @@ struct StatusSidebar: View {
     @Binding var azureOpenAIConnectionStatus: AzureOpenAIConnectionStatus
     @Binding var relaySettings: RelaySettings
     @Binding var relayConnectionStatus: RelayConnectionStatus
-    let recognizedCaptionCount: Int
+    let relayPublishedCaptionCounts: [CaptionQualityMode: Int]
     let relayLastPublishedAt: Date?
     let logEntries: [LogEntry]
     let onLogEvent: (LogLevel, String, String) -> Void
@@ -94,7 +94,8 @@ struct StatusSidebar: View {
                         LabeledValue(label: L10n.text("relay.roomName"), value: relaySettings.roomNameSummary)
                         LabeledValue(label: L10n.text("relay.trackNumber"), value: relaySettings.trackNumberSummary)
                         LabeledValue(label: L10n.text("relay.lastPublishedAt"), value: relayLastPublishedAtSummary)
-                        LabeledValue(label: L10n.text("session.captionEvents"), value: "\(recognizedCaptionCount)")
+                        LabeledValue(label: L10n.text("relay.captionEvents.fast"), value: "\(relayPublishedCaptionCount(for: .fast))")
+                        LabeledValue(label: L10n.text("relay.captionEvents.accurate"), value: "\(relayPublishedCaptionCount(for: .accurate))")
 
                         Button {
                             isRelaySettingsPresented = true
@@ -193,6 +194,10 @@ struct StatusSidebar: View {
         }
 
         return Self.relayLastPublishedAtFormatter.string(from: relayLastPublishedAt)
+    }
+
+    private func relayPublishedCaptionCount(for mode: CaptionQualityMode) -> Int {
+        relayPublishedCaptionCounts[mode, default: 0]
     }
 
     private var recentStatusLastEventSummary: String {
