@@ -1,8 +1,11 @@
 import SwiftUI
+import AppKit
 
 struct LogDrawer: View {
     @Binding var isExpanded: Bool
     @Binding var selectedLevel: LogLevel
+    @Binding var contentHeight: CGFloat
+    let maximumContentHeight: CGFloat
     let entries: [LogEntry]
 
     var body: some View {
@@ -14,14 +17,100 @@ struct LogDrawer: View {
                 selectedLevel: $selectedLevel,
                 entryCount: entries.count
             )
+            .overlay(alignment: .top) {
+                if isExpanded {
+                    LogDrawerResizeHandle(
+                        contentHeight: $contentHeight,
+                        maximumContentHeight: maximumContentHeight
+                    )
+                }
+            }
 
             if isExpanded {
-                LogDrawerContent(entries: entries)
+                LogDrawerContent(entries: entries, height: contentHeight)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .shadow(color: .black.opacity(isExpanded ? 0.12 : 0), radius: 16, y: -4)
+        .onChange(of: maximumContentHeight) { _, newValue in
+            contentHeight = min(contentHeight, newValue)
+        }
+    }
+}
+
+struct LogDrawerResizeHandle: View {
+    @Binding var contentHeight: CGFloat
+    let maximumContentHeight: CGFloat
+    @State private var dragStartHeight: CGFloat?
+    @State private var dragStartLocationY: CGFloat?
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(height: 8)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let startHeight = dragStartHeight ?? contentHeight
+                        let startLocationY = dragStartLocationY ?? value.startLocation.y
+                        dragStartHeight = startHeight
+                        dragStartLocationY = startLocationY
+                        contentHeight = clampedHeight(startHeight + startLocationY - value.location.y)
+                    }
+                    .onEnded { _ in
+                        dragStartHeight = nil
+                        dragStartLocationY = nil
+                    }
+            )
+            .resizeUpDownCursor()
+    }
+
+    private func clampedHeight(_ height: CGFloat) -> CGFloat {
+        min(
+            max(height, WindowLayout.defaultLogDrawerContentHeight),
+            maximumContentHeight
+        )
+    }
+}
+
+private struct ResizeUpDownCursorModifier: ViewModifier {
+    @State private var isCursorPushed = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { isHovering in
+                if isHovering {
+                    guard !isCursorPushed else {
+                        return
+                    }
+
+                    NSCursor.resizeUpDown.push()
+                    isCursorPushed = true
+                    return
+                }
+
+                popCursorIfNeeded()
+            }
+            .onDisappear {
+                popCursorIfNeeded()
+            }
+    }
+
+    private func popCursorIfNeeded() {
+        guard isCursorPushed else {
+            return
+        }
+
+        NSCursor.pop()
+        isCursorPushed = false
+    }
+}
+
+private extension View {
+    func resizeUpDownCursor() -> some View {
+        modifier(ResizeUpDownCursorModifier())
     }
 }
 
@@ -127,6 +216,7 @@ struct LogDrawerHeader: View {
 
 struct LogDrawerContent: View {
     let entries: [LogEntry]
+    let height: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
@@ -152,7 +242,7 @@ struct LogDrawerContent: View {
                 }
             }
         }
-        .frame(height: 220)
+        .frame(height: height)
         .frame(maxWidth: .infinity)
     }
 }

@@ -6,6 +6,7 @@ enum WindowLayout {
     static let statusSidebarWidth: CGFloat = 300
     static let audioSourcePickerWidth: CGFloat = 208
     static let logDrawerHeaderHeight: CGFloat = 50
+    static let defaultLogDrawerContentHeight: CGFloat = 220
     static let headerEstimatedHeight: CGFloat = 86
     static let projectionCaptureHorizontalPadding: CGFloat = 20
     static let projectionCaptureVerticalPadding: CGFloat = 14

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentViewLayout: View {
+    @State private var logDrawerContentHeight = WindowLayout.defaultLogDrawerContentHeight
     @ObservedObject var audioInputController: AudioInputController
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @Binding var sessionTitle: String
@@ -30,7 +31,7 @@ struct ContentViewLayout: View {
     let onLogEvent: (LogLevel, String, String) -> Void
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        GeometryReader { geometry in
             VStack(spacing: 0) {
                 header
 
@@ -43,10 +44,8 @@ struct ContentViewLayout: View {
                 }
 
                 workspaceColumns
+                logDrawer(windowHeight: geometry.size.height)
             }
-            .padding(.bottom, WindowLayout.logDrawerHeaderHeight)
-
-            logDrawer
         }
     }
 
@@ -114,12 +113,20 @@ struct ContentViewLayout: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var logDrawer: some View {
+    private func logDrawer(windowHeight: CGFloat) -> some View {
         LogDrawer(
             isExpanded: $isLogDrawerExpanded,
             selectedLevel: $selectedLogLevel,
+            contentHeight: $logDrawerContentHeight,
+            maximumContentHeight: maximumLogDrawerContentHeight(for: windowHeight),
             entries: filteredLogEntries
         )
-        .zIndex(100)
+    }
+
+    private func maximumLogDrawerContentHeight(for windowHeight: CGFloat) -> CGFloat {
+        max(
+            WindowLayout.defaultLogDrawerContentHeight,
+            (windowHeight / 2) - WindowLayout.logDrawerHeaderHeight
+        )
     }
 }
