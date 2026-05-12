@@ -45,8 +45,69 @@ param webPubSubHubName string = 'livecaption'
 @description('Azure Web PubSub group used for live caption broadcasts.')
 param webPubSubGroupName string = 'caption-live'
 
+@description('Azure Web PubSub group used by Portal operator clients to observe caption broadcasts.')
+param webPubSubOperatorGroupName string = 'caption-operator'
+
 @description('Require the Portal-provided viewer access code when negotiating a viewer Web PubSub URL.')
 param viewerAccessCodeRequired bool = true
+
+@description('Globally unique Azure OpenAI resource name used for Portal accurate realtime captions.')
+@minLength(2)
+@maxLength(64)
+param azureOpenAIName string
+
+@description('Azure region for the Azure OpenAI realtime caption resource. This can differ from the Relay Function App region when the target model is region-limited.')
+param azureOpenAILocation string = location
+
+@description('Azure OpenAI custom subdomain name. Required for Microsoft Entra ID authentication.')
+@minLength(2)
+@maxLength(64)
+param azureOpenAICustomSubdomainName string = azureOpenAIName
+
+@description('Disable Azure OpenAI local key authentication. Keep false while Portal authenticates directly with an Azure OpenAI API key.')
+param azureOpenAIDisableLocalAuth bool = false
+
+@description('Azure OpenAI realtime translation deployment name used by Portal accurate captions.')
+param azureOpenAITranslationDeploymentName string = 'realtime-translate'
+
+@description('Azure OpenAI realtime translation base model name for accurate captions.')
+param azureOpenAITranslationModelName string = 'gpt-realtime-translate'
+
+@description('Azure OpenAI realtime translation base model version. Confirm region availability before production deployment.')
+param azureOpenAITranslationModelVersion string = '2026-05-06'
+
+@description('Azure OpenAI realtime transcription deployment name used by Portal source-language accurate captions.')
+param azureOpenAITranscriptionDeploymentName string = 'realtime-whisper'
+
+@description('Azure OpenAI realtime transcription base model name for source-language accurate captions.')
+param azureOpenAITranscriptionModelName string = 'gpt-realtime-whisper'
+
+@description('Azure OpenAI realtime transcription base model version. Confirm region availability before production deployment.')
+param azureOpenAITranscriptionModelVersion string = '2026-05-06'
+
+@description('Azure OpenAI deployment SKU name.')
+@allowed([
+  'Standard'
+  'GlobalStandard'
+  'ProvisionedManaged'
+])
+param azureOpenAITranslationDeploymentSkuName string = 'Standard'
+
+@description('Azure OpenAI realtime translation deployment capacity.')
+@minValue(1)
+param azureOpenAITranslationDeploymentCapacity int = 1
+
+@description('Azure OpenAI realtime transcription deployment SKU name.')
+@allowed([
+  'Standard'
+  'GlobalStandard'
+  'ProvisionedManaged'
+])
+param azureOpenAITranscriptionDeploymentSkuName string = azureOpenAITranslationDeploymentSkuName
+
+@description('Azure OpenAI realtime transcription deployment capacity.')
+@minValue(1)
+param azureOpenAITranscriptionDeploymentCapacity int = 1
 
 @description('Existing Azure Speech resource group name.')
 param speechResourceGroupName string = resourceGroup().name
@@ -225,6 +286,56 @@ resource webPubSub 'Microsoft.SignalRService/webPubSub@2024-03-01' = {
   }
 }
 
+resource azureOpenAI 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+  name: azureOpenAIName
+  location: azureOpenAILocation
+  tags: tags
+  kind: 'OpenAI'
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    customSubDomainName: azureOpenAICustomSubdomainName
+    disableLocalAuth: azureOpenAIDisableLocalAuth
+    publicNetworkAccess: 'Enabled'
+    restrictOutboundNetworkAccess: false
+  }
+}
+
+resource azureOpenAITranslationDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  parent: azureOpenAI
+  name: azureOpenAITranslationDeploymentName
+  sku: {
+    name: azureOpenAITranslationDeploymentSkuName
+    capacity: azureOpenAITranslationDeploymentCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: azureOpenAITranslationModelName
+      version: azureOpenAITranslationModelVersion
+    }
+    versionUpgradeOption: 'OnceNewDefaultVersionAvailable'
+  }
+}
+
+resource azureOpenAITranscriptionDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  parent: azureOpenAI
+  name: azureOpenAITranscriptionDeploymentName
+  sku: {
+    name: azureOpenAITranscriptionDeploymentSkuName
+    capacity: azureOpenAITranscriptionDeploymentCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: azureOpenAITranscriptionModelName
+      version: azureOpenAITranscriptionModelVersion
+    }
+    versionUpgradeOption: 'OnceNewDefaultVersionAvailable'
+  }
+}
+
 resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
@@ -309,6 +420,10 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'AZURE_WEBPUBSUB_GROUP_NAME'
           value: webPubSubGroupName
+        }
+        {
+          name: 'AZURE_WEBPUBSUB_OPERATOR_GROUP_NAME'
+          value: webPubSubOperatorGroupName
         }
         {
           name: 'VIEWER_ACCESS_CODE_REQUIRED'
@@ -400,6 +515,12 @@ output webPubSubName string = webPubSub.name
 output webPubSubEndpoint string = 'https://${webPubSub.properties.hostName}'
 output webPubSubHubName string = webPubSubHubName
 output webPubSubGroupName string = webPubSubGroupName
+output webPubSubOperatorGroupName string = webPubSubOperatorGroupName
+output azureOpenAIResourceId string = azureOpenAI.id
+output azureOpenAIName string = azureOpenAI.name
+output azureOpenAIEndpoint string = 'https://${azureOpenAICustomSubdomainName}.openai.azure.com'
+output azureOpenAITranslationDeploymentName string = azureOpenAITranslationDeployment.name
+output azureOpenAITranscriptionDeploymentName string = azureOpenAITranscriptionDeployment.name
 output githubActionsIdentityClientId string = githubActionsIdentity.properties.clientId
 output githubActionsIdentityPrincipalId string = githubActionsIdentity.properties.principalId
 output githubActionsIdentityResourceId string = githubActionsIdentity.id
