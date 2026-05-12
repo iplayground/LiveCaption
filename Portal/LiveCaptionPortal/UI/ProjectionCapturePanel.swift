@@ -238,9 +238,7 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
     }
 
     private func clearTextFieldFocus(in window: NSWindow) {
-        DispatchQueue.main.async { [weak window] in
-            window?.makeFirstResponder(nil)
-        }
+        window.makeFirstResponder(nil)
     }
 }
 
