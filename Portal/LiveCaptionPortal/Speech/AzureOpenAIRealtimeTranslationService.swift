@@ -127,10 +127,21 @@ actor AzureOpenAIRealtimeTranslationService {
         }
     }
 
-    func takeTranslations() async -> [String: String] {
+    func takeTranslations(requiredLanguageIDs: Set<String>) async -> [String: String]? {
         let translations = transcriptBuffers.compactMapValues { value -> String? in
             let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return normalizedValue.isEmpty ? nil : normalizedValue
+        }
+
+        guard !translations.isEmpty else {
+            return nil
+        }
+
+        let missingRequiredLanguageIDs = requiredLanguageIDs.filter {
+            translations[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        }
+        guard missingRequiredLanguageIDs.isEmpty else {
+            return nil
         }
 
         transcriptBuffers.keys.forEach { transcriptBuffers[$0] = "" }

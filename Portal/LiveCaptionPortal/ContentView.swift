@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var shouldVerifyRelayConnectionOnLaunch: Bool
     @State private var relayLastPublishedAt: Date?
     @State private var relayViewerAccessCode: String?
+    @State private var relayCaptionSessionID: String?
     @State private var subtitleFileSettings: SubtitleFileSettings
     @State private var subtitleExportSession: SubtitleExportSession?
     @State private var recognizedCaptionCount = 0
@@ -41,6 +42,12 @@ struct ContentView: View {
     private let windowMinimumSize = WindowLayout.minimumSize
     private let relayPublishRetryLimit = 3
     private let maximumLogEntryCount = 300
+    private static let relaySessionIDFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
 
     init() {
         let speechSettings = SpeechSettings.load()
@@ -91,6 +98,11 @@ struct ContentView: View {
 
     private func appendLog(_ log: PortalWorkflowLog) {
         appendLog(level: log.level, title: log.title, detail: log.detail)
+    }
+
+    private static func relaySessionID(for date: Date) -> String {
+        relaySessionIDFormatter.string(from: date)
+            .replacingOccurrences(of: "Z", with: "")
     }
 
     @MainActor
@@ -168,6 +180,7 @@ struct ContentView: View {
                 audioInputController.activate()
                 await verifySpeechAuthorizationOnLaunchIfNeeded()
                 await verifyRelayConnectionOnLaunchIfNeeded()
+                publishPortalStatusToRelay("online")
             }
             .onAppear {
                 configureAudioCallbacks()
@@ -199,15 +212,18 @@ struct ContentView: View {
             .onChange(of: speechSettings) {
                 refreshProjectionCaptureWindow()
                 updateSpeechRecognition()
+                publishCaptionAvailabilityToRelayIfNeeded()
+            }
+            .onChange(of: azureOpenAIConnectionStatus) {
+                updateSpeechRecognition()
+                refreshCaptionSessionReadiness()
+                publishCaptionAvailabilityToRelayIfNeeded()
             }
             .onChange(of: projectionCaptureDisplayMode) {
                 refreshProjectionCaptureWindow()
             }
             .onChange(of: speechAuthorizationStatus) {
                 updateSpeechRecognition()
-                refreshCaptionSessionReadiness()
-            }
-            .onChange(of: azureOpenAIConnectionStatus) {
                 refreshCaptionSessionReadiness()
             }
             .onChange(of: subtitleFileAccessStatus) {
@@ -219,12 +235,15 @@ struct ContentView: View {
             .onChange(of: relaySettings) {
                 relayLastPublishedAt = nil
                 relayViewerAccessCode = nil
+                relayCaptionSessionID = nil
                 relayPublishedCaptionCounts.removeAll()
                 pubSubCaptionReceiver.disconnect()
             }
     }
 
     private func handleDisappear() {
+        publishSessionStoppedToRelayIfNeeded()
+        publishPortalStatusToRelay("offline")
         finishCaptionSessionTiming()
         finishSubtitleExportSession()
         stopAccurateCaptionSession()
@@ -238,6 +257,7 @@ struct ContentView: View {
         if !audioInputController.isCapturing {
             if isCaptionSessionActive {
                 captionSessionStatus = .stopping
+                publishSessionStoppedToRelayIfNeeded()
             }
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
@@ -341,6 +361,7 @@ struct ContentView: View {
         if isCaptionSessionActive {
             captionSessionStatus = .stopping
             isCaptionSessionActive = false
+            publishSessionStoppedToRelayIfNeeded()
             finishCaptionSessionTiming()
             finishSubtitleExportSession()
             stopAccurateCaptionSession()
@@ -360,6 +381,7 @@ struct ContentView: View {
             speechRecognitionController.resetCaptionSessionMetrics()
             let startedAt = Date()
             captionSessionStartedAt = startedAt
+            relayCaptionSessionID = Self.relaySessionID(for: startedAt)
 
             if beginSubtitleExportSession(startedAt: startedAt) {
                 Task {
@@ -387,6 +409,8 @@ struct ContentView: View {
         sleepPreventionController.startPreventingSleep()
         captionSessionStatus = .captioning
         isCaptionSessionActive = true
+        publishSessionStartedToRelay()
+        publishCaptionAvailabilityToRelayIfNeeded()
     }
 
     private func configureAudioCallbacks() {
@@ -449,6 +473,7 @@ struct ContentView: View {
 
     private func handleRelayConnectionTested(_ result: RelayConnectionTestResult) {
         relayViewerAccessCode = result.viewerAccessCode
+        publishPortalStatusToRelay("online")
     }
 
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
@@ -525,20 +550,15 @@ struct ContentView: View {
             return event
         }
 
-        let translations = await accurateCaptionService.takeTranslations()
-        guard !translations.isEmpty else {
-            return event
-        }
-
         let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
         let selectedLanguageIDs = Set(speechSettings.selectedOutputLanguages.map(\.id))
         let requiredLanguageIDs = SpeechSettings.requiredOutputLanguageIDs
             .intersection(selectedLanguageIDs)
             .filter { $0 != inputLanguageOutputID }
-        let missingRequiredLanguageIDs = requiredLanguageIDs.filter {
-            translations[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
-        }
-        guard missingRequiredLanguageIDs.isEmpty else {
+
+        guard let translations = await accurateCaptionService.takeTranslations(
+            requiredLanguageIDs: requiredLanguageIDs
+        ) else {
             return event
         }
 
@@ -562,13 +582,16 @@ struct ContentView: View {
     }
 
     private func publishCaptionEventToRelay(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) {
-        guard isCaptionSessionActive, relayConnectionStatus == .connected else {
+        guard isCaptionSessionActive,
+              relayConnectionStatus == .connected,
+              let relayCaptionSessionID else {
             return
         }
 
         guard let relayInput = RelayCaptionPublishInput(
             event: event,
             mode: mode,
+            sessionID: relayCaptionSessionID,
             inputLanguage: inputLanguage,
             outputLanguages: speechSettings.selectedOutputLanguages
         ) else {
@@ -600,6 +623,81 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func publishPortalStatusToRelay(_ status: String) {
+        guard relayConnectionStatus == .connected else {
+            return
+        }
+
+        let settingsToPublish = relaySettings
+        let speechKey = speechSettings.speechKey
+        Task.detached {
+            _ = try? await settingsToPublish.publishPortalStatus(status, speechKey: speechKey)
+        }
+    }
+
+    private func publishSessionStartedToRelay() {
+        guard relayConnectionStatus == .connected,
+              let relayCaptionSessionID else {
+            return
+        }
+
+        let settingsToPublish = relaySettings
+        let speechKey = speechSettings.speechKey
+        Task.detached {
+            _ = try? await settingsToPublish.publishSessionStatus(
+                "started",
+                sessionID: relayCaptionSessionID,
+                speechKey: speechKey
+            )
+        }
+    }
+
+    private func publishSessionStoppedToRelayIfNeeded() {
+        guard relayConnectionStatus == .connected,
+              let relayCaptionSessionID else {
+            return
+        }
+
+        self.relayCaptionSessionID = nil
+        let settingsToPublish = relaySettings
+        let speechKey = speechSettings.speechKey
+        Task.detached {
+            _ = try? await settingsToPublish.publishSessionStatus(
+                "stopped",
+                sessionID: relayCaptionSessionID,
+                speechKey: speechKey
+            )
+        }
+    }
+
+    private func publishCaptionAvailabilityToRelayIfNeeded() {
+        guard isCaptionSessionActive,
+              relayConnectionStatus == .connected else {
+            return
+        }
+
+        let settingsToPublish = relaySettings
+        let speechKey = speechSettings.speechKey
+        let sessionID = relayCaptionSessionID
+        let modes = availableCaptionModesForRelay()
+        let languages = speechSettings.selectedOutputLanguages
+        Task.detached {
+            _ = try? await settingsToPublish.publishCaptionAvailability(
+                sessionID: sessionID,
+                captionModes: modes,
+                languages: languages,
+                speechKey: speechKey
+            )
+        }
+    }
+
+    private func availableCaptionModesForRelay() -> [CaptionQualityMode] {
+        if speechSettings.isAccurateCaptionEnabled && azureOpenAIConnectionStatus == .connected {
+            return [.fast, .accurate]
+        }
+        return [.fast]
     }
 
     private func finishSubtitleExportSession() {

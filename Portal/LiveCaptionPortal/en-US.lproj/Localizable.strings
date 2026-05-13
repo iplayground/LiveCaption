@@ -138,7 +138,7 @@
 "pubSub.caption.connected" = "Receiving from PubSub";
 "pubSub.caption.connectedDetail" = "Listening to %@.";
 "pubSub.caption.connecting" = "Connecting to PubSub";
-"pubSub.caption.connectingDetail" = "Negotiating a receive-only viewer connection through Relay.";
+"pubSub.caption.connectingDetail" = "Negotiating a viewer connection through Relay.";
 "pubSub.caption.empty" = "No caption received from PubSub yet.";
 "pubSub.caption.failed" = "PubSub receive failed";
 "pubSub.caption.idle" = "PubSub receive is idle";

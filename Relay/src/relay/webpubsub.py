@@ -18,7 +18,6 @@ class WebPubSubConfig:
     endpoint: str
     hub_name: str
     group_name: str
-    operator_group_name: str = "caption-operator"
 
     @classmethod
     def from_environment(cls, env: dict[str, str] | None = None) -> WebPubSubConfig:
@@ -26,10 +25,6 @@ class WebPubSubConfig:
         endpoint = values.get("AZURE_WEBPUBSUB_ENDPOINT", "").strip()
         hub_name = values.get("AZURE_WEBPUBSUB_HUB_NAME", "").strip()
         group_name = values.get("AZURE_WEBPUBSUB_GROUP_NAME", "").strip()
-        operator_group_name = values.get(
-            "AZURE_WEBPUBSUB_OPERATOR_GROUP_NAME",
-            "caption-operator",
-        ).strip()
 
         missing_fields = [
             name
@@ -37,7 +32,6 @@ class WebPubSubConfig:
                 ("AZURE_WEBPUBSUB_ENDPOINT", endpoint),
                 ("AZURE_WEBPUBSUB_HUB_NAME", hub_name),
                 ("AZURE_WEBPUBSUB_GROUP_NAME", group_name),
-                ("AZURE_WEBPUBSUB_OPERATOR_GROUP_NAME", operator_group_name),
             )
             if not value
         ]
@@ -53,7 +47,6 @@ class WebPubSubConfig:
             endpoint=endpoint.rstrip("/"),
             hub_name=hub_name,
             group_name=group_name,
-            operator_group_name=operator_group_name,
         )
 
 
@@ -80,55 +73,20 @@ class AzureWebPubSubPublisher:
         payload: dict[str, Any],
         *,
         track_number: int | None = None,
-        caption_mode: str | None = None,
     ) -> None:
         client, config = self._get_client()
-        target_groups = []
-        if caption_mode == "fast":
-            target_groups.append(config.group_name)
-            if track_number is not None:
-                target_groups.append(
-                    build_track_group_name(config.group_name, track_number=track_number)
-                )
-            target_groups.append(config.operator_group_name)
-            if track_number is not None:
-                target_groups.append(
-                    build_track_group_name(config.operator_group_name, track_number=track_number)
-                )
-
-        target_groups.append(
-            _build_group_name(config.group_name, track_number=None, caption_mode=caption_mode)
-        )
         if track_number is not None:
-            target_groups.append(
-                _build_group_name(
-                    config.group_name,
-                    track_number=track_number,
-                    caption_mode=caption_mode,
-                )
-            )
-        target_groups.append(
-            _build_group_name(config.operator_group_name, track_number=None, caption_mode=caption_mode)
-        )
-        if track_number is not None:
-            target_groups.append(
-                _build_group_name(
-                    config.operator_group_name,
-                    track_number=track_number,
-                    caption_mode=caption_mode,
-                )
-            )
-
-        target_groups = list(dict.fromkeys(target_groups))
+            target_group = build_track_group_name(config.group_name, track_number=track_number)
+        else:
+            target_group = config.group_name
 
         try:
             message = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-            for target_group in target_groups:
-                client.send_to_group(
-                    group=target_group,
-                    message=message,
-                    content_type="text/plain",
-                )
+            client.send_to_group(
+                group=target_group,
+                message=message,
+                content_type="text/plain",
+            )
         except AzureError as error:
             raise RelayWebPubSubError("Unable to publish caption event.") from error
 
@@ -168,19 +126,14 @@ class AzureWebPubSubViewerTokenProvider:
     def get_viewer_access_token(
         self,
         *,
-        track_number: int | None = None,
-        caption_mode: str | None = None,
+        track_number: int,
         now: datetime | None = None,
     ) -> ViewerAccessToken:
         client, config = self._get_client()
         reference_time = (now or datetime.now(UTC)).astimezone(UTC)
         expires_at = reference_time + self._token_ttl
         minutes_to_expire = max(1, int(self._token_ttl.total_seconds() // 60))
-        group_name = _build_group_name(
-            config.group_name,
-            track_number=track_number,
-            caption_mode=caption_mode,
-        )
+        group_name = build_track_group_name(config.group_name, track_number=track_number)
 
         try:
             token = client.get_client_access_token(
@@ -189,39 +142,6 @@ class AzureWebPubSubViewerTokenProvider:
             )
         except AzureError as error:
             raise RelayWebPubSubError("Unable to generate viewer access token.") from error
-
-        url = _extract_client_access_url(token)
-        return ViewerAccessToken(
-            url=url,
-            hub_name=config.hub_name,
-            group_name=group_name,
-            expires_at=expires_at,
-        )
-
-    def get_operator_access_token(
-        self,
-        *,
-        track_number: int | None = None,
-        caption_mode: str | None = None,
-        now: datetime | None = None,
-    ) -> ViewerAccessToken:
-        client, config = self._get_client()
-        reference_time = (now or datetime.now(UTC)).astimezone(UTC)
-        expires_at = reference_time + self._token_ttl
-        minutes_to_expire = max(1, int(self._token_ttl.total_seconds() // 60))
-        group_name = _build_group_name(
-            config.operator_group_name,
-            track_number=track_number,
-            caption_mode=caption_mode,
-        )
-
-        try:
-            token = client.get_client_access_token(
-                minutes_to_expire=minutes_to_expire,
-                groups=[group_name],
-            )
-        except AzureError as error:
-            raise RelayWebPubSubError("Unable to generate operator access token.") from error
 
         url = _extract_client_access_url(token)
         return ViewerAccessToken(
@@ -265,23 +185,3 @@ def _extract_client_access_url(token: object) -> str:
 
 def build_track_group_name(base_group_name: str, *, track_number: int) -> str:
     return f"{base_group_name}-track-{track_number}"
-
-
-def build_caption_mode_group_name(base_group_name: str, *, caption_mode: str) -> str:
-    return f"{base_group_name}-{caption_mode}"
-
-
-def _build_group_name(
-    base_group_name: str,
-    *,
-    track_number: int | None,
-    caption_mode: str | None,
-) -> str:
-    group_name = (
-        build_caption_mode_group_name(base_group_name, caption_mode=caption_mode)
-        if caption_mode
-        else base_group_name
-    )
-    if track_number is None:
-        return group_name
-    return build_track_group_name(group_name, track_number=track_number)

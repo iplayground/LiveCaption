@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Any, Protocol
 
-from relay.models import CaptionEvent
-from relay.validation import ALLOWED_CAPTION_MODES, CaptionEventValidationError, validate_caption_event
+from relay.models import CaptionEvent, ControlEvent
+from relay.validation import CaptionEventValidationError, validate_caption_event, validate_control_event
 from relay.viewer_access import ViewerAccessError
 from relay.webpubsub import RelayWebPubSubError, ViewerAccessToken
 
@@ -16,7 +17,6 @@ class CaptionEventPublisher(Protocol):
         payload: dict[str, Any],
         *,
         track_number: int | None = None,
-        caption_mode: str | None = None,
     ) -> None:
         pass
 
@@ -25,22 +25,29 @@ class ViewerTokenProvider(Protocol):
     def get_viewer_access_token(
         self,
         *,
-        track_number: int | None = None,
-        caption_mode: str | None = None,
+        track_number: int,
         now: datetime | None = None,
     ) -> ViewerAccessToken:
         pass
 
 
-class OperatorTokenProvider(Protocol):
-    def get_operator_access_token(
-        self,
-        *,
-        track_number: int | None = None,
-        caption_mode: str | None = None,
-        now: datetime | None = None,
-    ) -> ViewerAccessToken:
-        pass
+class SessionSequenceStore:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._sequences: dict[str, int] = {}
+
+    def next(self, session_id: str) -> int:
+        with self._lock:
+            sequence = self._sequences.get(session_id, 0) + 1
+            self._sequences[session_id] = sequence
+            return sequence
+
+    def reset(self, session_id: str) -> None:
+        with self._lock:
+            self._sequences.pop(session_id, None)
+
+
+_sequence_store = SessionSequenceStore()
 
 
 def handle_caption_event_request(
@@ -48,7 +55,11 @@ def handle_caption_event_request(
     *,
     publisher: CaptionEventPublisher,
     now: datetime | None = None,
+    sequence_store: SessionSequenceStore = _sequence_store,
 ) -> tuple[int, dict[str, Any]]:
+    if isinstance(payload, dict) and payload.get("type") == "control":
+        return handle_control_event_request(payload, publisher=publisher, now=now, sequence_store=sequence_store)
+
     try:
         event = validate_caption_event(payload, now=now)
     except CaptionEventValidationError as error:
@@ -67,11 +78,11 @@ def handle_caption_event_request(
                 event,
                 received_at=received_at,
                 caption_mode=caption_mode,
+                sequence=sequence_store.next(event.session_id),
             )
             publisher.publish(
                 publish_payload,
                 track_number=event.track_number,
-                caption_mode=caption_mode,
             )
     except RelayWebPubSubError:
         return 502, {
@@ -85,19 +96,70 @@ def handle_caption_event_request(
     return 202, {"accepted": True}
 
 
+def handle_control_event_request(
+    payload: Any,
+    *,
+    publisher: CaptionEventPublisher,
+    now: datetime | None = None,
+    sequence_store: SessionSequenceStore = _sequence_store,
+) -> tuple[int, dict[str, Any]]:
+    try:
+        event = validate_control_event(payload, now=now)
+    except CaptionEventValidationError as error:
+        return 400, {
+            "error": {
+                "code": "invalid_control_event",
+                "message": "Control event is invalid.",
+                "details": [error.as_detail()],
+            }
+        }
+
+    if event.event == "sessionStatus" and event.status == "started" and event.session_id is not None:
+        sequence_store.reset(event.session_id)
+
+    try:
+        publisher.publish(
+            build_control_publish_payload(event),
+            track_number=event.track_number,
+        )
+    except RelayWebPubSubError:
+        return 502, {
+            "error": {
+                "code": "control_publish_failed",
+                "message": "Control event could not be published.",
+                "details": [],
+            }
+        }
+
+    return 202, {"accepted": True}
+
+
 def handle_viewer_negotiate_request(
     access_code: str | None,
     *,
     token_provider: ViewerTokenProvider,
     access_code_verifier: ViewerAccessCodeVerifier,
     track_number: Any = None,
-    caption_mode: Any = None,
+    rejected_fields: list[str] | None = None,
     access_code_required: bool = True,
     now: datetime | None = None,
 ) -> tuple[int, dict[str, Any]]:
+    if rejected_fields:
+        return 400, {
+            "error": {
+                "code": "invalid_viewer_filter",
+                "message": "Viewer filter is invalid.",
+                "details": [
+                    {
+                        "field": rejected_fields[0],
+                        "reason": "Caption preferences are not accepted by viewer negotiate.",
+                    }
+                ],
+            }
+        }
+
     try:
         normalized_track_number = validate_viewer_track_number(track_number)
-        normalized_caption_mode = validate_caption_mode(caption_mode)
     except ValueError:
         return 400, {
             "error": {
@@ -105,8 +167,8 @@ def handle_viewer_negotiate_request(
                 "message": "Viewer filter is invalid.",
                 "details": [
                     {
-                        "field": "filter",
-                        "reason": "Track number or caption mode is invalid.",
+                        "field": "trackNumber",
+                        "reason": "Track number must be a positive integer.",
                     }
                 ],
             }
@@ -127,7 +189,6 @@ def handle_viewer_negotiate_request(
     try:
         access = token_provider.get_viewer_access_token(
             track_number=normalized_track_number,
-            caption_mode=normalized_caption_mode,
             now=now,
         )
     except RelayWebPubSubError:
@@ -142,54 +203,6 @@ def handle_viewer_negotiate_request(
     return 200, {
         "url": access.url,
         "hub": access.hub_name,
-        "group": access.group_name,
-        "expiresAt": _format_utc(access.expires_at),
-    }
-
-
-def handle_portal_negotiate_request(
-    *,
-    token_provider: OperatorTokenProvider,
-    track_number: Any = None,
-    caption_mode: Any = None,
-    now: datetime | None = None,
-) -> tuple[int, dict[str, Any]]:
-    try:
-        normalized_track_number = validate_viewer_track_number(track_number)
-        normalized_caption_mode = validate_caption_mode(caption_mode)
-    except ValueError:
-        return 400, {
-            "error": {
-                "code": "invalid_portal_filter",
-                "message": "Portal filter is invalid.",
-                "details": [
-                    {
-                        "field": "filter",
-                        "reason": "Track number or caption mode is invalid.",
-                    }
-                ],
-            }
-        }
-
-    try:
-        access = token_provider.get_operator_access_token(
-            track_number=normalized_track_number,
-            caption_mode=normalized_caption_mode,
-            now=now,
-        )
-    except RelayWebPubSubError:
-        return 502, {
-            "error": {
-                "code": "portal_negotiate_failed",
-                "message": "Portal connection could not be negotiated.",
-                "details": [],
-            }
-        }
-
-    return 200, {
-        "url": access.url,
-        "hub": access.hub_name,
-        "group": access.group_name,
         "expiresAt": _format_utc(access.expires_at),
     }
 
@@ -206,19 +219,9 @@ def build_health_payload(*, commit: str | None = None) -> dict[str, str]:
     }
 
 
-def validate_viewer_track_number(value: Any) -> int | None:
-    if value is None or value == "":
-        return None
+def validate_viewer_track_number(value: Any) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError("Track number must be a positive integer.")
-    return value
-
-
-def validate_caption_mode(value: Any) -> str | None:
-    if value is None or value == "":
-        return None
-    if not isinstance(value, str) or value not in ALLOWED_CAPTION_MODES:
-        raise ValueError("Caption mode is not supported.")
     return value
 
 
@@ -227,26 +230,41 @@ def build_publish_payload(
     *,
     received_at: datetime,
     caption_mode: str,
+    sequence: int,
 ) -> dict[str, Any]:
     mode_content = event.caption_modes[caption_mode]
     payload: dict[str, Any] = {
-        "relay": {
-            "receivedAt": _format_utc(received_at),
-        },
+        "type": "caption",
+        "sessionId": event.session_id,
+        "sequence": sequence,
         "captionMode": caption_mode,
-        "roomName": event.room_name,
-        "trackNumber": event.track_number,
         "createdAt": _format_utc(event.created_at),
-        "speech": {
-            "inputLanguage": event.speech.input_language,
-            "offsetTicks": event.speech.offset_ticks,
-            "durationTicks": event.speech.duration_ticks,
-        },
+        "offsetTicks": event.speech.offset_ticks,
+        "durationTicks": event.speech.duration_ticks,
         "captions": mode_content.captions,
     }
 
     if mode_content.provider is not None:
         payload["captionProvider"] = mode_content.provider
+
+    return payload
+
+
+def build_control_publish_payload(event: ControlEvent) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "type": "control",
+        "event": event.event,
+        "updatedAt": _format_utc(event.updated_at),
+    }
+
+    if event.status is not None:
+        payload["status"] = event.status
+    if event.session_id is not None:
+        payload["sessionId"] = event.session_id
+    if event.available_caption_modes is not None:
+        payload["availableCaptionModes"] = event.available_caption_modes
+    if event.available_languages is not None:
+        payload["availableLanguages"] = event.available_languages
 
     return payload
 

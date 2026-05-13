@@ -29,16 +29,12 @@ struct RelayViewerAccess {
 
 extension RelaySettings {
     nonisolated func negotiateViewerAccess(
-        accessCode: String?,
-        captionMode: CaptionQualityMode? = nil
+        accessCode: String?
     ) async throws -> RelayViewerAccess {
         let relayURL = try validatedRelayURL()
         let trackNumber = try validatedTrackNumber()
         let endpointURL = relayURL.appending(path: "api/viewer/negotiate")
-        var payload: [String: Any] = ["trackNumber": trackNumber]
-        if let captionMode {
-            payload["captionMode"] = captionMode.rawValue
-        }
+        let payload: [String: Any] = ["trackNumber": trackNumber]
         let body = try JSONSerialization.data(
             withJSONObject: payload,
             options: [.sortedKeys, .withoutEscapingSlashes]
@@ -67,7 +63,7 @@ extension RelaySettings {
                 )
             }
 
-            return try Self.viewerAccess(from: data)
+            return try Self.viewerAccess(from: data, trackNumber: trackNumber)
         } catch {
             if let viewerAccessError = error as? RelayViewerAccessError {
                 throw viewerAccessError
@@ -77,17 +73,16 @@ extension RelaySettings {
         }
     }
 
-    nonisolated private static func viewerAccess(from data: Data) throws -> RelayViewerAccess {
+    nonisolated private static func viewerAccess(from data: Data, trackNumber: Int) throws -> RelayViewerAccess {
         guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let urlString = payload["url"] as? String,
               let url = URL(string: urlString),
-              let group = payload["group"] as? String,
               let expiresAtString = payload["expiresAt"] as? String,
               let expiresAt = parseViewerAccessTimestamp(expiresAtString) else {
             throw RelayViewerAccessError.invalidResponse
         }
 
-        return RelayViewerAccess(url: url, group: group, expiresAt: expiresAt)
+        return RelayViewerAccess(url: url, group: "track \(trackNumber)", expiresAt: expiresAt)
     }
 
     nonisolated private static func viewerAccessErrorMessage(from data: Data) -> String? {

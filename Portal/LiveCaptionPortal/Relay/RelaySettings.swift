@@ -64,6 +64,7 @@ struct RelayPublishResult {
 }
 
 struct RelayCaptionPublishInput: Sendable {
+    let sessionID: String
     let speechText: String
     let text: String
     let translations: [String: String]
@@ -78,6 +79,7 @@ struct RelayCaptionPublishInput: Sendable {
     init?(
         event: RecognizedCaptionEvent,
         mode: CaptionQualityMode,
+        sessionID: String,
         inputLanguage: InputLanguage,
         outputLanguages: [SpeechOutputLanguage]
     ) {
@@ -87,6 +89,7 @@ struct RelayCaptionPublishInput: Sendable {
 
         self.init(
             event: event,
+            sessionID: sessionID,
             inputLanguage: inputLanguage,
             outputLanguages: outputLanguages,
             text: result.text,
@@ -98,6 +101,7 @@ struct RelayCaptionPublishInput: Sendable {
 
     private init(
         event: RecognizedCaptionEvent,
+        sessionID: String,
         inputLanguage: InputLanguage,
         outputLanguages: [SpeechOutputLanguage],
         text: String,
@@ -105,6 +109,7 @@ struct RelayCaptionPublishInput: Sendable {
         captionMode: CaptionQualityMode,
         captionProvider: String
     ) {
+        self.sessionID = sessionID
         speechText = event.text
         self.text = text
         self.translations = translations
@@ -319,6 +324,7 @@ struct RelaySettings: Equatable {
         let payload: [String: Any] = [
             "roomName": roomName,
             "trackNumber": trackNumber,
+            "sessionId": input.sessionID,
             "createdAt": Self.formatTimestamp(publishedAt),
             "source": Self.sourcePayload(),
             "speech": [
@@ -331,6 +337,68 @@ struct RelaySettings: Equatable {
             "captionMode": input.captionMode.rawValue,
             "captionProvider": input.captionProvider,
         ]
+
+        try await send(payload: payload, speechKey: speechKey, createdAt: publishedAt)
+        return RelayPublishResult(relayURL: relayURL, publishedAt: publishedAt)
+    }
+
+    nonisolated func publishPortalStatus(
+        _ status: String,
+        speechKey: String
+    ) async throws -> RelayPublishResult {
+        try await publishControlEvent(
+            [
+                "event": "portalStatus",
+                "status": status,
+            ],
+            speechKey: speechKey
+        )
+    }
+
+    nonisolated func publishSessionStatus(
+        _ status: String,
+        sessionID: String,
+        speechKey: String
+    ) async throws -> RelayPublishResult {
+        try await publishControlEvent(
+            [
+                "event": "sessionStatus",
+                "status": status,
+                "sessionId": sessionID,
+            ],
+            speechKey: speechKey
+        )
+    }
+
+    nonisolated func publishCaptionAvailability(
+        sessionID: String?,
+        captionModes: [CaptionQualityMode],
+        languages: [SpeechOutputLanguage],
+        speechKey: String
+    ) async throws -> RelayPublishResult {
+        var payload: [String: Any] = [
+            "event": "captionAvailability",
+            "availableCaptionModes": captionModes.map(\.rawValue),
+            "availableLanguages": languages.map(\.id),
+        ]
+        if let sessionID {
+            payload["sessionId"] = sessionID
+        }
+
+        return try await publishControlEvent(payload, speechKey: speechKey)
+    }
+
+    nonisolated private func publishControlEvent(
+        _ input: [String: Any],
+        speechKey: String
+    ) async throws -> RelayPublishResult {
+        let relayURL = try validatedRelayURL()
+        let trackNumber = try validatedTrackNumber()
+        let publishedAt = Date()
+        var payload = input
+        payload["type"] = "control"
+        payload["trackNumber"] = trackNumber
+        payload["updatedAt"] = Self.formatTimestamp(publishedAt)
 
         try await send(payload: payload, speechKey: speechKey, createdAt: publishedAt)
         return RelayPublishResult(relayURL: relayURL, publishedAt: publishedAt)

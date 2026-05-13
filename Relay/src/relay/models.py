@@ -28,8 +28,20 @@ class CaptionModeContent:
 class CaptionEvent:
     room_name: str
     track_number: int
+    session_id: str
     created_at: datetime
     source: CaptionSource
     speech: SpeechSegment
     captions: dict[str, str]
     caption_modes: dict[str, CaptionModeContent]
+
+
+@dataclass(frozen=True)
+class ControlEvent:
+    track_number: int
+    event: str
+    status: str | None
+    session_id: str | None
+    available_caption_modes: list[str] | None
+    available_languages: list[str] | None
+    updated_at: datetime

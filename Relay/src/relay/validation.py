@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from relay.models import CaptionEvent, CaptionModeContent, CaptionSource, SpeechSegment
+from relay.models import CaptionEvent, CaptionModeContent, CaptionSource, ControlEvent, SpeechSegment
 
 ALLOWED_INPUT_LANGUAGES = frozenset({"zh-TW", "en-US"})
 ALLOWED_OUTPUT_LANGUAGES = frozenset({"zh-Hant", "en", "ja", "ko"})
@@ -13,13 +13,18 @@ ALLOWED_CAPTION_MODES = frozenset({"fast", "accurate"})
 EXPECTED_BUNDLE_IDENTIFIER = "io.iplayground.LiveCaptionPortal"
 
 MAX_ROOM_NAME_LENGTH = 80
+MAX_SESSION_ID_LENGTH = 80
 MAX_CAPTION_PROVIDER_LENGTH = 50
 MAX_TEXT_LENGTH = 4_000
-MAX_BODY_FIELD_COUNT = 9
+MAX_BODY_FIELD_COUNT = 10
 FUTURE_SKEW = timedelta(minutes=5)
 CONTROL_CHARACTER_CODES = frozenset(range(0x00, 0x20)) | {0x7F}
 ROOM_NAME_FORBIDDEN_CHARACTERS = frozenset({"/", "?", "#"})
 CAPTION_PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]+$")
+CONTROL_EVENTS = frozenset({"portalStatus", "sessionStatus", "captionAvailability"})
+PORTAL_STATUS_VALUES = frozenset({"online", "offline"})
+SESSION_STATUS_VALUES = frozenset({"started", "stopped"})
 
 
 class CaptionEventValidationError(ValueError):
@@ -44,6 +49,7 @@ def validate_caption_event(payload: Any, *, now: datetime | None = None) -> Capt
 
     track_number = _required_positive_int(payload, "trackNumber")
     room_name = _validate_room_name(_required_string(payload, "roomName"))
+    session_id = _validate_session_id(_required_string(payload, "sessionId"))
 
     created_at = _parse_created_at(_required_string(payload, "createdAt"), now=now)
     source = _validate_source(_required_object(payload, "source"))
@@ -64,11 +70,48 @@ def validate_caption_event(payload: Any, *, now: datetime | None = None) -> Capt
     return CaptionEvent(
         room_name=room_name,
         track_number=track_number,
+        session_id=session_id,
         created_at=created_at,
         source=source,
         speech=speech,
         captions=captions,
         caption_modes=caption_modes,
+    )
+
+
+def validate_control_event(payload: Any, *, now: datetime | None = None) -> ControlEvent:
+    if not isinstance(payload, dict):
+        raise CaptionEventValidationError("body", "Request body must be a JSON object.")
+
+    event_type = _required_string(payload, "type")
+    if event_type != "control":
+        raise CaptionEventValidationError("type", "Control event type must be control.")
+
+    track_number = _required_positive_int(payload, "trackNumber")
+    event = _required_string(payload, "event")
+    if event not in CONTROL_EVENTS:
+        raise CaptionEventValidationError("event", "Control event is not supported.")
+
+    updated_at = _parse_created_at(_required_string(payload, "updatedAt"), now=now)
+    status = _validate_control_status(payload.get("status"), event=event)
+    session_id = _validate_optional_session_id(payload.get("sessionId"), event=event)
+    available_caption_modes = _validate_available_caption_modes(
+        payload.get("availableCaptionModes"),
+        event=event,
+    )
+    available_languages = _validate_available_languages(
+        payload.get("availableLanguages"),
+        event=event,
+    )
+
+    return ControlEvent(
+        track_number=track_number,
+        event=event,
+        status=status,
+        session_id=session_id,
+        available_caption_modes=available_caption_modes,
+        available_languages=available_languages,
+        updated_at=updated_at,
     )
 
 
@@ -83,6 +126,93 @@ def _validate_room_name(value: str) -> str:
     if any(character in ROOM_NAME_FORBIDDEN_CHARACTERS for character in room_name):
         raise CaptionEventValidationError("roomName", "Room name contains reserved characters.")
     return room_name
+
+
+def _validate_session_id(value: str) -> str:
+    session_id = value.strip()
+    if not session_id:
+        raise CaptionEventValidationError("sessionId", "Session id is required.")
+    if len(session_id) > MAX_SESSION_ID_LENGTH:
+        raise CaptionEventValidationError("sessionId", "Session id is too long.")
+    if SESSION_ID_PATTERN.fullmatch(session_id) is None:
+        raise CaptionEventValidationError("sessionId", "Session id contains unsupported characters.")
+    return session_id
+
+
+def _validate_optional_session_id(value: Any, *, event: str) -> str | None:
+    if value is None:
+        if event == "sessionStatus":
+            raise CaptionEventValidationError("sessionId", "Session id is required.")
+        return None
+    if not isinstance(value, str):
+        raise CaptionEventValidationError("sessionId", "Session id must be a string.")
+    return _validate_session_id(value)
+
+
+def _validate_control_status(value: Any, *, event: str) -> str | None:
+    if event == "captionAvailability":
+        if value is not None:
+            raise CaptionEventValidationError("status", "Caption availability does not use status.")
+        return None
+
+    if not isinstance(value, str):
+        raise CaptionEventValidationError("status", "Status is required.")
+
+    normalized_status = value.strip()
+    allowed_values = PORTAL_STATUS_VALUES if event == "portalStatus" else SESSION_STATUS_VALUES
+    if normalized_status not in allowed_values:
+        raise CaptionEventValidationError("status", "Status is not supported.")
+    return normalized_status
+
+
+def _validate_available_caption_modes(value: Any, *, event: str) -> list[str] | None:
+    if event != "captionAvailability":
+        if value is not None:
+            raise CaptionEventValidationError(
+                "availableCaptionModes",
+                "Only captionAvailability uses available caption modes.",
+            )
+        return None
+
+    if not isinstance(value, list) or not value:
+        raise CaptionEventValidationError("availableCaptionModes", "At least one caption mode is required.")
+
+    normalized_modes: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise CaptionEventValidationError("availableCaptionModes", "Caption mode must be a string.")
+        mode = item.strip()
+        if mode not in ALLOWED_CAPTION_MODES:
+            raise CaptionEventValidationError("availableCaptionModes", "Caption mode is not supported.")
+        if mode not in normalized_modes:
+            normalized_modes.append(mode)
+
+    return normalized_modes
+
+
+def _validate_available_languages(value: Any, *, event: str) -> list[str] | None:
+    if event != "captionAvailability":
+        if value is not None:
+            raise CaptionEventValidationError(
+                "availableLanguages",
+                "Only captionAvailability uses available languages.",
+            )
+        return None
+
+    if not isinstance(value, list) or not value:
+        raise CaptionEventValidationError("availableLanguages", "At least one language is required.")
+
+    normalized_languages: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise CaptionEventValidationError("availableLanguages", "Language must be a string.")
+        language = item.strip()
+        if language not in ALLOWED_OUTPUT_LANGUAGES:
+            raise CaptionEventValidationError("availableLanguages", "Language is not supported.")
+        if language not in normalized_languages:
+            normalized_languages.append(language)
+
+    return normalized_languages
 
 
 def _parse_created_at(value: str, *, now: datetime | None) -> datetime:

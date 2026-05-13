@@ -23,7 +23,6 @@ def test_webpubsub_config_reads_environment() -> None:
     assert config.endpoint == "https://livecaption.webpubsub.azure.com"
     assert config.hub_name == "livecaption"
     assert config.group_name == "caption-live"
-    assert config.operator_group_name == "caption-operator"
 
 
 def test_webpubsub_config_requires_values() -> None:
@@ -65,11 +64,6 @@ def test_webpubsub_publisher_sends_payload_to_configured_group(monkeypatch: pyte
             "message": '{"accepted":true}',
             "content_type": "text/plain",
         },
-        {
-            "group": "caption-operator",
-            "message": '{"accepted":true}',
-            "content_type": "text/plain",
-        },
     ]
 
 
@@ -90,62 +84,8 @@ def test_webpubsub_publisher_also_sends_payload_to_track_group(
 
     assert client.messages == [
         {
-            "group": "caption-live",
-            "message": '{"trackNumber":2}',
-            "content_type": "text/plain",
-        },
-        {
             "group": "caption-live-track-2",
             "message": '{"trackNumber":2}',
-            "content_type": "text/plain",
-        },
-        {
-            "group": "caption-operator",
-            "message": '{"trackNumber":2}',
-            "content_type": "text/plain",
-        },
-        {
-            "group": "caption-operator-track-2",
-            "message": '{"trackNumber":2}',
-            "content_type": "text/plain",
-        },
-    ]
-
-
-def test_webpubsub_publisher_sends_payload_to_caption_mode_groups(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config = WebPubSubConfig(
-        endpoint="https://livecaption.webpubsub.azure.com",
-        hub_name="livecaption",
-        group_name="caption-live",
-    )
-    client = FakeWebPubSubServiceClient()
-    publisher = AzureWebPubSubPublisher(config_factory=lambda: config)
-    monkeypatch.setattr(publisher, "_client", client)
-    monkeypatch.setattr(publisher, "_config", config)
-
-    publisher.publish({"captionMode": "accurate"}, track_number=2, caption_mode="accurate")
-
-    assert client.messages == [
-        {
-            "group": "caption-live-accurate",
-            "message": '{"captionMode":"accurate"}',
-            "content_type": "text/plain",
-        },
-        {
-            "group": "caption-live-accurate-track-2",
-            "message": '{"captionMode":"accurate"}',
-            "content_type": "text/plain",
-        },
-        {
-            "group": "caption-operator-accurate",
-            "message": '{"captionMode":"accurate"}',
-            "content_type": "text/plain",
-        },
-        {
-            "group": "caption-operator-accurate-track-2",
-            "message": '{"captionMode":"accurate"}',
             "content_type": "text/plain",
         },
     ]
@@ -170,11 +110,6 @@ def test_webpubsub_publisher_preserves_non_ascii_text(monkeypatch: pytest.Monkey
             "message": '{"captions":{"zh-Hant":"你好","ja":"こんにちは"}}',
             "content_type": "text/plain",
         },
-        {
-            "group": "caption-operator",
-            "message": '{"captions":{"zh-Hant":"你好","ja":"こんにちは"}}',
-            "content_type": "text/plain",
-        },
     ]
     assert "\\u" not in client.messages[0]["message"]
 
@@ -191,38 +126,6 @@ def test_webpubsub_publisher_wraps_azure_errors(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(RelayWebPubSubError):
         publisher.publish({"caption": "do not leak"})
-
-
-def test_viewer_token_provider_generates_receive_only_group_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config = WebPubSubConfig(
-        endpoint="https://livecaption.webpubsub.azure.com",
-        hub_name="livecaption",
-        group_name="caption-live",
-    )
-    client = FakeWebPubSubServiceClient()
-    provider = AzureWebPubSubViewerTokenProvider(
-        config_factory=lambda: config,
-        token_ttl=timedelta(minutes=60),
-    )
-    monkeypatch.setattr(provider, "_client", client)
-    monkeypatch.setattr(provider, "_config", config)
-
-    access = provider.get_viewer_access_token(
-        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
-    )
-
-    assert access.url == "wss://livecaption.webpubsub.azure.com/client/hubs/livecaption?access_token=fake"
-    assert access.hub_name == "livecaption"
-    assert access.group_name == "caption-live"
-    assert access.expires_at == datetime(2026, 4, 30, 13, 0, tzinfo=UTC)
-    assert client.access_token_requests == [
-        {
-            "minutes_to_expire": 60,
-            "groups": ["caption-live"],
-        }
-    ]
 
 
 def test_viewer_token_provider_generates_track_group_token(
@@ -255,68 +158,6 @@ def test_viewer_token_provider_generates_track_group_token(
     ]
 
 
-def test_viewer_token_provider_generates_caption_mode_track_group_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config = WebPubSubConfig(
-        endpoint="https://livecaption.webpubsub.azure.com",
-        hub_name="livecaption",
-        group_name="caption-live",
-    )
-    client = FakeWebPubSubServiceClient()
-    provider = AzureWebPubSubViewerTokenProvider(
-        config_factory=lambda: config,
-        token_ttl=timedelta(minutes=60),
-    )
-    monkeypatch.setattr(provider, "_client", client)
-    monkeypatch.setattr(provider, "_config", config)
-
-    access = provider.get_viewer_access_token(
-        track_number=2,
-        caption_mode="accurate",
-        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
-    )
-
-    assert access.group_name == "caption-live-accurate-track-2"
-    assert client.access_token_requests == [
-        {
-            "minutes_to_expire": 60,
-            "groups": ["caption-live-accurate-track-2"],
-        }
-    ]
-
-
-def test_viewer_token_provider_generates_operator_track_group_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config = WebPubSubConfig(
-        endpoint="https://livecaption.webpubsub.azure.com",
-        hub_name="livecaption",
-        group_name="caption-live",
-        operator_group_name="caption-operator",
-    )
-    client = FakeWebPubSubServiceClient()
-    provider = AzureWebPubSubViewerTokenProvider(
-        config_factory=lambda: config,
-        token_ttl=timedelta(minutes=60),
-    )
-    monkeypatch.setattr(provider, "_client", client)
-    monkeypatch.setattr(provider, "_config", config)
-
-    access = provider.get_operator_access_token(
-        track_number=2,
-        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
-    )
-
-    assert access.group_name == "caption-operator-track-2"
-    assert client.access_token_requests == [
-        {
-            "minutes_to_expire": 60,
-            "groups": ["caption-operator-track-2"],
-        }
-    ]
-
-
 def test_viewer_token_provider_rejects_invalid_token_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -330,7 +171,7 @@ def test_viewer_token_provider_rejects_invalid_token_response(
     monkeypatch.setattr(provider, "_config", config)
 
     with pytest.raises(RelayWebPubSubError):
-        provider.get_viewer_access_token(now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC))
+        provider.get_viewer_access_token(track_number=1, now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC))
 
 
 def test_viewer_token_provider_wraps_azure_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -344,7 +185,7 @@ def test_viewer_token_provider_wraps_azure_errors(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(provider, "_config", config)
 
     with pytest.raises(RelayWebPubSubError):
-        provider.get_viewer_access_token(now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC))
+        provider.get_viewer_access_token(track_number=1, now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC))
 
 
 class FakeWebPubSubServiceClient:

@@ -45,9 +45,6 @@ param webPubSubHubName string = 'livecaption'
 @description('Azure Web PubSub group used for live caption broadcasts.')
 param webPubSubGroupName string = 'caption-live'
 
-@description('Azure Web PubSub group used by Portal operator clients to observe caption broadcasts.')
-param webPubSubOperatorGroupName string = 'caption-operator'
-
 @description('Require the Portal-provided viewer access code when negotiating a viewer Web PubSub URL.')
 param viewerAccessCodeRequired bool = true
 
@@ -422,10 +419,6 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: webPubSubGroupName
         }
         {
-          name: 'AZURE_WEBPUBSUB_OPERATOR_GROUP_NAME'
-          value: webPubSubOperatorGroupName
-        }
-        {
           name: 'VIEWER_ACCESS_CODE_REQUIRED'
           value: string(viewerAccessCodeRequired)
         }
@@ -515,7 +508,6 @@ output webPubSubName string = webPubSub.name
 output webPubSubEndpoint string = 'https://${webPubSub.properties.hostName}'
 output webPubSubHubName string = webPubSubHubName
 output webPubSubGroupName string = webPubSubGroupName
-output webPubSubOperatorGroupName string = webPubSubOperatorGroupName
 output azureOpenAIResourceId string = azureOpenAI.id
 output azureOpenAIName string = azureOpenAI.name
 output azureOpenAIEndpoint string = 'https://${azureOpenAICustomSubdomainName}.openai.azure.com'

@@ -4,13 +4,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from relay.validation import CaptionEventValidationError, validate_caption_event
+from relay.validation import CaptionEventValidationError, validate_caption_event, validate_control_event
 
 
 def valid_payload() -> dict[str, object]:
     return {
         "roomName": "A101",
         "trackNumber": 1,
+        "sessionId": "2026-04-29T12:34:00.000",
         "createdAt": "2026-04-29T12:34:56.789Z",
         "source": {
             "bundleIdentifier": "io.iplayground.LiveCaptionPortal",
@@ -46,6 +47,7 @@ def test_valid_caption_event_is_normalized() -> None:
 
     assert event.room_name == "A101"
     assert event.track_number == 1
+    assert event.session_id == "2026-04-29T12:34:00.000"
     assert event.created_at == datetime(2026, 4, 29, 12, 34, 56, 789000, tzinfo=UTC)
     assert event.source.bundle_identifier == "io.iplayground.LiveCaptionPortal"
     assert event.speech.input_language == "zh-TW"
@@ -124,6 +126,7 @@ def test_room_name_is_required_but_can_be_empty() -> None:
     ("field", "mutate"),
     [
         ("trackNumber", lambda payload: payload.update({"trackNumber": "1"})),
+        ("sessionId", lambda payload: payload.update({"sessionId": ""})),
         ("createdAt", lambda payload: payload.update({"createdAt": "not-a-date"})),
         ("source.bundleIdentifier", lambda payload: payload["source"].pop("bundleIdentifier")),
         ("speech.inputLanguage", lambda payload: payload["speech"].update({"inputLanguage": "fr"})),
@@ -209,3 +212,66 @@ def test_rejects_oversized_text_without_leaking_content() -> None:
 
     assert error.value.field == "captions.en"
     assert "x" * 100 not in error.value.reason
+
+
+def test_valid_session_status_control_event_is_normalized() -> None:
+    event = validate_control_event(
+        {
+            "type": "control",
+            "trackNumber": 1,
+            "event": "sessionStatus",
+            "status": "started",
+            "sessionId": "2026-04-29T12:34:00.000",
+            "updatedAt": "2026-04-29T12:34:00.000Z",
+        },
+        now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+    )
+
+    assert event.track_number == 1
+    assert event.event == "sessionStatus"
+    assert event.status == "started"
+    assert event.session_id == "2026-04-29T12:34:00.000"
+
+
+def test_valid_caption_availability_control_event_is_normalized() -> None:
+    event = validate_control_event(
+        {
+            "type": "control",
+            "trackNumber": 1,
+            "event": "captionAvailability",
+            "availableCaptionModes": ["fast", "accurate"],
+            "availableLanguages": ["zh-Hant", "en", "ja"],
+            "updatedAt": "2026-04-29T12:34:00.000Z",
+        },
+        now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+    )
+
+    assert event.available_caption_modes == ["fast", "accurate"]
+    assert event.available_languages == ["zh-Hant", "en", "ja"]
+
+
+@pytest.mark.parametrize(
+    ("field", "mutate"),
+    [
+        ("type", lambda payload: payload.update({"type": "caption"})),
+        ("trackNumber", lambda payload: payload.update({"trackNumber": 0})),
+        ("event", lambda payload: payload.update({"event": "captionModeStatus"})),
+        ("status", lambda payload: payload.update({"status": "paused"})),
+        ("sessionId", lambda payload: payload.pop("sessionId")),
+    ],
+)
+def test_invalid_control_events_report_field(field: str, mutate) -> None:
+    payload = {
+        "type": "control",
+        "trackNumber": 1,
+        "event": "sessionStatus",
+        "status": "started",
+        "sessionId": "2026-04-29T12:34:00.000",
+        "updatedAt": "2026-04-29T12:34:00.000Z",
+    }
+    mutate(payload)
+
+    with pytest.raises(CaptionEventValidationError) as error:
+        validate_control_event(payload, now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC))
+
+    assert error.value.field == field

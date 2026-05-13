@@ -11,7 +11,6 @@ param webPubSubSkuName = 'Free_F1'
 param webPubSubUnitCount = 1
 param webPubSubHubName = 'livecaption'
 param webPubSubGroupName = 'caption-live'
-param webPubSubOperatorGroupName = 'caption-operator'
 param viewerAccessCodeRequired = true
 param azureOpenAIName = '<azure-openai-name>'
 param azureOpenAILocation = 'southindia'

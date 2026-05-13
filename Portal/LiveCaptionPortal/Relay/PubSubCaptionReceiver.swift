@@ -55,7 +55,7 @@ final class PubSubCaptionReceiver: ObservableObject {
     @Published private(set) var status = PubSubCaptionConnectionStatus.idle
     @Published private(set) var latestCaptions: [CaptionQualityMode: PubSubCaptionEvent] = [:]
 
-    private var webSocketTasks: [CaptionQualityMode: URLSessionWebSocketTask] = [:]
+    private var webSocketTask: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
     private var connectionID = UUID()
 
@@ -72,16 +72,13 @@ final class PubSubCaptionReceiver: ObservableObject {
 
         Task {
             do {
-                let accesses = try await Self.negotiateAccesses(
-                    settings: settings,
-                    viewerAccessCode: viewerAccessCode
-                )
+                let access = try await settings.negotiateViewerAccess(accessCode: viewerAccessCode)
                 await MainActor.run {
                     guard self.connectionID == currentConnectionID else {
                         return
                     }
 
-                    self.openWebSockets(accesses: accesses, connectionID: currentConnectionID)
+                    self.openWebSocket(access: access, connectionID: currentConnectionID)
                 }
             } catch {
                 await MainActor.run {
@@ -99,8 +96,8 @@ final class PubSubCaptionReceiver: ObservableObject {
         connectionID = UUID()
         receiveTask?.cancel()
         receiveTask = nil
-        webSocketTasks.values.forEach { $0.cancel(with: .goingAway, reason: nil) }
-        webSocketTasks.removeAll()
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
         status = .idle
 
         if !keepsLatestCaption {
@@ -108,47 +105,31 @@ final class PubSubCaptionReceiver: ObservableObject {
         }
     }
 
-    private func openWebSockets(
-        accesses: [(mode: CaptionQualityMode, access: RelayViewerAccess)],
+    private func openWebSocket(
+        access: RelayViewerAccess,
         connectionID: UUID
     ) {
-        let groups = accesses.map(\.access.group).joined(separator: ", ")
-        status = .connected(groups)
+        status = .connected(access.group)
 
-        for item in accesses {
-            let task = URLSession.shared.webSocketTask(with: item.access.url)
-            webSocketTasks[item.mode] = task
-            task.resume()
-        }
-
+        let task = URLSession.shared.webSocketTask(with: access.url)
+        webSocketTask = task
+        task.resume()
         receiveTask = Task { [weak self] in
-            await withTaskGroup(of: Void.self) { group in
-                for item in accesses {
-                    guard let task = self?.webSocketTasks[item.mode] else {
-                        continue
-                    }
-
-                    group.addTask {
-                        await self?.receiveMessages(
-                            connectionID: connectionID,
-                            mode: item.mode,
-                            task: task
-                        )
-                    }
-                }
-            }
+            await self?.receiveMessages(
+                connectionID: connectionID,
+                task: task
+            )
         }
     }
 
     private func receiveMessages(
         connectionID: UUID,
-        mode: CaptionQualityMode,
         task: URLSessionWebSocketTask
     ) async {
         while !Task.isCancelled {
             do {
                 let message = try await task.receive()
-                guard let event = Self.captionEvent(from: message, expectedMode: mode) else {
+                guard let event = Self.captionEvent(from: message) else {
                     continue
                 }
 
@@ -172,49 +153,31 @@ final class PubSubCaptionReceiver: ObservableObject {
         }
     }
 
-    nonisolated private static func negotiateAccesses(
-        settings: RelaySettings,
-        viewerAccessCode: String?
-    ) async throws -> [(mode: CaptionQualityMode, access: RelayViewerAccess)] {
-        var accesses: [(mode: CaptionQualityMode, access: RelayViewerAccess)] = []
-        for mode in [CaptionQualityMode.fast, .accurate] {
-            let access = try await settings.negotiateViewerAccess(
-                accessCode: viewerAccessCode,
-                captionMode: mode
-            )
-            accesses.append((mode: mode, access: access))
-        }
-        return accesses
-    }
-
     nonisolated private static func captionEvent(
-        from message: URLSessionWebSocketTask.Message,
-        expectedMode: CaptionQualityMode
+        from message: URLSessionWebSocketTask.Message
     ) -> PubSubCaptionEvent? {
         switch message {
         case .string(let text):
-            return captionEvent(from: Data(text.utf8), expectedMode: expectedMode)
+            return captionEvent(from: Data(text.utf8))
         case .data(let data):
-            return captionEvent(from: data, expectedMode: expectedMode)
+            return captionEvent(from: data)
         @unknown default:
             return nil
         }
     }
 
     nonisolated private static func captionEvent(
-        from data: Data,
-        expectedMode: CaptionQualityMode
+        from data: Data
     ) -> PubSubCaptionEvent? {
         guard let payload = try? JSONSerialization.jsonObject(with: data) else {
             return nil
         }
 
-        return captionEvent(fromJSONObject: payload, expectedMode: expectedMode)
+        return captionEvent(fromJSONObject: payload)
     }
 
     nonisolated private static func captionEvent(
-        fromJSONObject payload: Any,
-        expectedMode: CaptionQualityMode
+        fromJSONObject payload: Any
     ) -> PubSubCaptionEvent? {
         guard let captionPayload = captionPayload(from: payload),
               let captions = captionPayload["captions"] as? [String: String],
@@ -224,10 +187,6 @@ final class PubSubCaptionReceiver: ObservableObject {
 
         let captionMode = (captionPayload["captionMode"] as? String)
             .flatMap(CaptionQualityMode.init(rawValue:)) ?? .fast
-
-        guard captionMode == expectedMode else {
-            return nil
-        }
 
         return PubSubCaptionEvent(
             receivedAt: Date(),
