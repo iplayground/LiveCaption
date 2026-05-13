@@ -9,7 +9,7 @@ enum CaptionQualityMode: String, CaseIterable, Hashable, Sendable {
         case .fast:
             "azure-speech"
         case .accurate:
-            "azure-openai-realtime-translate"
+            "azure-openai"
         }
     }
 }

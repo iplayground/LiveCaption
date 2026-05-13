@@ -20,7 +20,7 @@ class SpeechSegment:
 
 @dataclass(frozen=True)
 class CaptionModeContent:
-    provider: str
+    provider: str | None
     captions: dict[str, str]
 
 

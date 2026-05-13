@@ -27,6 +27,7 @@ def valid_payload() -> dict[str, object]:
             "en": "Welcome to today's event",
             "ja": "本日のイベントへようこそ",
         },
+        "captionMode": "fast",
     }
 
 
@@ -49,11 +50,11 @@ def test_valid_caption_event_is_normalized() -> None:
     assert event.source.bundle_identifier == "io.iplayground.LiveCaptionPortal"
     assert event.speech.input_language == "zh-TW"
     assert event.captions["en"] == "Welcome to today's event"
-    assert event.caption_modes["fast"].provider == "azure-speech"
+    assert event.caption_modes["fast"].provider is None
     assert event.caption_modes["fast"].captions["en"] == "Welcome to today's event"
 
 
-def test_caption_event_accepts_fast_and_accurate_caption_modes() -> None:
+def test_caption_event_rejects_legacy_caption_modes() -> None:
     payload = valid_payload()
     payload["captionModes"] = {
         "fast": {
@@ -61,7 +62,7 @@ def test_caption_event_accepts_fast_and_accurate_caption_modes() -> None:
             "captions": payload["captions"],
         },
         "accurate": {
-            "provider": "azure-openai-realtime-translate",
+            "provider": "azure-openai",
             "captions": {
                 "zh-Hant": "歡迎各位來到今天的活動",
                 "en": "Welcome, everyone, to today's event.",
@@ -69,11 +70,11 @@ def test_caption_event_accepts_fast_and_accurate_caption_modes() -> None:
         },
     }
 
-    event = validate(payload)
+    with pytest.raises(CaptionEventValidationError) as error:
+        validate(payload)
 
-    assert event.caption_modes["fast"].captions["en"] == "Welcome to today's event"
-    assert event.caption_modes["accurate"].provider == "azure-openai-realtime-translate"
-    assert event.caption_modes["accurate"].captions["en"] == "Welcome, everyone, to today's event."
+    assert error.value.field == "captionModes"
+    assert error.value.reason == "Use captionMode and captionProvider instead."
 
 
 def test_caption_event_accepts_single_language_accurate_caption_mode() -> None:
@@ -81,17 +82,32 @@ def test_caption_event_accepts_single_language_accurate_caption_mode() -> None:
     payload["captions"] = {
         "ja": "本日のイベントへようこそ",
     }
-    payload["captionModes"] = {
-        "accurate": {
-            "provider": "azure-openai-realtime-translate",
-            "captions": payload["captions"],
-        },
-    }
+    payload["captionMode"] = "accurate"
+    payload["captionProvider"] = "azure-openai"
 
     event = validate(payload)
 
     assert event.captions == {"ja": "本日のイベントへようこそ"}
+    assert event.caption_modes["accurate"].provider == "azure-openai"
     assert event.caption_modes["accurate"].captions == {"ja": "本日のイベントへようこそ"}
+
+
+def test_caption_provider_is_optional_and_not_bound_to_caption_mode() -> None:
+    payload = valid_payload()
+    payload["captionProvider"] = "  manual-correction.v1  "
+
+    event = validate(payload)
+
+    assert event.caption_modes["fast"].provider == "manual-correction.v1"
+
+
+def test_blank_caption_provider_is_treated_as_absent() -> None:
+    payload = valid_payload()
+    payload["captionProvider"] = "  "
+
+    event = validate(payload)
+
+    assert event.caption_modes["fast"].provider is None
 
 
 def test_room_name_is_required_but_can_be_empty() -> None:
@@ -116,20 +132,11 @@ def test_room_name_is_required_but_can_be_empty() -> None:
         ("captions.en", lambda payload: payload["captions"].pop("en")),
         ("captions.zh-Hant", lambda payload: payload["captions"].update({"zh-Hant": ""})),
         ("captions", lambda payload: payload["captions"].update({"fr": "Bonjour"})),
-        ("captionModes", lambda payload: payload.update({"captionModes": {"slow": {}}})),
-        (
-            "captionModes.fast.provider",
-            lambda payload: payload.update(
-                {
-                    "captionModes": {
-                        "fast": {
-                            "provider": "azure-openai-realtime-translate",
-                            "captions": payload["captions"],
-                        }
-                    }
-                }
-            ),
-        ),
+        ("captionMode", lambda payload: payload.pop("captionMode")),
+        ("captionMode", lambda payload: payload.update({"captionMode": "slow"})),
+        ("captionProvider", lambda payload: payload.update({"captionProvider": 123})),
+        ("captionProvider", lambda payload: payload.update({"captionProvider": "x" * 51})),
+        ("captionProvider", lambda payload: payload.update({"captionProvider": "azure openai"})),
     ],
 )
 def test_invalid_caption_events_report_field(field: str, mutate) -> None:

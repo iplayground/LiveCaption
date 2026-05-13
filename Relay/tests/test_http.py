@@ -121,11 +121,11 @@ def test_handle_caption_event_request_accepts_valid_payload() -> None:
     assert publisher.payloads[0]["caption_mode"] == "fast"
     assert publisher.payloads[0]["payload"]["trackNumber"] == 1
     assert publisher.payloads[0]["payload"]["captionMode"] == "fast"
-    assert publisher.payloads[0]["payload"]["captionProvider"] == "azure-speech"
+    assert "captionProvider" not in publisher.payloads[0]["payload"]
     assert publisher.payloads[0]["payload"]["captions"]["en"] == "Welcome to today's event"
 
 
-def test_handle_caption_event_request_publishes_each_caption_mode() -> None:
+def test_handle_caption_event_request_rejects_legacy_caption_modes() -> None:
     payload = valid_payload()
     payload["captionModes"] = {
         "fast": {
@@ -133,7 +133,7 @@ def test_handle_caption_event_request_publishes_each_caption_mode() -> None:
             "captions": payload["captions"],
         },
         "accurate": {
-            "provider": "azure-openai-realtime-translate",
+            "provider": "azure-openai",
             "captions": {
                 "zh-Hant": "歡迎各位來到今天的活動",
                 "en": "Welcome, everyone, to today's event.",
@@ -148,11 +148,11 @@ def test_handle_caption_event_request_publishes_each_caption_mode() -> None:
         now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
     )
 
-    assert status_code == 202
-    assert body == {"accepted": True}
-    assert [entry["caption_mode"] for entry in publisher.payloads] == ["fast", "accurate"]
-    assert publisher.payloads[1]["payload"]["captionProvider"] == "azure-openai-realtime-translate"
-    assert publisher.payloads[1]["payload"]["captions"]["en"] == "Welcome, everyone, to today's event."
+    assert status_code == 400
+    assert body["error"]["details"] == [
+        {"field": "captionModes", "reason": "Use captionMode and captionProvider instead."}
+    ]
+    assert publisher.payloads == []
 
 
 def test_handle_caption_event_request_returns_sanitized_error() -> None:
@@ -206,7 +206,7 @@ def test_build_publish_payload_omits_source_and_speech_text() -> None:
 
     assert payload["relay"] == {"receivedAt": "2026-04-29T12:35:01.123Z"}
     assert payload["captionMode"] == "fast"
-    assert payload["captionProvider"] == "azure-speech"
+    assert "captionProvider" not in payload
     assert payload["roomName"] == "A101"
     assert payload["trackNumber"] == 1
     assert payload["speech"] == {
@@ -216,6 +216,23 @@ def test_build_publish_payload_omits_source_and_speech_text() -> None:
     }
     assert "source" not in payload
     assert "text" not in payload["speech"]
+
+
+def test_build_publish_payload_preserves_caption_provider_when_present() -> None:
+    request_payload = valid_payload()
+    request_payload["captionProvider"] = "manual-correction.v1"
+    event = validate_caption_event(
+        request_payload,
+        now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+    )
+
+    payload = build_publish_payload(
+        event,
+        received_at=datetime(2026, 4, 29, 12, 35, 1, 123000, tzinfo=UTC),
+        caption_mode="fast",
+    )
+
+    assert payload["captionProvider"] == "manual-correction.v1"
 
 
 def test_build_publish_payload_keeps_empty_room_name() -> None:

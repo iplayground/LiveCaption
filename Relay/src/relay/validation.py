@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,20 +10,16 @@ ALLOWED_INPUT_LANGUAGES = frozenset({"zh-TW", "en-US"})
 ALLOWED_OUTPUT_LANGUAGES = frozenset({"zh-Hant", "en", "ja", "ko"})
 REQUIRED_OUTPUT_LANGUAGES = frozenset({"zh-Hant", "en"})
 ALLOWED_CAPTION_MODES = frozenset({"fast", "accurate"})
-DEFAULT_CAPTION_MODE = "fast"
-DEFAULT_CAPTION_PROVIDER = "azure-speech"
-CAPTION_MODE_PROVIDERS = {
-    "fast": "azure-speech",
-    "accurate": "azure-openai-realtime-translate",
-}
 EXPECTED_BUNDLE_IDENTIFIER = "io.iplayground.LiveCaptionPortal"
 
 MAX_ROOM_NAME_LENGTH = 80
+MAX_CAPTION_PROVIDER_LENGTH = 50
 MAX_TEXT_LENGTH = 4_000
 MAX_BODY_FIELD_COUNT = 9
 FUTURE_SKEW = timedelta(minutes=5)
 CONTROL_CHARACTER_CODES = frozenset(range(0x00, 0x20)) | {0x7F}
 ROOM_NAME_FORBIDDEN_CHARACTERS = frozenset({"/", "?", "#"})
+CAPTION_PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class CaptionEventValidationError(ValueError):
@@ -42,17 +39,27 @@ def validate_caption_event(payload: Any, *, now: datetime | None = None) -> Capt
     if len(payload) > MAX_BODY_FIELD_COUNT:
         raise CaptionEventValidationError("body", "Request body contains too many fields.")
 
+    if "captionModes" in payload:
+        raise CaptionEventValidationError("captionModes", "Use captionMode and captionProvider instead.")
+
     track_number = _required_positive_int(payload, "trackNumber")
     room_name = _validate_room_name(_required_string(payload, "roomName"))
 
     created_at = _parse_created_at(_required_string(payload, "createdAt"), now=now)
     source = _validate_source(_required_object(payload, "source"))
     speech = _validate_speech(_required_object(payload, "speech"))
+    caption_mode = _validate_caption_mode(payload.get("captionMode"))
+    caption_provider = _validate_caption_provider(payload.get("captionProvider"))
     captions = _validate_captions(
         _required_object(payload, "captions"),
-        require_required_languages=_requires_required_caption_languages(payload.get("captionModes")),
+        require_required_languages=caption_mode == "fast",
     )
-    caption_modes = _validate_caption_modes(payload.get("captionModes"), fallback_captions=captions)
+    caption_modes = {
+        caption_mode: CaptionModeContent(
+            provider=caption_provider,
+            captions=captions,
+        )
+    }
 
     return CaptionEvent(
         room_name=room_name,
@@ -141,14 +148,6 @@ def _validate_speech(payload: dict[str, Any]) -> SpeechSegment:
     )
 
 
-def _requires_required_caption_languages(caption_modes_payload: Any) -> bool:
-    if caption_modes_payload is None:
-        return True
-    if not isinstance(caption_modes_payload, dict):
-        return False
-    return "fast" in caption_modes_payload
-
-
 def _validate_captions(
     payload: dict[str, Any],
     *,
@@ -175,59 +174,37 @@ def _validate_captions(
     return normalized_captions
 
 
-def _validate_caption_modes(
-    payload: Any,
-    *,
-    fallback_captions: dict[str, str],
-) -> dict[str, CaptionModeContent]:
-    if payload is None:
-        return {
-            DEFAULT_CAPTION_MODE: CaptionModeContent(
-                provider=DEFAULT_CAPTION_PROVIDER,
-                captions=fallback_captions,
-            )
-        }
+def _validate_caption_mode(value: Any) -> str:
+    if value is None:
+        raise CaptionEventValidationError("captionMode", "Caption mode is required.")
+    if not isinstance(value, str):
+        raise CaptionEventValidationError("captionMode", "Caption mode must be a string.")
 
-    if not isinstance(payload, dict):
-        raise CaptionEventValidationError("captionModes", "Field must be a JSON object.")
+    normalized_mode = value.strip()
+    if normalized_mode not in ALLOWED_CAPTION_MODES:
+        raise CaptionEventValidationError("captionMode", "Caption mode is not supported.")
 
-    if not payload:
-        raise CaptionEventValidationError("captionModes", "At least one caption mode is required.")
+    return normalized_mode
 
-    normalized_modes: dict[str, CaptionModeContent] = {}
-    for mode, mode_payload in payload.items():
-        if not isinstance(mode, str) or mode not in ALLOWED_CAPTION_MODES:
-            raise CaptionEventValidationError("captionModes", "Caption mode is not supported.")
-        if not isinstance(mode_payload, dict):
-            raise CaptionEventValidationError(
-                f"captionModes.{mode}",
-                "Caption mode value must be a JSON object.",
-            )
 
-        provider = mode_payload.get("provider", CAPTION_MODE_PROVIDERS[mode])
-        if not isinstance(provider, str):
-            raise CaptionEventValidationError(
-                f"captionModes.{mode}.provider",
-                "Caption provider must be a string.",
-            )
+def _validate_caption_provider(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise CaptionEventValidationError("captionProvider", "Caption provider must be a string.")
 
-        normalized_provider = provider.strip()
-        if normalized_provider != CAPTION_MODE_PROVIDERS[mode]:
-            raise CaptionEventValidationError(
-                f"captionModes.{mode}.provider",
-                "Caption provider does not match caption mode.",
-            )
-
-        captions = _validate_captions(
-            _required_object(mode_payload, "captions", prefix=f"captionModes.{mode}"),
-            require_required_languages=mode == "fast",
-        )
-        normalized_modes[mode] = CaptionModeContent(
-            provider=normalized_provider,
-            captions=captions,
+    normalized_provider = value.strip()
+    if not normalized_provider:
+        return None
+    if len(normalized_provider) > MAX_CAPTION_PROVIDER_LENGTH:
+        raise CaptionEventValidationError("captionProvider", "Caption provider is too long.")
+    if CAPTION_PROVIDER_PATTERN.fullmatch(normalized_provider) is None:
+        raise CaptionEventValidationError(
+            "captionProvider",
+            "Caption provider contains unsupported characters.",
         )
 
-    return normalized_modes
+    return normalized_provider
 
 
 def _validate_text(value: str, field: str) -> str:

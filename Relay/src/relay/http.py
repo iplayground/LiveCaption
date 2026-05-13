@@ -229,12 +229,11 @@ def build_publish_payload(
     caption_mode: str,
 ) -> dict[str, Any]:
     mode_content = event.caption_modes[caption_mode]
-    return {
+    payload: dict[str, Any] = {
         "relay": {
             "receivedAt": _format_utc(received_at),
         },
         "captionMode": caption_mode,
-        "captionProvider": mode_content.provider,
         "roomName": event.room_name,
         "trackNumber": event.track_number,
         "createdAt": _format_utc(event.created_at),
@@ -245,6 +244,11 @@ def build_publish_payload(
         },
         "captions": mode_content.captions,
     }
+
+    if mode_content.provider is not None:
+        payload["captionProvider"] = mode_content.provider
+
+    return payload
 
 
 def to_json_response_body(payload: dict[str, Any]) -> str:

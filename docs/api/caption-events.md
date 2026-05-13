@@ -12,8 +12,8 @@ X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
 ```
 
 Portal 會依 final 字幕品質模式分開呼叫同一個 endpoint。快速字幕與精準字幕是兩筆獨立
-POST；快速字幕的 `captionModes` 只包含 `fast`，精準字幕的 `captionModes` 只包含
-`accurate`。Relay 不應假設同一個字幕事件同時包含兩種模式。
+POST；快速字幕的 `captionMode` 為 `fast`，精準字幕的 `captionMode` 為 `accurate`。
+Relay 會拒絕舊版 `captionModes` 多模式 object。
 
 Portal 使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
 
@@ -53,9 +53,7 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
   "createdAt": "2026-04-29T12:34:56.789Z",
   "source": {
     "bundleIdentifier": "io.iplayground.LiveCaptionPortal",
-    "appVersion": "1.0",
-    "captionQualityMode": "fast",
-    "captionProvider": "azure-speech"
+    "appVersion": "1.0"
   },
   "speech": {
     "inputLanguage": "zh-TW",
@@ -68,20 +66,12 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
     "en": "Welcome to today's event",
     "ja": "本日のイベントへようこそ"
   },
-  "captionModes": {
-    "fast": {
-      "provider": "azure-speech",
-      "captions": {
-        "zh-Hant": "歡迎來到今天的活動",
-        "en": "Welcome to today's event",
-        "ja": "本日のイベントへようこそ"
-      }
-    }
-  }
+  "captionMode": "fast",
+  "captionProvider": "azure-speech"
 }
 ```
 
-精準字幕會另以獨立 POST 傳送。Azure OpenAI 由模型端決定 final 區段，因此精準字幕可依語言逐筆送出；`captions` 與 `captionModes.accurate.captions` 只需包含本次 OpenAI final 已產出的語言。Portal 不會使用 `speech.text` 或 Azure Speech final 補入精準模式的語音輸入語言字幕：
+精準字幕會另以獨立 POST 傳送。Azure OpenAI 由模型端決定 final 區段，因此精準字幕可依語言逐筆送出；`captions` 只需包含本次 OpenAI final 已產出的語言。Portal 不會使用 `speech.text` 或 Azure Speech final 補入精準模式的語音輸入語言字幕：
 
 ```json
 {
@@ -101,14 +91,8 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
   "captions": {
     "en": "Welcome, everyone, to today's event."
   },
-  "captionModes": {
-    "accurate": {
-      "provider": "azure-openai-realtime-translate",
-      "captions": {
-        "en": "Welcome, everyone, to today's event."
-      }
-    }
-  }
+  "captionMode": "accurate",
+  "captionProvider": "azure-openai"
 }
 ```
 
@@ -122,17 +106,15 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 | `source.bundleIdentifier` | 是 | Portal App bundle identifier，目前為 `io.iplayground.LiveCaptionPortal`。 |
 | `source.appVersion` | 否 | Portal App 版本，用於診斷相容性，不得含使用者識別資料。 |
 | `source.captionQualityMode` | 否 | final 字幕品質模式；快速為 `fast`，精準為 `accurate`。 |
-| `source.captionProvider` | 否 | final 字幕實際來源；快速模式為 `azure-speech`，精準模式為 `azure-openai-realtime-translate`。 |
+| `source.captionProvider` | 否 | 舊版診斷欄位；新請求應使用 top-level `captionProvider`。 |
 | `speech.inputLanguage` | 是 | 語音輸入語言，目前允許 `zh-TW` 或 `en-US`。 |
 | `speech.offsetTicks` | 是 | 字幕區段起點 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式來自 Azure OpenAI 區段或 Portal 的保守時間估算。 |
 | `speech.durationTicks` | 是 | 字幕區段長度 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式來自 Azure OpenAI 區段或 Portal 的保守時間估算。 |
 | `speech.text` | 是 | 本筆事件的 Speech final 文字，只供 Relay 驗證、相容性與時序脈絡使用，不代表精準模式字幕內容，不得完整寫入 log。 |
 | `captions` | 是 | 向後相容欄位，代表本筆 POST 的 final 字幕輸出語言 object。快速 POST 至少包含 `zh-Hant` 與 `en`；精準 POST 可只包含本次 Azure OpenAI final 已產出的語言。 |
 | `captions.<language>` | 是 | 字幕文字，目前允許 `zh-Hant`、`en`、`ja`、`ko`。 |
-| `captionModes` | 否 | final 字幕模式 object；Portal 目前分開傳送 `fast` 與 `accurate`，因此通常每筆只包含一種模式。未提供時 Relay 視為只提供 `fast`。 |
-| `captionModes.fast.provider` | 否 | 必須為 `azure-speech`。 |
-| `captionModes.accurate.provider` | 否 | 必須為 `azure-openai-realtime-translate`。 |
-| `captionModes.<mode>.captions` | 是 | 該模式的字幕輸出語言 object。`fast` 至少包含 `zh-Hant` 與 `en`；`accurate` 可只包含本次 OpenAI final 已產出的語言，且不以 `speech.text` 補語音輸入語言。 |
+| `captionMode` | 是 | final 字幕模式；允許 `fast` 或 `accurate`。 |
+| `captionProvider` | 否 | final 字幕來源顯示值；Relay 不會用它決定處理流程，也不要求它與 `captionMode` 對應。若提供必須是 string，去除前後空白後可為空；非空時長度上限 50，且只允許英數、`.`、`_`、`-`。未提供或空白時 Relay 保持空值，不自動補齊。 |
 
 ## 語言規則
 
@@ -161,13 +143,11 @@ Relay 接收事件後必須先驗證：
 - `speech.inputLanguage` 在允許清單內。
 - `speech.offsetTicks` 與 `speech.durationTicks` 是非負整數，且 `durationTicks` 大於 0。
 - `speech.text` 去除前後空白後不可為空。
-- `captions` 不可為空；若事件未提供 `captionModes`，或 `captionModes` 包含 `fast`，則至少包含 `zh-Hant` 與 `en`。
+- `captions` 不可為空；若 `captionMode` 為 `fast`，則至少包含 `zh-Hant` 與 `en`。`accurate` 可只包含本次 OpenAI final 已產出的語言，且不以 `speech.text` 補語音輸入語言。
 - `captions` key 在字幕輸出語言允許清單內，value 是非空 string。
-- `captionModes` 若存在，只允許 `fast` 與 `accurate`。
-- `captionModes.fast.provider` 必須為 `azure-speech`。
-- `captionModes.accurate.provider` 必須為 `azure-openai-realtime-translate`。
-- `captionModes.fast.captions` 必須符合字幕輸出語言與必要語言規則。
-- `captionModes.accurate.captions` 不可為空，且 key 必須在字幕輸出語言允許清單內；若 Azure OpenAI 未產生語音輸入語言字幕，Portal 不得用 `speech.text` 或 Azure Speech final 補上該語言。
+- `captionMode` 必填，且只允許 `fast` 與 `accurate`。
+- `captionProvider` 選填；若存在必須是 string，去除前後空白後可為空。非空時長度上限 50，且只允許英數、`.`、`_`、`-`。Relay 不驗證它是否與 `captionMode` 對應。
+- `captionModes` 已廢除；Relay 會拒絕包含此欄位的請求。
 
 軌道佔用判斷不在每一筆字幕事件上執行，應放在 Relay 設定檢查或未來的軌道租用流程。
 
@@ -236,8 +216,8 @@ caption-operator-accurate-track-<trackNumber>
 Portal 不需要自行組合 group 命名規則。多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber` 與選用的 `captionMode`，取得對應 track group 的 receive-only URL。未帶 `captionMode` 時維持舊行為，接收快速模式。Portal 若要在操作端觀察 Relay 實際發布出去的字幕，應透過 `POST /api/portal/negotiate` 取得 operator track group 的 receive-only URL。
 
 發布 payload 保留 Portal 傳入的公開字幕欄位，並加入 Relay metadata。若 Portal 提供
-`source.captionQualityMode` 與 `source.captionProvider`，Relay 可保留這兩個非敏感欄位
-供觀眾端或 operator UI 判斷 final 字幕來源。
+top-level `captionProvider`，Relay 會在非空時保留這個非敏感欄位供觀眾端或 operator UI 顯示
+final 字幕來源；若 Portal 未提供或只提供空白，Relay 不會自動補齊，發布 payload 也會省略此欄位。
 
 ```json
 {
@@ -272,7 +252,7 @@ Portal 的 final 字幕品質模式分為：
 
 即時 recognizing / partial 解析一律由 Azure Speech 處理，不因 final 字幕品質模式而改變。
 Relay 不負責呼叫 Azure OpenAI 改寫字幕內容；Relay 只驗證並發布 Portal 傳入的 final 字幕。
-若 Portal 同時提供 `fast` 與 `accurate`，Relay 會分別發布到對應模式 group，讓觀眾端可透過 negotiate 選擇要接收快速或精準字幕。
+Portal 必須將 `fast` 與 `accurate` 分成兩筆事件送出；Relay 會拒絕同一筆事件同時包含兩種模式。
 
 精準模式不得新增未經允許的字幕輸出語言。Portal、Relay 與部署流程都不得把完整音訊內容、
 逐字稿、字幕文字、Azure OpenAI token 或 realtime session secret 寫入 log。

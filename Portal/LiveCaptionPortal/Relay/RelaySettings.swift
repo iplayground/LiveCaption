@@ -72,22 +72,8 @@ struct RelayCaptionPublishInput: Sendable {
     let inputLanguageSpeechLocale: String
     let inputLanguageOutputID: String
     let outputLanguageIDs: [String]
-    let captionModes: [CaptionQualityMode: CaptionModeResult]
-
-    init(
-        event: RecognizedCaptionEvent,
-        inputLanguage: InputLanguage,
-        outputLanguages: [SpeechOutputLanguage]
-    ) {
-        self.init(
-            event: event,
-            inputLanguage: inputLanguage,
-            outputLanguages: outputLanguages,
-            text: event.text,
-            translations: event.translations,
-            captionModes: event.captionModes
-        )
-    }
+    let captionMode: CaptionQualityMode
+    let captionProvider: String
 
     init?(
         event: RecognizedCaptionEvent,
@@ -105,7 +91,8 @@ struct RelayCaptionPublishInput: Sendable {
             outputLanguages: outputLanguages,
             text: result.text,
             translations: result.translations,
-            captionModes: [mode: result]
+            captionMode: mode,
+            captionProvider: result.providerID
         )
     }
 
@@ -115,7 +102,8 @@ struct RelayCaptionPublishInput: Sendable {
         outputLanguages: [SpeechOutputLanguage],
         text: String,
         translations: [String: String],
-        captionModes: [CaptionQualityMode: CaptionModeResult]
+        captionMode: CaptionQualityMode,
+        captionProvider: String
     ) {
         speechText = event.text
         self.text = text
@@ -125,7 +113,8 @@ struct RelayCaptionPublishInput: Sendable {
         inputLanguageSpeechLocale = inputLanguage.speechLocale
         inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
         outputLanguageIDs = outputLanguages.map(\.id)
-        self.captionModes = captionModes
+        self.captionMode = captionMode
+        self.captionProvider = captionProvider
     }
 }
 
@@ -339,7 +328,8 @@ struct RelaySettings: Equatable {
                 "text": input.speechText,
             ],
             "captions": Self.captions(from: input),
-            "captionModes": Self.captionModes(from: input),
+            "captionMode": input.captionMode.rawValue,
+            "captionProvider": input.captionProvider,
         ]
 
         try await send(payload: payload, speechKey: speechKey, createdAt: publishedAt)
@@ -461,33 +451,6 @@ struct RelaySettings: Equatable {
 
         if let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
             payload["appVersion"] = appVersion
-        }
-
-        return payload
-    }
-
-    nonisolated private static func captionModes(from input: RelayCaptionPublishInput) -> [String: Any] {
-        var payload: [String: Any] = [:]
-
-        for mode in CaptionQualityMode.allCases {
-            guard let result = input.captionModes[mode] else {
-                continue
-            }
-
-            let captions = captions(
-                text: result.text,
-                translations: result.translations,
-                inputLanguageOutputID: input.inputLanguageOutputID,
-                outputLanguageIDs: input.outputLanguageIDs
-            )
-            guard !captions.isEmpty else {
-                continue
-            }
-
-            payload[mode.rawValue] = [
-                "provider": result.providerID,
-                "captions": captions,
-            ]
         }
 
         return payload

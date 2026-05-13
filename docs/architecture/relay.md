@@ -28,10 +28,14 @@ API 契約分別記錄於：
 2. Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，並使用 Managed Identity 讀取 Speech key 驗章。
 3. Relay 驗證字幕事件欄位、語言、時間碼、文字長度與安全邊界。
 4. Portal 依 final 字幕品質模式選擇字幕來源：快速使用 Azure Speech final，精準使用 Azure OpenAI `gpt-realtime-translate` final。
-5. Relay 建立 Web PubSub payload，省略不需給觀眾端的原始辨識文字。
-6. Relay 使用 Managed Identity 發布 Portal 提供的 final 字幕到 base group、字幕軌專用 group 與字幕品質模式 group。
-7. 觀眾端透過 `POST /api/viewer/negotiate` 取得 receive-only Web PubSub URL 後直接接收字幕。
-8. Portal 主控板可用 `POST /api/portal/negotiate` 取得 operator receive-only Web PubSub URL，作為操作端觀察視角，顯示 Relay 發布到 Azure Web PubSub 後再收到的字幕；Portal 仍不得取得 Web PubSub 發布權限。
+5. Relay 要求每筆字幕事件提供單一 top-level `captionMode`，允許 `fast` 或 `accurate`；
+   舊版 `captionModes` 多模式 object 會被拒絕。
+6. `captionProvider` 是選填顯示欄位。Relay 只驗證它是簡單短字串，不用它決定處理流程，
+   也不要求它與 `captionMode` 對應；未提供或空白時不會自動補齊。
+7. Relay 建立 Web PubSub payload，省略不需給觀眾端的原始辨識文字。
+8. Relay 使用 Managed Identity 發布 Portal 提供的 final 字幕到 base group、字幕軌專用 group 與字幕品質模式 group。
+9. 觀眾端透過 `POST /api/viewer/negotiate` 取得 receive-only Web PubSub URL 後直接接收字幕。
+10. Portal 主控板可用 `POST /api/portal/negotiate` 取得 operator receive-only Web PubSub URL，作為操作端觀察視角，顯示 Relay 發布到 Azure Web PubSub 後再收到的字幕；Portal 仍不得取得 Web PubSub 發布權限。
 
 任何回傳給觀眾端或 Portal 觀察端的 Web PubSub URL 都包含短效 bearer token，必須視為敏感資料。Relay、Portal、GitHub Actions、Azure Functions logs 與觀眾端 App 都不得記錄完整 URL、完整 headers 或完整 response body。
 
