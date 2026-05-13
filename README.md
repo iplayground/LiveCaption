@@ -7,7 +7,7 @@ LiveCaption 是一套用於現場活動的即時語音辨識與翻譯系統。
 - `Portal/`：macOS 操作端 App，負責擷取現場音訊、執行語音辨識與翻譯、產生字幕事件，並送往 Relay。
 - `Relay/`：Python Azure Functions 後端，負責驗證 Portal 請求、整理字幕事件，並透過 Azure Web PubSub 發布給觀眾端。
 
-目前 Portal 可產生字幕事件並送往 Relay；Relay 可驗證 Portal 請求、發布字幕到 Azure Web PubSub，並提供觀眾端取得 receive-only Web PubSub 連線 URL 的 negotiate API。
+目前 Portal 可產生字幕事件並送往 Relay；Relay 可驗證 Portal 請求、發布字幕到 Azure Web PubSub，並提供觀眾端取得短效 Web PubSub 連線 URL 的 negotiate API。觀眾端 WebSocket 可接收字幕與控制事件，字幕模式與語言由 Viewer 本機自行過濾。
 
 ## 快速開始
 
@@ -64,7 +64,6 @@ Relay 本機固定使用 port `7071`。
 - [Portal 架構與操作端行為](docs/architecture/portal.md)
 - [Relay 架構與資料流](docs/architecture/relay.md)
 - [字幕事件 API](docs/api/caption-events.md)
-- [Portal 連線 API](docs/api/portal-negotiate.md)
 - [觀眾端連線 API](docs/api/viewer-negotiate.md)
 - [Relay 健康檢查 API](docs/api/health.md)
 - [Azure Speech 資源設定](docs/deployment/azure-speech.md)

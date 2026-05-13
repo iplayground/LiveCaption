@@ -15,6 +15,9 @@ Portal 會依 final 字幕品質模式分開呼叫同一個 endpoint。快速字
 POST；快速字幕的 `captionMode` 為 `fast`，精準字幕的 `captionMode` 為 `accurate`。
 Relay 會拒絕舊版 `captionModes` 多模式 object。
 
+Portal 也使用同一個 endpoint 發送控制事件，例如 Portal 狀態、字幕 session 狀態與
+`captionAvailability`。控制事件 payload 的 `type` 必須為 `control`。
+
 Portal 使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
 
 ```http
@@ -50,6 +53,7 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 {
   "roomName": "A101",
   "trackNumber": 1,
+  "sessionId": "2026-04-29T12:34:00.000",
   "createdAt": "2026-04-29T12:34:56.789Z",
   "source": {
     "bundleIdentifier": "io.iplayground.LiveCaptionPortal",
@@ -77,6 +81,7 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 {
   "roomName": "A101",
   "trackNumber": 1,
+  "sessionId": "2026-04-29T12:34:00.000",
   "createdAt": "2026-04-29T12:34:57.250Z",
   "source": {
     "bundleIdentifier": "io.iplayground.LiveCaptionPortal",
@@ -102,6 +107,7 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 | --- | --- | --- |
 | `roomName` | 是 | 會議室名稱，可為空字串；不得作為唯一性或佔用判斷依據。 |
 | `trackNumber` | 是 | 字幕軌編號，必須是 JSON integer 且大於 0。未使用多軌時送 `1`。 |
+| `sessionId` | 是 | 字幕 session id，由 Portal 產生，用於讓 Relay 對外字幕事件標示同一場 session。不得包含本機路徑、使用者識別資料或機密。 |
 | `createdAt` | 是 | Portal 建立事件的 UTC ISO 8601 時間。 |
 | `source.bundleIdentifier` | 是 | Portal App bundle identifier，目前為 `io.iplayground.LiveCaptionPortal`。 |
 | `source.appVersion` | 否 | Portal App 版本，用於診斷相容性，不得含使用者識別資料。 |
@@ -138,6 +144,7 @@ Relay 接收事件後必須先驗證：
 
 - body 是 JSON object，且大小未超過上限。
 - `trackNumber` 是大於 0 的 integer。
+- `sessionId` 是非空 string，長度上限 80，只允許英數、`.`、`_`、`:`、`-`。
 - `roomName` 是 string，可為空字串；若非空，去除前後空白後長度 1 到 80 字元，不得包含換行、控制字元、`/`、`?`、`#`。
 - `createdAt` 是有效 UTC 時間，且不能明顯來自未來。
 - `speech.inputLanguage` 在允許清單內。
@@ -150,6 +157,58 @@ Relay 接收事件後必須先驗證：
 - `captionModes` 已廢除；Relay 會拒絕包含此欄位的請求。
 
 軌道佔用判斷不在每一筆字幕事件上執行，應放在 Relay 設定檢查或未來的軌道租用流程。
+
+## 控制事件請求
+
+Portal 控制事件同樣使用 HMAC 驗證。Relay 依 `trackNumber` 轉送到對應 Viewer WebSocket
+group，但不把 `trackNumber` 放進對外控制事件 payload。
+
+Portal 上線：
+
+```json
+{
+  "type": "control",
+  "trackNumber": 1,
+  "event": "portalStatus",
+  "status": "online",
+  "updatedAt": "2026-05-13T09:30:00.000Z"
+}
+```
+
+字幕 session 開始：
+
+```json
+{
+  "type": "control",
+  "trackNumber": 1,
+  "event": "sessionStatus",
+  "status": "started",
+  "sessionId": "2026-05-13T09:30:00.000",
+  "updatedAt": "2026-05-13T09:30:00.000Z"
+}
+```
+
+字幕可用性：
+
+```json
+{
+  "type": "control",
+  "trackNumber": 1,
+  "event": "captionAvailability",
+  "availableCaptionModes": ["fast", "accurate"],
+  "availableLanguages": ["zh-Hant", "en", "ja", "ko"],
+  "updatedAt": "2026-05-13T09:30:00.000Z"
+}
+```
+
+控制事件允許值：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `event` | `portalStatus`、`sessionStatus` 或 `captionAvailability`。 |
+| `status` | `portalStatus` 使用 `online` / `offline`；`sessionStatus` 使用 `started` / `stopped`。 |
+| `availableCaptionModes` | `captionAvailability` 必填，允許 `fast`、`accurate`。 |
+| `availableLanguages` | `captionAvailability` 必填，允許 `zh-Hant`、`en`、`ja`、`ko`。 |
 
 ## 成功回應
 
@@ -196,44 +255,28 @@ Relay 已知業務錯誤使用一致 JSON 格式。部分非預期 `500 Internal
 
 ## Web PubSub 發布
 
-Relay 會把每筆字幕發布到 base group 與字幕軌專用 group：
+Relay 會把每筆 Portal 字幕事件整理成對外字幕事件，並依 `trackNumber` 發送給觀眾端。
 
-```text
-caption-live
-caption-live-track-<trackNumber>
-caption-live-fast
-caption-live-fast-track-<trackNumber>
-caption-live-accurate
-caption-live-accurate-track-<trackNumber>
-caption-operator
-caption-operator-track-<trackNumber>
-caption-operator-fast
-caption-operator-fast-track-<trackNumber>
-caption-operator-accurate
-caption-operator-accurate-track-<trackNumber>
-```
+Portal 不需要自行組合 group 命名規則。觀眾端透過 `POST /api/viewer/negotiate` 帶入
+`trackNumber`，取得該字幕軌道的單一 Viewer WebSocket URL；negotiate 不帶 `captionMode`、
+`captionModes` 或語言偏好。Relay 一律發送完整字幕事件，Viewer 自行依使用者選擇的模式與
+語言過濾顯示內容。
+Portal 主控板若要確認觀眾實際會收到什麼，也應使用同一條 Viewer delivery path。
 
-Portal 不需要自行組合 group 命名規則。多軌活動時，觀眾端應透過 `POST /api/viewer/negotiate` 帶入 `trackNumber` 與選用的 `captionMode`，取得對應 track group 的 receive-only URL。未帶 `captionMode` 時維持舊行為，接收快速模式。Portal 若要在操作端觀察 Relay 實際發布出去的字幕，應透過 `POST /api/portal/negotiate` 取得 operator track group 的 receive-only URL。
-
-發布 payload 保留 Portal 傳入的公開字幕欄位，並加入 Relay metadata。若 Portal 提供
-top-level `captionProvider`，Relay 會在非空時保留這個非敏感欄位供觀眾端或 operator UI 顯示
+發布 payload 會整理成 Viewer WebSocket 字幕事件。若 Portal 提供
+top-level `captionProvider`，Relay 會在非空時保留這個非敏感欄位供觀眾端或 Portal 主控板顯示
 final 字幕來源；若 Portal 未提供或只提供空白，Relay 不會自動補齊，發布 payload 也會省略此欄位。
 
 ```json
 {
-  "relay": {
-    "receivedAt": "2026-04-29T12:34:56.900Z"
-  },
+  "type": "caption",
+  "sessionId": "2026-04-29T12:34:00.000",
+  "sequence": 42,
   "captionMode": "fast",
   "captionProvider": "azure-speech",
-  "roomName": "A101",
-  "trackNumber": 1,
   "createdAt": "2026-04-29T12:34:56.789Z",
-  "speech": {
-    "inputLanguage": "zh-TW",
-    "offsetTicks": 120000000,
-    "durationTicks": 35000000
-  },
+  "offsetTicks": 120000000,
+  "durationTicks": 35000000,
   "captions": {
     "zh-Hant": "歡迎來到今天的活動",
     "en": "Welcome to today's event"

@@ -1,8 +1,10 @@
-# 觀眾端連線 API
+# 觀眾端連線與 WebSocket 事件 API
 
-本文件定義觀眾端 App 取得 Azure Web PubSub client access URL 的 API。觀眾端字幕只能 receive-only，不得發布字幕；字幕發布只能由 Portal 透過 Relay 的 `POST /api/caption-events` 完成。
+本文件定義觀眾端 App 取得 Azure Web PubSub client access URL，以及連線後接收 Relay 字幕與控制事件的 API 契約。
 
-Portal 主控板也可使用此 API 建立 receive-only 觀察連線，用來顯示 Relay 發布到 Azure Web PubSub 後再收到的字幕。這個連線只用於操作端確認 PubSub 實際輸出，不授予 Portal 任何 Web PubSub 發布權限。
+Viewer 只使用一條 WebSocket。Relay 透過同一條 WebSocket 發送字幕事件與控制事件。`/api/viewer/negotiate` 只帶活動前即可知道的字幕軌道編號，不帶字幕模式或語言偏好，也不承諾 Portal 是否已上線、字幕 session 是否開始或精準字幕是否可用。
+
+Portal 主控板若要確認觀眾實際會收到什麼，也應使用本 API 建立 Viewer WebSocket。這可避免 Portal 主控板和觀眾端走不同 delivery path 而產生偏差。
 
 ## 取得觀眾端連線 URL
 
@@ -13,12 +15,11 @@ POST /api/viewer/negotiate
 Content-Type: application/json
 
 {
-  "trackNumber": 1,
-  "captionMode": "accurate"
+  "trackNumber": 1
 }
 ```
 
-閒置模式或限制 negotiate 時需帶 Portal 顯示的 access code：
+限制 negotiate 時需帶 Portal 顯示的 access code：
 
 ```http
 POST /api/viewer/negotiate
@@ -26,14 +27,11 @@ Content-Type: application/json
 X-LiveCaption-Viewer-Access-Code: <viewer-access-code>
 
 {
-  "trackNumber": 1,
-  "captionMode": "fast"
+  "trackNumber": 1
 }
 ```
 
-當 Relay 設定 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 必須在 `X-LiveCaption-Viewer-Access-Code` header 帶入 Portal 透過 `HEAD /api/caption-events` 取得並顯示的 access code。Portal 主控板的 PubSub 觀察連線也使用同一個 Relay 回傳的 access code；Portal 不自行計算 access code。Request body 可選；多軌活動時應帶入 `trackNumber` 做字幕軌過濾。若觀眾端要選擇 final 字幕品質，應帶入 `captionMode`，允許值為 `fast` 或 `accurate`。
-
-Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket URL。多軌活動時，觀眾端 App 與 Portal 主控板觀察連線應在 request body 帶入要收看的 `trackNumber`，Relay 會回傳該軌專用 group，例如 `caption-live-track-1`。帶入 `captionMode=accurate` 時，Relay 回傳 `caption-live-accurate-track-1`。未帶 `captionMode` 時，Relay 保留舊行為，回傳快速模式 group；未帶 `trackNumber` 時，Relay 回傳對應模式的 base group。
+Request body 應帶入 `trackNumber`。字幕軌道代表活動前即可知道的會議室或字幕來源；Relay 依 `trackNumber` 建立該軌道的 Viewer WebSocket。Relay 不接受 `captionMode`、`captionModes`、`language`、`languages` 等偏好欄位；Viewer 若只需要特定模式或語言，應在收到字幕事件後自行過濾。
 
 成功回應：
 
@@ -41,7 +39,6 @@ Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket UR
 {
   "url": "wss://<web-pubsub-name>.webpubsub.azure.com/client/hubs/livecaption?access_token=<token>",
   "hub": "livecaption",
-  "group": "caption-live-accurate-track-1",
   "expiresAt": "2026-04-30T13:00:00.000Z"
 }
 ```
@@ -52,28 +49,158 @@ Relay 驗證通過後會回傳可接收指定 group 訊息的短效 WebSocket UR
 | --- | --- |
 | `url` | 觀眾端 App 用來連線 Azure Web PubSub 的短效 WebSocket URL。包含 bearer token，不應寫入 log 或長期保存。 |
 | `hub` | Web PubSub hub 名稱，第一版為 `livecaption`。 |
-| `group` | Relay 發布字幕的 group 名稱。多軌與模式過濾時格式為 `<base-group>-<captionMode>-track-<trackNumber>`；未帶模式時為快速模式相容 group，例如 `caption-live` 或 `caption-live-track-1`。 |
 | `expiresAt` | URL 內 token 的預期到期時間。觀眾端 App 應在到期前或斷線後重新 negotiate。 |
 
-## 權限
+Request body 欄位：
 
-Relay 產生的觀眾端 URL 只會讓 client 連線後加入 negotiate 回傳的 group，不會授予任何 `webpubsub.sendToGroup` 權限。
+| 欄位 | 必填 | 說明 |
+| --- | --- | --- |
+| `trackNumber` | 是 | 字幕軌道編號，必須是正整數。活動開始前即可知道哪些會議室或軌道會有字幕；Viewer 以此選擇要連線的軌道。 |
 
-觀眾端 App 不得直接取得 Web PubSub connection string、SAS token 或 server key。Portal 發布字幕必須走 Relay 的 HMAC 驗證 API；Portal 若為主控板顯示 PubSub 字幕而連線 Web PubSub，也只能使用此 endpoint 回傳的 receive-only URL。
+## Viewer WebSocket 模型
 
-## Access code
+Viewer WebSocket 是單一 session 通道：
+
+- Server 到 Viewer：發送 Portal 狀態、字幕 session 狀態與字幕事件。
+- Viewer 比 Portal 更早開啟時，Relay 仍可先完成 negotiate；Viewer 連線後等待控制事件。
+- Portal 開啟、關閉、開始字幕、停止字幕、開關 Azure OpenAI 精準字幕支援時，Relay 需透過控制事件通知 Viewer。
+
+Relay 不需要保存每個 Viewer 的字幕模式或語言偏好。模式與語言選擇是 Viewer UI 狀態，不是 Relay routing 狀態。
+
+Relay 必須使用 Azure Web PubSub track group fan-out 發送字幕，不得在每筆字幕事件中逐一列舉 Viewer connection 發送。Viewer negotiate 成功後，Relay 讓該 connection 加入對應 `trackNumber` 的字幕 group。
+
+字幕 group 命名格式：
+
+```text
+caption-live-track-<trackNumber>
+```
+
+例如：
+
+```text
+caption-live-track-1
+```
+
+Portal 字幕事件進入 Relay 後，Relay 保留該事件的 `captionMode` 與 `captions` object，整理成單一 `caption` event 送到該 track group，由 Azure Web PubSub 負責 fan-out 給 group 內的 Viewer。Viewer 端再依自己的模式與語言選擇過濾要顯示的區段。
+
+## Server 到 Viewer 事件
+
+所有 server 發送的 WebSocket payload 都必須是 JSON object，且包含 `type`。
+
+### Portal 狀態
+
+Portal 開啟或關閉時，Relay 發送：
+
+```json
+{
+  "type": "control",
+  "event": "portalStatus",
+  "status": "online",
+  "updatedAt": "2026-05-13T09:30:00.000Z"
+}
+```
+
+`status` 允許：
+
+- `online`
+- `offline`
+
+### 字幕 Session 狀態
+
+Portal 開始或停止字幕 session 時，Relay 發送：
+
+```json
+{
+  "type": "control",
+  "event": "sessionStatus",
+  "status": "started",
+  "sessionId": "2026-05-13T09:30:00.000Z",
+  "updatedAt": "2026-05-13T09:30:00.000Z"
+}
+```
+
+`status` 允許：
+
+- `started`
+- `stopped`
+
+`sessionId` 由 Relay 或 Portal 產生，僅用於區分目前字幕 session，不得包含本機路徑、使用者識別資料或機密。
+
+### 字幕可用性
+
+Portal 開關 Azure OpenAI 精準字幕支援、字幕輸出語言變更或 session 開始時，Relay 發送：
+
+```json
+{
+  "type": "control",
+  "event": "captionAvailability",
+  "availableCaptionModes": ["fast", "accurate"],
+  "availableLanguages": ["zh-Hant", "en", "ja", "ko"],
+  "updatedAt": "2026-05-13T09:30:00.000Z"
+}
+```
+
+欄位語意：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `availableCaptionModes` | 目前 session 可選的字幕模式。`fast` 表示 Azure Speech final，`accurate` 表示 Azure OpenAI final。 |
+| `availableLanguages` | 目前 session 可選的字幕語言。 |
+
+Viewer 規則：
+
+- 尚未收到 `captionAvailability` 時，顯示等待 Portal 或等待字幕 session。
+- 收到後依 `availableCaptionModes` 與 `availableLanguages` 更新可選項。
+
+### 字幕事件
+
+Relay 依 `trackNumber` 發送字幕。每筆字幕事件保留 Portal 傳入的 `captionMode` 與多語言 `captions`，Viewer 自行選擇要顯示的模式與語言：
+
+```json
+{
+  "type": "caption",
+  "sessionId": "2026-05-13T09:30:00.000Z",
+  "sequence": 42,
+  "captionMode": "accurate",
+  "createdAt": "2026-05-13T09:31:12.345Z",
+  "offsetTicks": 120000000,
+  "durationTicks": 35000000,
+  "captions": {
+    "zh-Hant": "歡迎來到今天的活動",
+    "en": "Welcome to today's event.",
+    "ja": "本日のイベントへようこそ",
+    "ko": "오늘 행사에 오신 것을 환영합니다"
+  }
+}
+```
+
+欄位語意：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `sessionId` | 字幕 session id。 |
+| `sequence` | Relay 在同一 session 內遞增的字幕序號，用於排序與去重。 |
+| `captionMode` | 字幕來源模式。 |
+| `createdAt` | Portal 建立字幕事件的 UTC ISO 8601 時間。 |
+| `offsetTicks` | 字幕區段起點 ticks，1 tick = 100 ns。 |
+| `durationTicks` | 字幕區段長度 ticks，1 tick = 100 ns。 |
+| `captions` | 本筆事件包含的字幕語言與文字。Viewer 可依使用者選擇自行過濾。 |
+
+Relay 不應把完整 `speech.text`、access code、token 或完整上游 request/response body 發送給 Viewer。
+
+## Access Code
 
 Access code 由 Relay 以 Azure Speech key、UTC 日期、Web PubSub hub 與 group 衍生，不需要 DB。Portal 透過 `HEAD /api/caption-events` 完成 Relay 連線測試時，Relay 會用 response headers 回傳當日 access code；當 `VIEWER_ACCESS_CODE_REQUIRED=true` 時，觀眾端 App 呼叫 `POST /api/viewer/negotiate` 需將該 code 放在 `X-LiveCaption-Viewer-Access-Code` request header。
 
-Relay 驗證 negotiate request 時接受當日 access code，並允許前一日 access code 通過，避免活動跨 UTC 午夜時觀眾端立即失效。Access code 只用來限制公開 wss URL 的取得，不是使用者身份驗證。
+Relay 驗證 negotiate request 時接受當日 access code，並允許前一日 access code 通過，避免活動跨 UTC 午夜時觀眾端立即失效。Access code 只用來限制公開 WebSocket URL 的取得，不是使用者身份驗證。
 
-Access code 不綁定 `trackNumber` 或 `captionMode`；同一場活動可用同一組 access code 取得不同字幕軌與字幕品質模式的 viewer URL。字幕軌與模式過濾由 Azure Web PubSub group 權限完成，觀眾端只會被加入 negotiate 指定的 group。
+Access code 不綁定字幕模式或語言；Viewer 在本機自行管理顯示偏好。
 
 Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 access code 由 `VIEWER_ACCESS_CODE_REQUIRED` app setting 控制，預設與無效值都視為 `true`。
 
-`VIEWER_ACCESS_CODE_REQUIRED=false` 是 LiveCaption 活動模式規格，代表公開活動期間任何可呼叫此 endpoint 的觀眾端都可取得短效 viewer URL。這只開放接收字幕，不授予發布權限；短效 URL 仍是 bearer token，不得寫入 log 或長期保存。
+`VIEWER_ACCESS_CODE_REQUIRED=false` 是 LiveCaption 活動模式規格，代表公開活動期間任何可呼叫此 endpoint 的觀眾端都可取得短效 viewer URL。這只開放接收字幕與控制事件，不授予發布字幕權限；短效 URL 仍是 bearer token，不得寫入 log 或長期保存。
 
-## Token lifetime
+## Token Lifetime
 
 第一版觀眾端 URL lifetime 為 60 分鐘。這覆蓋目前最長 40 分鐘議程，並讓 App 有足夠時間在到期前重新 negotiate。
 
@@ -83,13 +210,7 @@ Relay 不會在 negotiate runtime 查詢 Azure Web PubSub SKU。是否要求 acc
 - WebSocket 斷線、授權失敗或接近 `expiresAt` 時重新 negotiate。
 - 不把完整 `url` 寫入 log、crash report 或長期設定。
 - 不把 access code、完整 request headers 或完整 response body 寫入 log、crash report 或分析事件。
-
-Portal 主控板的 PubSub 觀察連線應：
-
-- 在字幕 session 開始時呼叫 negotiate，並帶入 Relay 連線測試取得的 access code 與目前 `trackNumber`。
-- 只顯示 Web PubSub 訊息中的 `captions` 欄位與必要接收狀態。
-- 字幕 session 停止或 Relay 設定變更時關閉 WebSocket。
-- 不記錄完整 WebSocket URL、access code、token、完整 headers 或完整 PubSub payload。
+- 尚未收到 `portalStatus`、`sessionStatus` 或 `captionAvailability` 時，以等待狀態呈現，不自行假設 accurate 可用。
 
 ## 錯誤回應
 
@@ -129,7 +250,7 @@ Content-Type: application/json
 }
 ```
 
-若 `trackNumber` 不是正整數，或 `captionMode` 不是 `fast` / `accurate`：
+若 `trackNumber` 不是正整數：
 
 ```http
 HTTP/1.1 400 Bad Request
@@ -139,12 +260,34 @@ Content-Type: application/json
 ```json
 {
   "error": {
-    "code": "invalid_viewer_filter",
-    "message": "Viewer filter is invalid.",
+    "code": "invalid_viewer_negotiate_request",
+    "message": "Viewer negotiate request is invalid.",
     "details": [
       {
         "field": "trackNumber",
         "reason": "Track number must be a positive integer."
+      }
+    ]
+  }
+}
+```
+
+若 negotiate request body 帶入字幕模式或語言偏好欄位：
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+```
+
+```json
+{
+  "error": {
+    "code": "invalid_viewer_negotiate_request",
+    "message": "Viewer negotiate request is invalid.",
+    "details": [
+      {
+        "field": "captionModes",
+        "reason": "Caption preferences are not accepted by viewer negotiate."
       }
     ]
   }

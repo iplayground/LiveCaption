@@ -21,7 +21,7 @@ Portal 主畫面包含：
 - Speech 設定：保存 Speech region、key、輸出語言、句子靜音分段設定與辨識詞彙提示。
 - Relay 設定：保存 Relay URL、會議室名稱與字幕軌道值。
 - 字幕檔案：保存 SRT 輸出根目錄 security-scoped bookmark。
-- PubSub 字幕：透過 Relay negotiate 取得 receive-only WebSocket URL，顯示 Relay 發布到 Azure Web PubSub 後再收到的最新字幕。
+- PubSub 字幕：透過 Viewer negotiate 取得 WebSocket URL，以觀眾端 delivery path 顯示 Relay 發送後的最新字幕。
 - 事件紀錄：顯示操作、錯誤與檔案輸出狀態，但不得記錄完整字幕內容。
 
 ## 字幕 Session
@@ -64,9 +64,10 @@ Relay 設定。Azure OpenAI 授權方式後續若改為短效 token 或其他流
 Portal 送往 Relay 的字幕事件會依品質模式分開發布：快速字幕事件的 top-level
 `captionMode` 為 `fast`，精準字幕事件的 top-level `captionMode` 為 `accurate`。舊版
 `captionModes` 多模式 object 已廢除，Relay 會拒絕同一筆事件同時包含兩種模式。
-`captionProvider` 只供觀眾端或 operator UI 顯示來源；Relay 不用它決定處理流程，也不要求
-它與 `captionMode` 對應。Relay 依 `captionMode` 發布到不同 Web PubSub group，讓觀眾端可
-選擇接收 `fast` 或 `accurate`。Portal 主控板的 Relay 計數也依模式分別統計成功發布筆數。
+`captionProvider` 只供觀眾端或 Portal 主控板顯示來源；Relay 不用它決定處理流程，也不要求
+它與 `captionMode` 對應。Relay 一律把完整字幕事件送到對應字幕軌道的 Viewer WebSocket，
+Viewer 與 Portal 主控板自行依使用者選擇的模式與語言過濾顯示內容。Portal 主控板的 Relay
+計數也依模式分別統計成功發布筆數。
 
 精準模式失敗、逾時或尚未取得 final 結果時，不得中斷 Azure Speech 即時字幕。產品行為
 應保守處理，在操作端明確標示精準字幕不可用；精準模式不得使用 Azure Speech final
@@ -108,7 +109,9 @@ Portal 只知道 Relay API，不知道 Azure Web PubSub hub、group、connection
 
 - 連線測試：`HEAD /api/caption-events`，驗證 HMAC 並取得觀眾端 access code。
 - 字幕發布：`POST /api/caption-events`，送出字幕事件。
-- PubSub 接收檢查：字幕 session 開始時呼叫 `POST /api/viewer/negotiate`，使用 Relay 連線測試回傳的 access code 取得 receive-only WebSocket URL，並只顯示 PubSub payload 中的 `captions` 欄位。
+- 控制事件發布：`POST /api/caption-events`，送出 `portalStatus`、`sessionStatus` 與
+  `captionAvailability` 控制事件。
+- PubSub 接收檢查：字幕 session 開始時呼叫 `POST /api/viewer/negotiate`，使用 Relay 連線測試回傳的 access code 與目前 `trackNumber` 取得 Viewer WebSocket URL，並在本機依要監看的模式與語言過濾顯示內容。
 
 若 Relay 發布失敗，Portal 會記錄事件並重試，但不應中斷 Speech Translation、本機預覽或 SRT 累積。
 

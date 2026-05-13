@@ -10,7 +10,6 @@ Relay 目前以 Python 3.13 Azure Functions 實作，HTTP endpoints 為：
 GET /
 HEAD /api/caption-events
 POST /api/caption-events
-POST /api/portal/negotiate
 POST /api/viewer/negotiate
 GET /api/health
 ```
@@ -72,7 +71,7 @@ python -m pytest
 - GitHub Actions 專用 user-assigned Managed Identity 與 federated credential。
 - Function App `RollingUpdate` site update strategy。
 
-正式環境使用 Managed Identity 讀取 Azure Speech key、呼叫 Azure Web PubSub data-plane publish API，並產生觀眾端 receive-only client access URL。Relay runtime 不呼叫 Azure OpenAI，也不保存 Azure OpenAI endpoint、API key 或 session token。不得在 App Settings、參數檔或 repo 中保存 Speech key、Azure OpenAI API key、Web PubSub connection string 或 SAS token 真值。
+正式環境使用 Managed Identity 讀取 Azure Speech key、呼叫 Azure Web PubSub data-plane publish API，並產生觀眾端短效 client access URL。觀眾端 URL 可接收字幕與控制事件，但不得授予發布字幕權限。Relay runtime 不呼叫 Azure OpenAI，也不保存 Azure OpenAI endpoint、API key 或 session token。不得在 App Settings、參數檔或 repo 中保存 Speech key、Azure OpenAI API key、Web PubSub connection string 或 SAS token 真值。
 
 所有部署參數與 app settings 都必須以「外部使用者不可讀取、不可列舉、不可交換敏感資料」為設計前提。Azure 基礎設施建立後預設為閒置模式；活動模式由 Azure Automation schedule 觸發 runbook 切換。
 
@@ -200,6 +199,6 @@ Flex Consumption Function App 的 App Service Managed Certificate 需使用 `Mic
 - Relay log 不得包含完整逐字稿、翻譯文字、Speech key、HMAC 簽章、連線字串、Web PubSub token 或可識別個人的資料。
 - Relay 不處理 Azure OpenAI 音訊串流、prompt、response 或 realtime session secret。
 - CI/CD、部署 logs 與 Automation runbook output 不得包含完整 environment、完整 HTTP headers、完整 request/response body、viewer URL、access code 或可用來交換敏感資料的參數值。
-- `VIEWER_ACCESS_CODE_REQUIRED=false` 是公開活動模式規格，會讓外部觀眾端取得短效 viewer URL；仍必須維持 receive-only 權限，且不得輸出或保存完整 viewer URL。
+- `VIEWER_ACCESS_CODE_REQUIRED=false` 是公開活動模式規格，會讓外部觀眾端取得短效 viewer URL；仍不得授予發布字幕權限，且不得輸出或保存完整 viewer URL。
 - `roomName` 若需診斷，只記錄長度或遮蔽後的值。
 - `trackNumber` 可記錄，但必須維持為整數欄位，不得混入其他識別資訊。
