@@ -25,12 +25,14 @@
 "azureOpenAI.accurateCaptionEnabled" = "Enable Azure OpenAI final captions";
 "azureOpenAI.apiKey" = "Azure OpenAI Key";
 "azureOpenAI.apiKey.placeholder" = "Enter Azure OpenAI Key";
-"azureOpenAI.connection.message.idle" = "Add Endpoint, Deployment, and Key to enable testing.";
+"azureOpenAI.connection.message.idle" = "Add Endpoint, Transcription Deployment, Translation Deployment, and Key to enable testing.";
 "azureOpenAI.connection.message.success" = "Azure OpenAI realtime test succeeded.";
 "azureOpenAI.connection.message.testing" = "Testing Azure OpenAI realtime connection.";
 "azureOpenAI.connectionTest" = "Azure OpenAI Connection Test";
-"azureOpenAI.deployment" = "Deployment";
-"azureOpenAI.deployment.placeholder" = "realtime-translate";
+"azureOpenAI.transcriptionDeployment" = "Transcription Deployment";
+"azureOpenAI.transcriptionDeployment.placeholder" = "realtime-whisper";
+"azureOpenAI.translationDeployment" = "Translation Deployment";
+"azureOpenAI.translationDeployment.placeholder" = "realtime-translate";
 "azureOpenAI.endpoint" = "Endpoint";
 "azureOpenAI.endpoint.placeholder" = "https://<resource>.openai.azure.com";
 "azureOpenAI.error.connectionFailed" = "Azure OpenAI realtime connection failed: %@";
@@ -44,7 +46,7 @@
 "azureOpenAI.status.unconfigured" = "Not configured";
 "azureOpenAI.status.unverified" = "Not tested";
 "azureOpenAI.testConnection" = "Test Azure OpenAI";
-"azureOpenAI.testConnection.disabledHint" = "Endpoint, Deployment, and Key are required";
+"azureOpenAI.testConnection.disabledHint" = "Endpoint, Transcription Deployment, Translation Deployment, and Key are required";
 "azureOpenAI.testConnection.hint" = "Test Azure OpenAI realtime settings";
 "caption.disabled.verifyAzureOpenAIFirst" = "Verify Azure OpenAI connection first";
 "caption.disabled.configureSubtitleStorageFirst" = "Configure an accessible subtitle storage folder first";

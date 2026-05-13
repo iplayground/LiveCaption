@@ -25,12 +25,14 @@
 "azureOpenAI.accurateCaptionEnabled" = "啟用 Azure OpenAI final 字幕";
 "azureOpenAI.apiKey" = "Azure OpenAI Key";
 "azureOpenAI.apiKey.placeholder" = "輸入 Azure OpenAI Key";
-"azureOpenAI.connection.message.idle" = "補齊 Endpoint、Deployment 與 Key 後可測試。";
+"azureOpenAI.connection.message.idle" = "補齊 Endpoint、Transcription Deployment、Translation Deployment 與 Key 後可測試。";
 "azureOpenAI.connection.message.success" = "Azure OpenAI realtime 測試成功。";
 "azureOpenAI.connection.message.testing" = "正在測試 Azure OpenAI realtime 連線。";
 "azureOpenAI.connectionTest" = "Azure OpenAI 連線測試";
-"azureOpenAI.deployment" = "Deployment";
-"azureOpenAI.deployment.placeholder" = "realtime-translate";
+"azureOpenAI.transcriptionDeployment" = "Transcription Deployment";
+"azureOpenAI.transcriptionDeployment.placeholder" = "realtime-whisper";
+"azureOpenAI.translationDeployment" = "Translation Deployment";
+"azureOpenAI.translationDeployment.placeholder" = "realtime-translate";
 "azureOpenAI.endpoint" = "Endpoint";
 "azureOpenAI.endpoint.placeholder" = "https://<resource>.openai.azure.com";
 "azureOpenAI.error.connectionFailed" = "Azure OpenAI realtime 連線失敗：%@";
@@ -44,7 +46,7 @@
 "azureOpenAI.status.unconfigured" = "未設定";
 "azureOpenAI.status.unverified" = "尚未測試";
 "azureOpenAI.testConnection" = "測試 Azure OpenAI";
-"azureOpenAI.testConnection.disabledHint" = "需要補齊 Azure OpenAI Endpoint、Deployment 與 Key";
+"azureOpenAI.testConnection.disabledHint" = "需要補齊 Azure OpenAI Endpoint、Transcription Deployment、Translation Deployment 與 Key";
 "azureOpenAI.testConnection.hint" = "測試 Azure OpenAI realtime 設定";
 "caption.disabled.verifyAzureOpenAIFirst" = "請先完成 Azure OpenAI 連線測試";
 "caption.disabled.configureSubtitleStorageFirst" = "請先設定可存取的字幕檔案存放位置";

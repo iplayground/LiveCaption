@@ -9,7 +9,7 @@ struct SpeechSettingsSheet: View {
     let onSpeechKeyChanged: () -> Void
     let onAzureOpenAIConnectionTesting: () -> Void
     let onAzureOpenAIConnectionTested: () -> Void
-    let onAzureOpenAIConnectionFailed: (String) -> Void
+    let onAzureOpenAIConnectionFailed: (_ logDetail: String) -> Void
     let onAzureOpenAISettingsChanged: () -> Void
     @State private var connectionTestStatus = SpeechConnectionTestStatus.idle
     @State private var azureOpenAIConnectionTestStatus = AzureOpenAIConnectionTestStatus.idle
@@ -114,6 +114,7 @@ struct SpeechSettingsSheet: View {
                 }
             } catch {
                 let message = error.localizedDescription
+                let logDetail = (error as? AzureOpenAIRealtimeTranslationError)?.diagnosticDescription ?? message
 
                 await MainActor.run {
                     guard activeAzureOpenAIConnectionTestID == testID else {
@@ -121,7 +122,7 @@ struct SpeechSettingsSheet: View {
                     }
 
                     azureOpenAIConnectionTestStatus = .failure(message)
-                    onAzureOpenAIConnectionFailed(message)
+                    onAzureOpenAIConnectionFailed(logDetail)
                 }
             }
         }
@@ -210,8 +211,19 @@ struct SpeechSettingsSheet: View {
                                         .textFieldStyle(.roundedBorder)
                                 }
 
-                                SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.deployment")) {
-                                    TextField(L10n.text("azureOpenAI.deployment.placeholder"), text: $settings.azureOpenAIDeploymentName)
+                                SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.transcriptionDeployment")) {
+                                    TextField(
+                                        L10n.text("azureOpenAI.transcriptionDeployment.placeholder"),
+                                        text: $settings.azureOpenAITranscriptionDeploymentName
+                                    )
+                                    .textFieldStyle(.roundedBorder)
+                                }
+
+                                SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.translationDeployment")) {
+                                    TextField(
+                                        L10n.text("azureOpenAI.translationDeployment.placeholder"),
+                                        text: $settings.azureOpenAITranslationDeploymentName
+                                    )
                                         .textFieldStyle(.roundedBorder)
                                 }
 
@@ -294,7 +306,10 @@ struct SpeechSettingsSheet: View {
         .onChange(of: settings.azureOpenAIEndpointURLString) {
             markAzureOpenAIConnectionTestChanged()
         }
-        .onChange(of: settings.azureOpenAIDeploymentName) {
+        .onChange(of: settings.azureOpenAITranscriptionDeploymentName) {
+            markAzureOpenAIConnectionTestChanged()
+        }
+        .onChange(of: settings.azureOpenAITranslationDeploymentName) {
             markAzureOpenAIConnectionTestChanged()
         }
         .onChange(of: settings.azureOpenAIAPIKey) {

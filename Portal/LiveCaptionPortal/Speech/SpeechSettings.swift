@@ -70,7 +70,8 @@ struct SpeechSettings: Equatable {
     var speechKey = ""
     var isAccurateCaptionEnabled = false
     var azureOpenAIEndpointURLString = ""
-    var azureOpenAIDeploymentName = "realtime-translate"
+    var azureOpenAITranscriptionDeploymentName = "realtime-whisper"
+    var azureOpenAITranslationDeploymentName = "realtime-translate"
     var azureOpenAIAPIKey = ""
     var phraseHintsByScope = defaultPhraseHintsByScope
     var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMilliseconds {
@@ -92,7 +93,8 @@ struct SpeechSettings: Equatable {
 
     var hasAzureOpenAIRealtimeConfiguration: Bool {
         !azureOpenAIEndpointURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !azureOpenAIDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !azureOpenAITranscriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !azureOpenAITranslationDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !azureOpenAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -101,7 +103,8 @@ struct SpeechSettings: Equatable {
     ) -> AzureOpenAIRealtimeTranslationConfiguration {
         AzureOpenAIRealtimeTranslationConfiguration(
             endpointURLString: azureOpenAIEndpointURLString,
-            deploymentName: azureOpenAIDeploymentName,
+            transcriptionDeploymentName: azureOpenAITranscriptionDeploymentName,
+            translationDeploymentName: azureOpenAITranslationDeploymentName,
             apiKey: azureOpenAIAPIKey,
             targetLanguages: outputLanguages
         )
@@ -187,7 +190,12 @@ struct SpeechSettings: Equatable {
         settings.speechKey = userDefaults.string(forKey: UserDefaultsKey.speechKey.rawValue) ?? ""
         settings.isAccurateCaptionEnabled = userDefaults.bool(forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
         settings.azureOpenAIEndpointURLString = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue) ?? ""
-        settings.azureOpenAIDeploymentName = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue) ?? "realtime-translate"
+        settings.azureOpenAITranscriptionDeploymentName = userDefaults.string(
+            forKey: UserDefaultsKey.azureOpenAITranscriptionDeployment.rawValue
+        ) ?? "realtime-whisper"
+        settings.azureOpenAITranslationDeploymentName = userDefaults.string(
+            forKey: UserDefaultsKey.azureOpenAITranslationDeployment.rawValue
+        ) ?? userDefaults.string(forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue) ?? "realtime-translate"
         settings.azureOpenAIAPIKey = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue) ?? ""
         settings.phraseHintsByScope = loadPhraseHintsByScope()
 
@@ -212,7 +220,14 @@ struct SpeechSettings: Equatable {
         Self.userDefaults.set(region, forKey: UserDefaultsKey.region.rawValue)
         Self.userDefaults.set(isAccurateCaptionEnabled, forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
         Self.userDefaults.set(azureOpenAIEndpointURLString, forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue)
-        Self.userDefaults.set(azureOpenAIDeploymentName, forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue)
+        Self.userDefaults.set(
+            azureOpenAITranscriptionDeploymentName,
+            forKey: UserDefaultsKey.azureOpenAITranscriptionDeployment.rawValue
+        )
+        Self.userDefaults.set(
+            azureOpenAITranslationDeploymentName,
+            forKey: UserDefaultsKey.azureOpenAITranslationDeployment.rawValue
+        )
         Self.userDefaults.set(
             Array(selectedOutputLanguageIDs.union(Self.requiredOutputLanguageIDs)).sorted(),
             forKey: UserDefaultsKey.outputLanguageIDs.rawValue
@@ -381,6 +396,8 @@ struct SpeechSettings: Equatable {
         case accurateCaptionEnabled = "speech.accurateCaptionEnabled"
         case azureOpenAIEndpoint = "speech.azureOpenAI.endpoint"
         case azureOpenAIDeployment = "speech.azureOpenAI.deployment"
+        case azureOpenAITranscriptionDeployment = "speech.azureOpenAI.transcriptionDeployment"
+        case azureOpenAITranslationDeployment = "speech.azureOpenAI.translationDeployment"
         case azureOpenAIAPIKey = "speech.azureOpenAI.apiKey"
         case outputLanguageIDs = "speech.outputLanguageIDs"
         case sentenceSilenceTimeoutMilliseconds = "speech.sentenceSilenceTimeoutMilliseconds"

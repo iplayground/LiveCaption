@@ -2,13 +2,15 @@ import Foundation
 
 struct AzureOpenAIRealtimeTranslationConfiguration: Equatable, Sendable {
     let endpointURLString: String
-    let deploymentName: String
+    let transcriptionDeploymentName: String
+    let translationDeploymentName: String
     let apiKey: String
     let targetLanguages: [SpeechOutputLanguage]
 
     nonisolated var isConfigured: Bool {
         !normalizedEndpointURLString.isEmpty
-            && !deploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !transcriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !translationDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !targetLanguages.isEmpty
     }
@@ -25,7 +27,7 @@ struct AzureOpenAIRealtimeTranslationConfiguration: Equatable, Sendable {
 enum AzureOpenAIRealtimeTranslationError: LocalizedError {
     case incompleteConfiguration
     case invalidEndpoint
-    case connectionFailed(String)
+    case connectionFailed(summary: String, detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -33,8 +35,19 @@ enum AzureOpenAIRealtimeTranslationError: LocalizedError {
             L10n.text("azureOpenAI.error.incompleteConfiguration")
         case .invalidEndpoint:
             L10n.text("azureOpenAI.error.invalidEndpoint")
-        case .connectionFailed(let message):
+        case .connectionFailed(let message, _):
             L10n.text("azureOpenAI.error.connectionFailed", message)
+        }
+    }
+
+    var diagnosticDescription: String {
+        switch self {
+        case .incompleteConfiguration:
+            L10n.text("azureOpenAI.error.incompleteConfiguration")
+        case .invalidEndpoint:
+            L10n.text("azureOpenAI.error.invalidEndpoint")
+        case .connectionFailed(_, let detail):
+            detail
         }
     }
 }
@@ -54,7 +67,6 @@ actor AzureOpenAIRealtimeTranslationService {
 
         let requestURL = try Self.requestURL(for: configuration)
         let apiKey = configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let deploymentName = configuration.deploymentName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         for language in configuration.targetLanguages {
             var request = URLRequest(url: requestURL)
@@ -70,7 +82,12 @@ actor AzureOpenAIRealtimeTranslationService {
                 try await sendSessionUpdate(to: task, language: language.azureOpenAIRealtimeLanguageCode)
             } catch {
                 await stop()
-                throw AzureOpenAIRealtimeTranslationError.connectionFailed(error.localizedDescription)
+                throw Self.connectionFailedError(
+                    error,
+                    task: task,
+                    phase: "translation session.update \(language.id)",
+                    deploymentName: configuration.translationDeploymentName
+                )
             }
 
             receiveTasks[language.id] = Task { [weak self] in
@@ -79,7 +96,6 @@ actor AzureOpenAIRealtimeTranslationService {
         }
 
         isStarted = true
-        _ = deploymentName
     }
 
     func stop() async {
@@ -176,7 +192,7 @@ actor AzureOpenAIRealtimeTranslationService {
 
     private static func requestURL(for configuration: AzureOpenAIRealtimeTranslationConfiguration) throws -> URL {
         let endpoint = configuration.normalizedEndpointURLString
-        let deploymentName = configuration.deploymentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let deploymentName = configuration.translationDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard var components = URLComponents(string: endpoint) else {
             throw AzureOpenAIRealtimeTranslationError.invalidEndpoint
@@ -210,6 +226,30 @@ actor AzureOpenAIRealtimeTranslationService {
         }
 
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func connectionFailedError(
+        _ error: Error,
+        task: URLSessionWebSocketTask,
+        phase: String,
+        deploymentName: String
+    ) -> AzureOpenAIRealtimeTranslationError {
+        let summary = error.localizedDescription
+        let nsError = error as NSError
+        var details = [
+            "phase=\(phase)",
+            "deployment=\(deploymentName.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "closeCode=\(task.closeCode.rawValue)",
+            "errorDomain=\(nsError.domain)",
+            "errorCode=\(nsError.code)",
+            "error=\(summary)",
+        ]
+
+        if let response = nsError.userInfo["NSErrorFailingURLResponseKey"] as? HTTPURLResponse {
+            details.append("httpStatus=\(response.statusCode)")
+        }
+
+        return .connectionFailed(summary: summary, detail: details.joined(separator: "; "))
     }
 }
 

@@ -65,6 +65,11 @@ Portal 送往 Relay 的字幕事件會依品質模式分開發布：快速字幕
 
 精準模式失敗、逾時或尚未取得 final 結果時，不得中斷 Azure Speech 即時字幕。產品行為
 應保守處理，例如回退使用 Azure Speech final，或在操作端明確標示精準字幕不可用。
+Azure OpenAI realtime 連線測試失敗時，Portal 可把 Foundation / WebSocket 明確提供的
+診斷欄位寫入本機事件紀錄，例如測試階段、deployment name、close code、錯誤 domain /
+code 與 HTTP status；若底層 API 沒有提供 Azure response body，Portal 不應推測伺服器端
+原因。任何診斷紀錄都不得包含 API key、完整 headers、request / response body、prompt、
+字幕文字、逐字稿或 realtime session secret。
 
 第一版 Azure OpenAI realtime 整合使用 Portal 的 `AVCaptureAudioDataOutput` 音訊 sample
 分流，轉為 24 kHz mono PCM16 後送往 Azure OpenAI realtime translation WebSocket。每一個
