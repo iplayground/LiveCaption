@@ -545,7 +545,7 @@ struct ContentView: View {
         let accurateText = translations[inputLanguageOutputID]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let result = CaptionModeResult(
             providerID: CaptionQualityMode.accurate.providerID,
-            text: accurateText?.isEmpty == false ? accurateText! : event.text,
+            text: accurateText ?? "",
             translations: translations
         )
 

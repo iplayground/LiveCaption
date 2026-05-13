@@ -81,7 +81,7 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 }
 ```
 
-精準字幕會另以獨立 POST 傳送。Azure OpenAI 由模型端決定 final 區段，因此精準字幕可依語言逐筆送出；`captions` 與 `captionModes.accurate.captions` 只需包含本次 OpenAI final 已產出的語言：
+精準字幕會另以獨立 POST 傳送。Azure OpenAI 由模型端決定 final 區段，因此精準字幕可依語言逐筆送出；`captions` 與 `captionModes.accurate.captions` 只需包含本次 OpenAI final 已產出的語言。Portal 不會使用 `speech.text` 或 Azure Speech final 補入精準模式的語音輸入語言字幕：
 
 ```json
 {
@@ -126,13 +126,13 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 | `speech.inputLanguage` | 是 | 語音輸入語言，目前允許 `zh-TW` 或 `en-US`。 |
 | `speech.offsetTicks` | 是 | 字幕區段起點 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式來自 Azure OpenAI 區段或 Portal 的保守時間估算。 |
 | `speech.durationTicks` | 是 | 字幕區段長度 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式來自 Azure OpenAI 區段或 Portal 的保守時間估算。 |
-| `speech.text` | 是 | 本筆事件的主要字幕文字，只供 Relay 驗證與發布流程使用，不得完整寫入 log。 |
+| `speech.text` | 是 | 本筆事件的 Speech final 文字，只供 Relay 驗證、相容性與時序脈絡使用，不代表精準模式字幕內容，不得完整寫入 log。 |
 | `captions` | 是 | 向後相容欄位，代表本筆 POST 的 final 字幕輸出語言 object。快速 POST 至少包含 `zh-Hant` 與 `en`；精準 POST 可只包含本次 Azure OpenAI final 已產出的語言。 |
 | `captions.<language>` | 是 | 字幕文字，目前允許 `zh-Hant`、`en`、`ja`、`ko`。 |
 | `captionModes` | 否 | final 字幕模式 object；Portal 目前分開傳送 `fast` 與 `accurate`，因此通常每筆只包含一種模式。未提供時 Relay 視為只提供 `fast`。 |
 | `captionModes.fast.provider` | 否 | 必須為 `azure-speech`。 |
 | `captionModes.accurate.provider` | 否 | 必須為 `azure-openai-realtime-translate`。 |
-| `captionModes.<mode>.captions` | 是 | 該模式的字幕輸出語言 object。`fast` 至少包含 `zh-Hant` 與 `en`；`accurate` 可只包含本次 OpenAI final 已產出的語言。 |
+| `captionModes.<mode>.captions` | 是 | 該模式的字幕輸出語言 object。`fast` 至少包含 `zh-Hant` 與 `en`；`accurate` 可只包含本次 OpenAI final 已產出的語言，且不以 `speech.text` 補語音輸入語言。 |
 
 ## 語言規則
 
@@ -167,7 +167,7 @@ Relay 接收事件後必須先驗證：
 - `captionModes.fast.provider` 必須為 `azure-speech`。
 - `captionModes.accurate.provider` 必須為 `azure-openai-realtime-translate`。
 - `captionModes.fast.captions` 必須符合字幕輸出語言與必要語言規則。
-- `captionModes.accurate.captions` 不可為空，且 key 必須在字幕輸出語言允許清單內。
+- `captionModes.accurate.captions` 不可為空，且 key 必須在字幕輸出語言允許清單內；若 Azure OpenAI 未產生語音輸入語言字幕，Portal 不得用 `speech.text` 或 Azure Speech final 補上該語言。
 
 軌道佔用判斷不在每一筆字幕事件上執行，應放在 Relay 設定檢查或未來的軌道租用流程。
 
