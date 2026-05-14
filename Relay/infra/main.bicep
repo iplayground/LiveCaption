@@ -429,6 +429,21 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   }
 }
 
+resource webPubSubHub 'Microsoft.SignalRService/webPubSub/hubs@2024-03-01' = {
+  parent: webPubSub
+  name: webPubSubHubName
+  properties: {
+    eventHandlers: [
+      {
+        urlTemplate: 'https://${functionApp.properties.defaultHostName}/api/webpubsub/events'
+        systemEvents: [
+          'connected'
+        ]
+      }
+    ]
+  }
+}
+
 resource storageBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storage.id, functionApp.id, roleDefinitions.storageBlobDataOwner)
   scope: storage

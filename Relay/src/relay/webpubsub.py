@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from os import environ
 from typing import Any, Callable
+from uuid import uuid4
 
 from azure.core.exceptions import AzureError
 
@@ -90,6 +92,23 @@ class AzureWebPubSubPublisher:
         except AzureError as error:
             raise RelayWebPubSubError("Unable to publish caption event.") from error
 
+    def publish_to_connection(
+        self,
+        payload: dict[str, Any],
+        *,
+        connection_id: str,
+    ) -> None:
+        client, _config = self._get_client()
+        try:
+            message = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            client.send_to_connection(
+                connection_id=connection_id,
+                message=message,
+                content_type="text/plain",
+            )
+        except AzureError as error:
+            raise RelayWebPubSubError("Unable to publish caption event.") from error
+
     def _get_client(self) -> tuple[Any, WebPubSubConfig]:
         if self._client and self._config:
             return self._client, self._config
@@ -139,6 +158,7 @@ class AzureWebPubSubViewerTokenProvider:
             token = client.get_client_access_token(
                 minutes_to_expire=minutes_to_expire,
                 groups=[group_name],
+                user_id=build_viewer_user_id(track_number),
             )
         except AzureError as error:
             raise RelayWebPubSubError("Unable to generate viewer access token.") from error
@@ -185,3 +205,19 @@ def _extract_client_access_url(token: object) -> str:
 
 def build_track_group_name(base_group_name: str, *, track_number: int) -> str:
     return f"{base_group_name}-track-{track_number}"
+
+
+VIEWER_USER_ID_PATTERN = re.compile(
+    r"^viewer-track-(?P<track_number>[1-9][0-9]*)-[0-9a-f]{32}$"
+)
+
+
+def build_viewer_user_id(track_number: int) -> str:
+    return f"viewer-track-{track_number}-{uuid4().hex}"
+
+
+def parse_viewer_track_number_from_user_id(user_id: str) -> int | None:
+    match = VIEWER_USER_ID_PATTERN.fullmatch(user_id)
+    if match is None:
+        return None
+    return int(match.group("track_number"))

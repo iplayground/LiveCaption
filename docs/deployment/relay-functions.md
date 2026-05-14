@@ -68,10 +68,11 @@ python -m pytest
 - Azure OpenAI resource 與精準 final 字幕所需 model deployment。
 - Relay system-assigned Managed Identity。
 - Storage、Application Insights、Azure Web PubSub 與 Azure Speech 所需 RBAC。
+- Azure Web PubSub hub `connected` event handler，用於 Viewer WebSocket 連線後補送目前控制狀態。
 - GitHub Actions 專用 user-assigned Managed Identity 與 federated credential。
 - Function App `RollingUpdate` site update strategy。
 
-正式環境使用 Managed Identity 讀取 Azure Speech key、呼叫 Azure Web PubSub data-plane publish API，並產生觀眾端短效 client access URL。觀眾端 URL 可接收字幕與控制事件，但不得授予發布字幕權限。Relay runtime 不呼叫 Azure OpenAI，也不保存 Azure OpenAI endpoint、API key 或 session token。不得在 App Settings、參數檔或 repo 中保存 Speech key、Azure OpenAI API key、Web PubSub connection string 或 SAS token 真值。
+正式環境使用 Managed Identity 讀取 Azure Speech key、呼叫 Azure Web PubSub data-plane publish API、讀寫 Azure Table Storage 中的 Relay 控制狀態，並產生觀眾端短效 client access URL。觀眾端 URL 可接收字幕與控制事件，但不得授予發布字幕權限。Relay runtime 不呼叫 Azure OpenAI，也不保存 Azure OpenAI endpoint、API key 或 session token。不得在 App Settings、參數檔或 repo 中保存 Speech key、Azure OpenAI API key、Web PubSub connection string 或 SAS token 真值。
 
 所有部署參數與 app settings 都必須以「外部使用者不可讀取、不可列舉、不可交換敏感資料」為設計前提。Azure 基礎設施建立後預設為閒置模式；活動模式由 Azure Automation schedule 觸發 runbook 切換。
 

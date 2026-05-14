@@ -5,10 +5,13 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, Protocol
 
+from relay.control_state import AzureTableControlEventStateStore, ControlEventStateStore
+from relay.control_state import RelayControlStateError
 from relay.models import CaptionEvent, ControlEvent
 from relay.validation import CaptionEventValidationError, validate_caption_event, validate_control_event
 from relay.viewer_access import ViewerAccessError
 from relay.webpubsub import RelayWebPubSubError, ViewerAccessToken
+from relay.webpubsub import parse_viewer_track_number_from_user_id
 
 
 class CaptionEventPublisher(Protocol):
@@ -17,6 +20,14 @@ class CaptionEventPublisher(Protocol):
         payload: dict[str, Any],
         *,
         track_number: int | None = None,
+    ) -> None:
+        pass
+
+    def publish_to_connection(
+        self,
+        payload: dict[str, Any],
+        *,
+        connection_id: str,
     ) -> None:
         pass
 
@@ -50,15 +61,25 @@ class SessionSequenceStore:
 _sequence_store = SessionSequenceStore()
 
 
+_control_event_state_store = AzureTableControlEventStateStore()
+
+
 def handle_caption_event_request(
     payload: Any,
     *,
     publisher: CaptionEventPublisher,
     now: datetime | None = None,
     sequence_store: SessionSequenceStore = _sequence_store,
+    control_event_state_store: ControlEventStateStore = _control_event_state_store,
 ) -> tuple[int, dict[str, Any]]:
     if isinstance(payload, dict) and payload.get("type") == "control":
-        return handle_control_event_request(payload, publisher=publisher, now=now, sequence_store=sequence_store)
+        return handle_control_event_request(
+            payload,
+            publisher=publisher,
+            now=now,
+            sequence_store=sequence_store,
+            control_event_state_store=control_event_state_store,
+        )
 
     try:
         event = validate_caption_event(payload, now=now)
@@ -102,6 +123,7 @@ def handle_control_event_request(
     publisher: CaptionEventPublisher,
     now: datetime | None = None,
     sequence_store: SessionSequenceStore = _sequence_store,
+    control_event_state_store: ControlEventStateStore = _control_event_state_store,
 ) -> tuple[int, dict[str, Any]]:
     try:
         event = validate_control_event(payload, now=now)
@@ -117,9 +139,25 @@ def handle_control_event_request(
     if event.event == "sessionStatus" and event.status == "started" and event.session_id is not None:
         sequence_store.reset(event.session_id)
 
+    publish_payload = build_control_publish_payload(event)
+    try:
+        control_event_state_store.update(
+            track_number=event.track_number,
+            event_name=event.event,
+            payload=publish_payload,
+        )
+    except RelayControlStateError:
+        return 502, {
+            "error": {
+                "code": "control_state_update_failed",
+                "message": "Control event state could not be saved.",
+                "details": [],
+            }
+        }
+
     try:
         publisher.publish(
-            build_control_publish_payload(event),
+            publish_payload,
             track_number=event.track_number,
         )
     except RelayWebPubSubError:
@@ -207,6 +245,43 @@ def handle_viewer_negotiate_request(
     }
 
 
+def handle_webpubsub_connected_event_request(
+    *,
+    headers: dict[str, str],
+    publisher: CaptionEventPublisher,
+    control_event_state_store: ControlEventStateStore = _control_event_state_store,
+) -> tuple[int, dict[str, Any]]:
+    event_type = _read_header(headers, "ce-type")
+    if event_type != "azure.webpubsub.sys.connected":
+        return 204, {}
+
+    user_id = _read_header(headers, "ce-userid")
+    connection_id = _read_header(headers, "ce-connectionid")
+    if user_id is None or connection_id is None:
+        return 204, {}
+
+    track_number = parse_viewer_track_number_from_user_id(user_id)
+    if track_number is None:
+        return 204, {}
+
+    try:
+        for control_payload in control_event_state_store.latest_for_track(track_number):
+            publisher.publish_to_connection(
+                control_payload,
+                connection_id=connection_id,
+            )
+    except (RelayControlStateError, RelayWebPubSubError):
+        return 502, {
+            "error": {
+                "code": "viewer_state_replay_failed",
+                "message": "Viewer connection state could not be published.",
+                "details": [],
+            }
+        }
+
+    return 204, {}
+
+
 class ViewerAccessCodeVerifier(Protocol):
     def verify(self, *, access_code: str | None, now: datetime | None = None) -> None:
         pass
@@ -275,3 +350,11 @@ def to_json_response_body(payload: dict[str, Any]) -> str:
 
 def _format_utc(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _read_header(headers: dict[str, str], name: str) -> str | None:
+    normalized_name = name.lower()
+    for key, value in headers.items():
+        if key.lower() == normalized_name and value:
+            return value
+    return None

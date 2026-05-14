@@ -2,7 +2,7 @@
 
 本文件定義觀眾端 App 取得 Azure Web PubSub client access URL，以及連線後接收 Relay 字幕與控制事件的 API 契約。
 
-Viewer 只使用一條 WebSocket。Relay 透過同一條 WebSocket 發送字幕事件與控制事件。`/api/viewer/negotiate` 只帶活動前即可知道的字幕軌道編號，不帶字幕模式或語言偏好，也不承諾 Portal 是否已上線、字幕 session 是否開始或精準字幕是否可用。
+Viewer 只使用一條 WebSocket。Relay 透過同一條 WebSocket 發送字幕事件與控制事件。`/api/viewer/negotiate` 只帶活動前即可知道的字幕軌道編號，不帶字幕模式或語言偏好；Portal 是否已上線、字幕 session 是否開始或精準字幕是否可用，需以 WebSocket 控制事件為準。
 
 Portal 主控板若要確認觀眾實際會收到什麼，也應使用本 API 建立 Viewer WebSocket。這可避免 Portal 主控板和觀眾端走不同 delivery path 而產生偏差。
 
@@ -63,11 +63,14 @@ Viewer WebSocket 是單一 session 通道：
 
 - Server 到 Viewer：發送 Portal 狀態、字幕 session 狀態與字幕事件。
 - Viewer 比 Portal 更早開啟時，Relay 仍可先完成 negotiate；Viewer 連線後等待控制事件。
+- Viewer 比 Portal 晚連線時，Relay 會在 Web PubSub `connected` system event 後，補送該軌道目前最新的 `portalStatus`、`sessionStatus` 與 `captionAvailability` 給該 connection。
 - Portal 開啟、關閉、開始字幕、停止字幕、開關 Azure OpenAI 精準字幕支援時，Relay 需透過控制事件通知 Viewer。
 
 Relay 不需要保存每個 Viewer 的字幕模式或語言偏好。模式與語言選擇是 Viewer UI 狀態，不是 Relay routing 狀態。
 
 Relay 必須使用 Azure Web PubSub track group fan-out 發送字幕，不得在每筆字幕事件中逐一列舉 Viewer connection 發送。Viewer negotiate 成功後，Relay 讓該 connection 加入對應 `trackNumber` 的字幕 group。
+
+Relay 會將最新控制狀態保存於 Azure Table Storage，而不是 Function instance memory。這是為了確保 Azure Functions scale-out 到多個 instance 時，任何 instance 收到 Web PubSub `connected` system event 都能讀到相同的目前狀態。
 
 字幕 group 命名格式：
 

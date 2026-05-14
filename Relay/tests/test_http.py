@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from relay.control_state import RelayControlStateError
 from relay.http import SessionSequenceStore, build_health_payload, build_publish_payload
 from relay.http import build_control_publish_payload
 from relay.http import handle_caption_event_request
 from relay.http import handle_viewer_negotiate_request
+from relay.http import handle_webpubsub_connected_event_request
 from relay.viewer_access import ViewerAccessError
 from relay.webpubsub import ViewerAccessToken
 from relay.webpubsub import RelayWebPubSubError
@@ -30,6 +32,18 @@ class FakePublisher:
             raise RelayWebPubSubError("boom")
         self.payloads.append(
             {"payload": payload, "track_number": track_number}
+        )
+
+    def publish_to_connection(
+        self,
+        payload: dict[str, Any],
+        *,
+        connection_id: str,
+    ) -> None:
+        if self.fail:
+            raise RelayWebPubSubError("boom")
+        self.payloads.append(
+            {"payload": payload, "connection_id": connection_id}
         )
 
 
@@ -64,6 +78,33 @@ class FakeViewerAccessCodeVerifier:
         self.requests.append((access_code, now))
         if self.fail:
             raise ViewerAccessError("invalid")
+
+
+class FakeControlEventStateStore:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.events_by_track: dict[int, dict[str, dict[str, Any]]] = {}
+
+    def update(
+        self,
+        *,
+        track_number: int,
+        event_name: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if self.fail:
+            raise RelayControlStateError("boom")
+        self.events_by_track.setdefault(track_number, {})[event_name] = dict(payload)
+
+    def latest_for_track(self, track_number: int) -> list[dict[str, Any]]:
+        if self.fail:
+            raise RelayControlStateError("boom")
+        events = self.events_by_track.get(track_number, {})
+        return [
+            dict(events[event_name])
+            for event_name in ("portalStatus", "sessionStatus", "captionAvailability")
+            if event_name in events
+        ]
 
 
 def test_handle_caption_event_request_accepts_valid_payload() -> None:
@@ -253,6 +294,85 @@ def test_handle_viewer_negotiate_request_returns_track_receive_url() -> None:
     assert verifier.requests == [("123456", now)]
 
 
+def test_handle_webpubsub_connected_event_replays_latest_control_events_to_connection() -> None:
+    state_store = FakeControlEventStateStore()
+    state_store.update(
+        track_number=2,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T11:59:00.000Z",
+        },
+    )
+    publisher = FakePublisher()
+
+    status_code, body = handle_webpubsub_connected_event_request(
+        headers={
+            "ce-type": "azure.webpubsub.sys.connected",
+            "ce-userId": "viewer-track-2-0123456789abcdef0123456789abcdef",
+            "ce-connectionId": "connection-1",
+        },
+        publisher=publisher,
+        control_event_state_store=state_store,
+    )
+
+    assert status_code == 204
+    assert body == {}
+    assert publisher.payloads == [
+        {
+            "connection_id": "connection-1",
+            "payload": {
+                "type": "control",
+                "event": "portalStatus",
+                "status": "online",
+                "updatedAt": "2026-04-30T11:59:00.000Z",
+            },
+        }
+    ]
+
+
+def test_handle_webpubsub_connected_event_ignores_non_viewer_connections() -> None:
+    publisher = FakePublisher()
+
+    status_code, body = handle_webpubsub_connected_event_request(
+        headers={
+            "ce-type": "azure.webpubsub.sys.connected",
+            "ce-userId": "operator",
+            "ce-connectionId": "connection-1",
+        },
+        publisher=publisher,
+        control_event_state_store=FakeControlEventStateStore(),
+    )
+
+    assert status_code == 204
+    assert body == {}
+    assert publisher.payloads == []
+
+
+def test_handle_webpubsub_connected_event_returns_sanitized_replay_error() -> None:
+    status_code, body = handle_webpubsub_connected_event_request(
+        headers={
+            "ce-type": "azure.webpubsub.sys.connected",
+            "ce-userId": "viewer-track-1-0123456789abcdef0123456789abcdef",
+            "ce-connectionId": "connection-1",
+        },
+        publisher=FakePublisher(),
+        control_event_state_store=FakeControlEventStateStore(fail=True),
+    )
+
+    assert status_code == 502
+    assert body == {
+        "error": {
+            "code": "viewer_state_replay_failed",
+            "message": "Viewer connection state could not be published.",
+            "details": [],
+        }
+    }
+    assert "connection-1" not in str(body)
+
+
 def test_handle_viewer_negotiate_request_requires_track_number() -> None:
     provider = FakeViewerTokenProvider()
     verifier = FakeViewerAccessCodeVerifier()
@@ -403,6 +523,7 @@ def test_handle_control_event_request_publishes_control_payload() -> None:
         publisher=publisher,
         now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
         sequence_store=SessionSequenceStore(),
+        control_event_state_store=FakeControlEventStateStore(),
     )
 
     assert status_code == 202
@@ -419,6 +540,34 @@ def test_handle_control_event_request_publishes_control_payload() -> None:
             },
         }
     ]
+
+
+def test_handle_control_event_request_returns_sanitized_state_error() -> None:
+    publisher = FakePublisher()
+
+    status_code, body = handle_caption_event_request(
+        {
+            "type": "control",
+            "trackNumber": 1,
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-29T12:34:00.000Z",
+        },
+        publisher=publisher,
+        now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+        control_event_state_store=FakeControlEventStateStore(fail=True),
+    )
+
+    assert status_code == 502
+    assert body == {
+        "error": {
+            "code": "control_state_update_failed",
+            "message": "Control event state could not be saved.",
+            "details": [],
+        }
+    }
+    assert publisher.payloads == []
+    assert "2026-04-29T12:34:00.000Z" not in str(body)
 
 
 def test_build_control_publish_payload_keeps_viewer_shape() -> None:

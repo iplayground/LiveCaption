@@ -1,5 +1,6 @@
 azure-functions
 azure-functions-runtime
+azure-data-tables
 azure-identity
 azure-messaging-webpubsubservice
 azure-mgmt-cognitiveservices

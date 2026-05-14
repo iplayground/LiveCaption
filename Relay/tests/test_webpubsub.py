@@ -9,6 +9,8 @@ from relay.webpubsub import AzureWebPubSubPublisher
 from relay.webpubsub import AzureWebPubSubViewerTokenProvider
 from relay.webpubsub import RelayWebPubSubError
 from relay.webpubsub import WebPubSubConfig
+from relay.webpubsub import build_viewer_user_id
+from relay.webpubsub import parse_viewer_track_number_from_user_id
 
 
 def test_webpubsub_config_reads_environment() -> None:
@@ -114,6 +116,30 @@ def test_webpubsub_publisher_preserves_non_ascii_text(monkeypatch: pytest.Monkey
     assert "\\u" not in client.messages[0]["message"]
 
 
+def test_webpubsub_publisher_sends_payload_to_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = WebPubSubConfig(
+        endpoint="https://livecaption.webpubsub.azure.com",
+        hub_name="livecaption",
+        group_name="caption-live",
+    )
+    client = FakeWebPubSubServiceClient()
+    publisher = AzureWebPubSubPublisher(config_factory=lambda: config)
+    monkeypatch.setattr(publisher, "_client", client)
+    monkeypatch.setattr(publisher, "_config", config)
+
+    publisher.publish_to_connection({"type": "control"}, connection_id="connection-1")
+
+    assert client.connection_messages == [
+        {
+            "connection_id": "connection-1",
+            "message": '{"type":"control"}',
+            "content_type": "text/plain",
+        }
+    ]
+
+
 def test_webpubsub_publisher_wraps_azure_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     config = WebPubSubConfig(
         endpoint="https://livecaption.webpubsub.azure.com",
@@ -149,13 +175,19 @@ def test_viewer_token_provider_generates_track_group_token(
         now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
     )
 
+    request = client.access_token_requests[0]
     assert access.group_name == "caption-live-track-2"
-    assert client.access_token_requests == [
-        {
-            "minutes_to_expire": 60,
-            "groups": ["caption-live-track-2"],
-        }
-    ]
+    assert request["minutes_to_expire"] == 60
+    assert request["groups"] == ["caption-live-track-2"]
+    assert parse_viewer_track_number_from_user_id(request["user_id"]) == 2
+
+
+def test_viewer_user_id_encodes_track_number() -> None:
+    user_id = build_viewer_user_id(12)
+
+    assert parse_viewer_track_number_from_user_id(user_id) == 12
+    assert parse_viewer_track_number_from_user_id("viewer-track-0-invalid") is None
+    assert parse_viewer_track_number_from_user_id("operator") is None
 
 
 def test_viewer_token_provider_rejects_invalid_token_response(
@@ -199,6 +231,7 @@ class FakeWebPubSubServiceClient:
             }
         )
         self.messages: list[dict[str, object]] = []
+        self.connection_messages: list[dict[str, object]] = []
         self.access_token_requests: list[dict[str, object]] = []
 
     def send_to_group(self, *, group: str, message: str, content_type: str) -> None:
@@ -212,11 +245,29 @@ class FakeWebPubSubServiceClient:
             }
         )
 
+    def send_to_connection(
+        self,
+        *,
+        connection_id: str,
+        message: str,
+        content_type: str,
+    ) -> None:
+        if self.fail:
+            raise AzureError("azure failure")
+        self.connection_messages.append(
+            {
+                "connection_id": connection_id,
+                "message": message,
+                "content_type": content_type,
+            }
+        )
+
     def get_client_access_token(
         self,
         *,
         minutes_to_expire: int,
         groups: list[str],
+        user_id: str,
     ) -> object:
         if self.fail:
             raise AzureError("azure failure")
@@ -224,6 +275,7 @@ class FakeWebPubSubServiceClient:
             {
                 "minutes_to_expire": minutes_to_expire,
                 "groups": groups,
+                "user_id": user_id,
             }
         )
         return self.token_response

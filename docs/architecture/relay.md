@@ -34,7 +34,9 @@ API 契約分別記錄於：
 8. Relay 使用 Managed Identity 透過 Azure Web PubSub 對 Viewer WebSocket 發送控制事件與字幕事件。
 9. 觀眾端透過 `POST /api/viewer/negotiate` 帶入活動前可知道的 `trackNumber`，取得該軌道的
    單一 Viewer WebSocket URL；negotiate 不帶字幕模式或語言偏好。
-10. Portal 主控板若要確認觀眾實際會收到什麼，也使用 `/api/viewer/negotiate` 建立 Viewer
+10. Viewer WebSocket 實際連線成功時，Azure Web PubSub 會呼叫 Relay event handler；Relay 從
+    Azure Table Storage 讀取該軌道最新控制狀態，直接補送給該 connection。
+11. Portal 主控板若要確認觀眾實際會收到什麼，也使用 `/api/viewer/negotiate` 建立 Viewer
     WebSocket，並在本機依模式與語言過濾顯示內容。
 
 任何回傳給觀眾端或 Portal 主控板的 Web PubSub URL 都包含短效 bearer token，必須視為敏感資料。Relay、Portal、GitHub Actions、Azure Functions logs 與觀眾端 App 都不得記錄完整 URL、完整 headers 或完整 response body。
@@ -52,6 +54,12 @@ Relay 對 Viewer 採用單一 WebSocket session 模型。Viewer negotiate 只負
 取得特定字幕軌道的短效 WebSocket URL，不負責選擇 `captionMode` 或語言。Relay 在同一條 WebSocket 對 Viewer 發送
 Portal 狀態、字幕 session 狀態、`captionAvailability` 控制事件與完整字幕事件。Viewer 與
 Portal 主控板在本機依使用者選擇的模式與語言過濾顯示內容。
+
+Relay 會把每個 `trackNumber` 最新的 `portalStatus`、`sessionStatus` 與 `captionAvailability`
+保存到 Azure Table Storage。這份狀態不能放在 Function process memory，因為 Azure Functions
+scale-out 後不同 instance 不共享記憶體。Web PubSub `connected` system event 抵達 Relay 時，
+Relay 依 Viewer access token 內的 `userId` 判斷軌道，並使用 connection id 對該 Viewer 補送目前
+控制狀態。
 
 Relay 必須使用 Azure Web PubSub track group fan-out 發送字幕。Viewer negotiate 成功後，Relay
 讓該 connection 加入對應 `trackNumber` 的字幕 group。Portal 字幕事件進入 Relay 後，Relay 保留
@@ -74,6 +82,8 @@ Relay 主要 app settings：
 | `AZURE_WEBPUBSUB_HUB_NAME` | Web PubSub hub name。 |
 | `AZURE_WEBPUBSUB_GROUP_NAME` | Web PubSub base group name。 |
 | `VIEWER_ACCESS_CODE_REQUIRED` | 是否要求觀眾端 negotiate 帶 access code；預設與無效值視為 `true`。 |
+| `AzureWebJobsStorage__tableServiceUri` | Relay 控制狀態使用的 Azure Table endpoint；由 Bicep 設定並搭配 Managed Identity。 |
+| `RELAY_CONTROL_STATE_TABLE_NAME` | 選填。Relay 控制狀態 table name；未設定時使用 `LiveCaptionRelayControlState`。 |
 
 本機 `local.settings.json` 不得提交。正式環境由 Bicep 寫入非機密設定，並優先使用 Managed Identity。Relay runtime 不設定 Azure OpenAI endpoint、deployment、API key 或 token，也不呼叫 Azure OpenAI 進行字幕加工。
 
@@ -84,6 +94,7 @@ App settings、Bicep parameters、GitHub Actions secrets 與 Automation runbook 
 - `Relay/function_app.py`：Azure Functions HTTP 入口。
 - `Relay/src/relay/models.py`：字幕事件資料模型。
 - `Relay/src/relay/validation.py`：字幕事件驗證規則。
+- `Relay/src/relay/control_state.py`：Relay 控制事件最新狀態儲存，正式環境使用 Azure Table Storage。
 - `Relay/src/relay/http.py`：HTTP handler 與 Web PubSub payload builder。
 - `Relay/src/relay/webpubsub.py`：Azure Web PubSub publisher adapter 與觀眾端 token provider。
 - `Relay/tests/`：pytest 測試。

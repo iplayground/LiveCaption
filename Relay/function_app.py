@@ -11,9 +11,11 @@ sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
 from relay.auth import SIGNATURE_HEADER, TIMESTAMP_HEADER, RelayAuthenticationError
 from relay.auth import verify_speech_key_signature
+from relay.control_state import AzureTableControlEventStateStore
 from relay.http import build_health_payload
 from relay.http import handle_caption_event_request
 from relay.http import handle_viewer_negotiate_request
+from relay.http import handle_webpubsub_connected_event_request
 from relay.http import to_json_response_body
 from relay.speech_keys import AzureSpeechKeyProvider, RelaySpeechKeyError
 from relay.viewer_access import ACCESS_CODE_EXPIRES_AT_HEADER
@@ -28,6 +30,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 speech_key_provider = AzureSpeechKeyProvider()
 web_pubsub_publisher = AzureWebPubSubPublisher()
 viewer_token_provider = AzureWebPubSubViewerTokenProvider()
+control_event_state_store = AzureTableControlEventStateStore()
 ROOT_REDIRECT_URL = "https://github.com/iplayground/LiveCaption"
 BUILD_INFO_PATH = Path(__file__).resolve().parent / "build-info.json"
 
@@ -116,6 +119,7 @@ def caption_events(req: func.HttpRequest) -> func.HttpResponse:
             status_code, body = handle_caption_event_request(
                 payload,
                 publisher=web_pubsub_publisher,
+                control_event_state_store=control_event_state_store,
             )
 
     return _json_response(body, status_code=status_code)
@@ -131,6 +135,25 @@ def viewer_negotiate(req: func.HttpRequest) -> func.HttpResponse:
         rejected_fields=_read_rejected_viewer_negotiate_fields(req),
         access_code_required=is_viewer_access_code_required(),
     )
+    return _json_response(body, status_code=status_code)
+
+
+@app.route(route="api/webpubsub/events", methods=["OPTIONS", "POST"])
+def webpubsub_events(req: func.HttpRequest) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        origin = req.headers.get("WebHook-Request-Origin", "*")
+        return func.HttpResponse(
+            status_code=200,
+            headers={"WebHook-Allowed-Origin": origin},
+        )
+
+    status_code, body = handle_webpubsub_connected_event_request(
+        headers=dict(req.headers),
+        publisher=web_pubsub_publisher,
+        control_event_state_store=control_event_state_store,
+    )
+    if status_code == 204:
+        return func.HttpResponse(status_code=204)
     return _json_response(body, status_code=status_code)
 
 
