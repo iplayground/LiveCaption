@@ -25,6 +25,8 @@ struct ContentView: View {
     @State private var relayLastPublishedAt: Date?
     @State private var relayViewerAccessCode: String?
     @State private var relayCaptionSessionID: String?
+    @State private var lastPublishedCaptionAvailability: RelayCaptionAvailability?
+    @State private var portalStatusHeartbeatTask: Task<Void, Never>?
     @State private var subtitleFileSettings: SubtitleFileSettings
     @State private var subtitleExportSession: SubtitleExportSession?
     @State private var recognizedCaptionCount = 0
@@ -42,6 +44,7 @@ struct ContentView: View {
     private let windowMinimumSize = WindowLayout.minimumSize
     private let relayPublishRetryLimit = 3
     private let maximumLogEntryCount = 300
+    private let portalStatusHeartbeatInterval: Duration = .seconds(30)
     private static let relaySessionIDFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -181,10 +184,12 @@ struct ContentView: View {
                 await verifySpeechAuthorizationOnLaunchIfNeeded()
                 await verifyRelayConnectionOnLaunchIfNeeded()
                 publishPortalStatusToRelay("online")
+                publishCaptionAvailabilityToRelayIfNeeded()
             }
             .onAppear {
                 configureAudioCallbacks()
                 configureSpeechCallbacks()
+                refreshPortalStatusHeartbeat()
                 refreshProjectionCaptureWindow()
             }
             .onDisappear {
@@ -194,6 +199,7 @@ struct ContentView: View {
             }
             .onChange(of: isCaptionSessionActive) {
                 updateSpeechRecognition()
+                refreshPortalStatusHeartbeat()
             }
             .onChange(of: captionSessionStatus) {
                 refreshProjectionCaptureWindow()
@@ -231,17 +237,21 @@ struct ContentView: View {
             }
             .onChange(of: relayConnectionStatus) {
                 refreshCaptionSessionReadiness()
+                refreshPortalStatusHeartbeat()
             }
             .onChange(of: relaySettings) {
                 relayLastPublishedAt = nil
                 relayViewerAccessCode = nil
                 relayCaptionSessionID = nil
+                lastPublishedCaptionAvailability = nil
                 relayPublishedCaptionCounts.removeAll()
                 pubSubCaptionReceiver.disconnect()
+                refreshPortalStatusHeartbeat()
             }
     }
 
     private func handleDisappear() {
+        stopPortalStatusHeartbeat()
         publishSessionStoppedToRelayIfNeeded()
         publishPortalStatusToRelay("offline")
         finishCaptionSessionTiming()
@@ -375,6 +385,7 @@ struct ContentView: View {
 
             captionSessionElapsedTime = 0
             relayLastPublishedAt = nil
+            lastPublishedCaptionAvailability = nil
             relayPublishedCaptionCounts.removeAll()
             recognizedCaptionCount = 0
             pubSubCaptionReceiver.disconnect()
@@ -474,6 +485,7 @@ struct ContentView: View {
     private func handleRelayConnectionTested(_ result: RelayConnectionTestResult) {
         relayViewerAccessCode = result.viewerAccessCode
         publishPortalStatusToRelay("online")
+        publishCaptionAvailabilityToRelayIfNeeded()
     }
 
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
@@ -637,6 +649,42 @@ struct ContentView: View {
         }
     }
 
+    private func refreshPortalStatusHeartbeat() {
+        guard relayConnectionStatus == .connected,
+              !isCaptionSessionActive else {
+            stopPortalStatusHeartbeat()
+            return
+        }
+        startPortalStatusHeartbeat()
+    }
+
+    private func startPortalStatusHeartbeat() {
+        guard portalStatusHeartbeatTask == nil else {
+            return
+        }
+        portalStatusHeartbeatTask?.cancel()
+        portalStatusHeartbeatTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: portalStatusHeartbeatInterval)
+                guard !Task.isCancelled else {
+                    return
+                }
+                let settingsToPublish = await MainActor.run {
+                    relaySettings
+                }
+                let speechKey = await MainActor.run {
+                    speechSettings.speechKey
+                }
+                _ = try? await settingsToPublish.markPortalActivity(speechKey: speechKey)
+            }
+        }
+    }
+
+    private func stopPortalStatusHeartbeat() {
+        portalStatusHeartbeatTask?.cancel()
+        portalStatusHeartbeatTask = nil
+    }
+
     private func publishSessionStartedToRelay() {
         guard relayConnectionStatus == .connected,
               let relayCaptionSessionID else {
@@ -673,8 +721,7 @@ struct ContentView: View {
     }
 
     private func publishCaptionAvailabilityToRelayIfNeeded() {
-        guard isCaptionSessionActive,
-              relayConnectionStatus == .connected else {
+        guard relayConnectionStatus == .connected else {
             return
         }
 
@@ -683,6 +730,15 @@ struct ContentView: View {
         let sessionID = relayCaptionSessionID
         let modes = availableCaptionModesForRelay()
         let languages = speechSettings.selectedOutputLanguages
+        let availability = RelayCaptionAvailability(
+            sessionID: sessionID,
+            captionModes: modes,
+            languages: languages
+        )
+        guard availability != lastPublishedCaptionAvailability else {
+            return
+        }
+        lastPublishedCaptionAvailability = availability
         Task.detached {
             _ = try? await settingsToPublish.publishCaptionAvailability(
                 sessionID: sessionID,
@@ -744,5 +800,21 @@ struct ContentView: View {
             )
             captionSessionStatus = .failed
         }
+    }
+}
+
+private struct RelayCaptionAvailability: Equatable {
+    let sessionID: String?
+    let captionModeIDs: [String]
+    let languageIDs: [String]
+
+    init(
+        sessionID: String?,
+        captionModes: [CaptionQualityMode],
+        languages: [SpeechOutputLanguage]
+    ) {
+        self.sessionID = sessionID
+        captionModeIDs = captionModes.map(\.rawValue)
+        languageIDs = languages.map(\.id)
     }
 }

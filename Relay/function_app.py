@@ -14,6 +14,7 @@ from relay.auth import verify_speech_key_signature
 from relay.control_state import AzureTableControlEventStateStore
 from relay.http import build_health_payload
 from relay.http import handle_caption_event_request
+from relay.http import handle_portal_activity_request
 from relay.http import handle_viewer_negotiate_request
 from relay.http import handle_webpubsub_connected_event_request
 from relay.http import to_json_response_body
@@ -121,6 +122,49 @@ def caption_events(req: func.HttpRequest) -> func.HttpResponse:
                 publisher=web_pubsub_publisher,
                 control_event_state_store=control_event_state_store,
             )
+
+    return _json_response(body, status_code=status_code)
+
+
+@app.route(route="api/portal/activity", methods=["POST"])
+def portal_activity(req: func.HttpRequest) -> func.HttpResponse:
+    body_bytes = req.get_body()
+    try:
+        speech_keys = speech_key_provider.get_keys()
+        _verify_with_any_speech_key(
+            speech_keys=speech_keys,
+            timestamp=req.headers.get(TIMESTAMP_HEADER),
+            signature=req.headers.get(SIGNATURE_HEADER),
+            body=body_bytes,
+        )
+    except (RelayAuthenticationError, RelaySpeechKeyError):
+        return _json_response(
+            {
+                "error": {
+                    "code": "unauthorized",
+                    "message": "Request is not authorized.",
+                    "details": [],
+                }
+            },
+            status_code=401,
+        )
+
+    try:
+        payload = req.get_json()
+    except ValueError:
+        status_code = 400
+        body = {
+            "error": {
+                "code": "invalid_json",
+                "message": "Request body must be valid JSON.",
+                "details": [],
+            }
+        }
+    else:
+        status_code, body = handle_portal_activity_request(
+            payload,
+            control_event_state_store=control_event_state_store,
+        )
 
     return _json_response(body, status_code=status_code)
 

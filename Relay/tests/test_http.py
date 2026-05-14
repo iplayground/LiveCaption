@@ -7,6 +7,7 @@ from relay.control_state import RelayControlStateError
 from relay.http import SessionSequenceStore, build_health_payload, build_publish_payload
 from relay.http import build_control_publish_payload
 from relay.http import handle_caption_event_request
+from relay.http import handle_portal_activity_request
 from relay.http import handle_viewer_negotiate_request
 from relay.http import handle_webpubsub_connected_event_request
 from relay.viewer_access import ViewerAccessError
@@ -84,6 +85,7 @@ class FakeControlEventStateStore:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
         self.events_by_track: dict[int, dict[str, dict[str, Any]]] = {}
+        self.activities: list[dict[str, Any]] = []
 
     def update(
         self,
@@ -106,14 +108,21 @@ class FakeControlEventStateStore:
             if event_name in events
         ]
 
+    def mark_portal_activity(self, *, track_number: int, updated_at: str) -> None:
+        if self.fail:
+            raise RelayControlStateError("boom")
+        self.activities.append({"track_number": track_number, "updated_at": updated_at})
+
 
 def test_handle_caption_event_request_accepts_valid_payload() -> None:
     publisher = FakePublisher()
+    state_store = FakeControlEventStateStore()
 
     status_code, body = handle_caption_event_request(
         valid_payload(),
         publisher=publisher,
         now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+        control_event_state_store=state_store,
     )
 
     assert status_code == 202
@@ -126,6 +135,12 @@ def test_handle_caption_event_request_accepts_valid_payload() -> None:
     assert publisher.payloads[0]["payload"]["captionMode"] == "fast"
     assert "captionProvider" not in publisher.payloads[0]["payload"]
     assert publisher.payloads[0]["payload"]["captions"]["en"] == "Welcome to today's event"
+    assert state_store.activities == [
+        {
+            "track_number": 1,
+            "updated_at": "2026-04-29T12:35:00.000Z",
+        }
+    ]
 
 
 def test_handle_caption_event_request_rejects_legacy_caption_modes() -> None:
@@ -182,6 +197,7 @@ def test_handle_caption_event_request_returns_sanitized_publish_error() -> None:
         valid_payload(),
         publisher=FakePublisher(fail=True),
         now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
+        control_event_state_store=FakeControlEventStateStore(),
     )
 
     assert status_code == 502
@@ -510,6 +526,7 @@ def test_handle_viewer_negotiate_request_skips_access_code_when_disabled() -> No
 
 def test_handle_control_event_request_publishes_control_payload() -> None:
     publisher = FakePublisher()
+    state_store = FakeControlEventStateStore()
 
     status_code, body = handle_caption_event_request(
         {
@@ -523,7 +540,7 @@ def test_handle_control_event_request_publishes_control_payload() -> None:
         publisher=publisher,
         now=datetime(2026, 4, 29, 12, 35, tzinfo=UTC),
         sequence_store=SessionSequenceStore(),
-        control_event_state_store=FakeControlEventStateStore(),
+        control_event_state_store=state_store,
     )
 
     assert status_code == 202
@@ -538,6 +555,12 @@ def test_handle_control_event_request_publishes_control_payload() -> None:
                 "sessionId": "2026-04-29T12:34:00.000",
                 "updatedAt": "2026-04-29T12:34:00.000Z",
             },
+        }
+    ]
+    assert state_store.activities == [
+        {
+            "track_number": 1,
+            "updated_at": "2026-04-29T12:34:00.000Z",
         }
     ]
 
@@ -568,6 +591,53 @@ def test_handle_control_event_request_returns_sanitized_state_error() -> None:
     }
     assert publisher.payloads == []
     assert "2026-04-29T12:34:00.000Z" not in str(body)
+
+
+def test_handle_portal_activity_request_updates_activity_without_publish() -> None:
+    state_store = FakeControlEventStateStore()
+
+    status_code, body = handle_portal_activity_request(
+        {"trackNumber": 2},
+        now=datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
+        control_event_state_store=state_store,
+    )
+
+    assert status_code == 202
+    assert body == {"accepted": True}
+    assert state_store.activities == [
+        {
+            "track_number": 2,
+            "updated_at": "2026-04-30T12:00:00.000Z",
+        }
+    ]
+    assert state_store.events_by_track == {}
+
+
+def test_handle_portal_activity_request_rejects_invalid_track_number() -> None:
+    status_code, body = handle_portal_activity_request(
+        {"trackNumber": 0},
+        control_event_state_store=FakeControlEventStateStore(),
+    )
+
+    assert status_code == 400
+    assert body["error"]["code"] == "invalid_portal_activity"
+    assert body["error"]["details"][0]["field"] == "trackNumber"
+
+
+def test_handle_portal_activity_request_returns_sanitized_state_error() -> None:
+    status_code, body = handle_portal_activity_request(
+        {"trackNumber": 1},
+        control_event_state_store=FakeControlEventStateStore(fail=True),
+    )
+
+    assert status_code == 502
+    assert body == {
+        "error": {
+            "code": "control_state_update_failed",
+            "message": "Control event state could not be saved.",
+            "details": [],
+        }
+    }
 
 
 def test_build_control_publish_payload_keeps_viewer_shape() -> None:

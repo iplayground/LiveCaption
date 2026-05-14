@@ -355,6 +355,23 @@ struct RelaySettings: Equatable {
         )
     }
 
+    nonisolated func markPortalActivity(speechKey: String) async throws -> RelayPublishResult {
+        let relayURL = try validatedRelayURL()
+        let trackNumber = try validatedTrackNumber()
+        let publishedAt = Date()
+        let payload: [String: Any] = [
+            "trackNumber": trackNumber,
+        ]
+
+        try await send(
+            payload: payload,
+            speechKey: speechKey,
+            createdAt: publishedAt,
+            path: "api/portal/activity"
+        )
+        return RelayPublishResult(relayURL: relayURL, publishedAt: publishedAt)
+    }
+
     nonisolated func publishSessionStatus(
         _ status: String,
         sessionID: String,
@@ -404,7 +421,12 @@ struct RelaySettings: Equatable {
         return RelayPublishResult(relayURL: relayURL, publishedAt: publishedAt)
     }
 
-    nonisolated private func send(payload: [String: Any], speechKey: String, createdAt: Date) async throws {
+    nonisolated private func send(
+        payload: [String: Any],
+        speechKey: String,
+        createdAt: Date,
+        path: String = "api/caption-events"
+    ) async throws {
         let relayURL = try validatedRelayURL()
         let normalizedSpeechKey = speechKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -412,7 +434,7 @@ struct RelaySettings: Equatable {
             throw RelayConnectionTestError.missingSpeechKey
         }
 
-        let endpointURL = relayURL.appending(path: "api/caption-events")
+        let endpointURL = relayURL.appending(path: path)
         let createdAtHeader = Self.formatTimestamp(createdAt)
         let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         let signature = Self.signature(speechKey: normalizedSpeechKey, timestamp: createdAtHeader, body: body)

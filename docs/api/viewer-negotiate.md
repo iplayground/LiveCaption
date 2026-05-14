@@ -63,7 +63,7 @@ Viewer WebSocket 是單一 session 通道：
 
 - Server 到 Viewer：發送 Portal 狀態、字幕 session 狀態與字幕事件。
 - Viewer 比 Portal 更早開啟時，Relay 仍可先完成 negotiate；Viewer 連線後等待控制事件。
-- Viewer 比 Portal 晚連線時，Relay 會在 Web PubSub `connected` system event 後，補送該軌道目前最新的 `portalStatus`、`sessionStatus` 與 `captionAvailability` 給該 connection。
+- Viewer 比 Portal 晚連線時，Relay 會在 Web PubSub `connected` system event 後，補送該軌道目前最新的 `portalStatus`、`sessionStatus` 與 `captionAvailability` 給該 connection；若該次回放的 `portalStatus` 為 `offline`，Relay 不補送 `captionAvailability`。
 - Portal 開啟、關閉、開始字幕、停止字幕、開關 Azure OpenAI 精準字幕支援時，Relay 需透過控制事件通知 Viewer。
 
 Relay 不需要保存每個 Viewer 的字幕模式或語言偏好。模式與語言選擇是 Viewer UI 狀態，不是 Relay routing 狀態。
@@ -107,6 +107,14 @@ Portal 開啟或關閉時，Relay 發送：
 
 - `online`
 - `offline`
+
+`online` 是活動狀態。Portal 未進行字幕時會以內部 activity 更新維持狀態；字幕 session 進行中則以
+字幕事件本身更新活動時間，不需額外 activity 更新。activity 更新不會發送給 Viewer，只有
+`portalStatus` 狀態改變時才會發送控制事件。若 Portal 關閉或閃退而未能送出 `offline`，新 Viewer
+連線時 Relay 會在目前保存的 `online` 超過有效時間後，對該 connection 補送一筆合成的
+`portalStatus: offline`；此合成事件不會寫回控制狀態，也不會推送給既有連線 Viewer。`offline`
+不會因時間過期而被忽略。當新 connection 的回放狀態為 `offline` 時，Relay 不補送已保存的
+`captionAvailability`。
 
 ### 字幕 Session 狀態
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -34,8 +35,15 @@ class FakeTableClient:
             raise ResourceNotFoundError("not found") from error
 
 
-def make_store(table_client: FakeTableClient) -> AzureTableControlEventStateStore:
-    return AzureTableControlEventStateStore(table_client_factory=lambda: table_client)
+def make_store(
+    table_client: FakeTableClient,
+    *,
+    now: datetime = datetime(2026, 4, 30, 12, 0, tzinfo=UTC),
+) -> AzureTableControlEventStateStore:
+    return AzureTableControlEventStateStore(
+        table_client_factory=lambda: table_client,
+        now_factory=lambda: now,
+    )
 
 
 def test_azure_table_control_state_returns_latest_events_in_viewer_order() -> None:
@@ -131,6 +139,241 @@ def test_azure_table_control_state_keeps_tracks_separate() -> None:
     )
 
     assert store.latest_for_track(2) == []
+
+
+def test_azure_table_control_state_replays_stale_online_as_offline_without_availability() -> None:
+    store = make_store(
+        FakeTableClient(),
+        now=datetime(2026, 4, 30, 12, 2, 1, tzinfo=UTC),
+    )
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+    store.update(
+        track_number=1,
+        event_name="captionAvailability",
+        payload={
+            "type": "control",
+            "event": "captionAvailability",
+            "availableCaptionModes": ["fast"],
+            "availableLanguages": ["zh-Hant", "en"],
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "offline",
+            "updatedAt": "2026-04-30T12:02:01.000Z",
+        }
+    ]
+
+
+def test_azure_table_control_state_omits_availability_when_portal_is_offline() -> None:
+    store = make_store(FakeTableClient())
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "offline",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+    store.update(
+        track_number=1,
+        event_name="captionAvailability",
+        payload={
+            "type": "control",
+            "event": "captionAvailability",
+            "availableCaptionModes": ["fast"],
+            "availableLanguages": ["zh-Hant", "en"],
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "offline",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        }
+    ]
+
+
+def test_azure_table_control_state_keeps_online_portal_status_with_recent_activity() -> None:
+    store = make_store(
+        FakeTableClient(),
+        now=datetime(2026, 4, 30, 12, 2, 1, tzinfo=UTC),
+    )
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+    store.mark_portal_activity(
+        track_number=1,
+        updated_at="2026-04-30T12:01:30.000Z",
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        }
+    ]
+
+
+def test_azure_table_control_state_uses_latest_portal_activity_per_track() -> None:
+    store = make_store(
+        FakeTableClient(),
+        now=datetime(2026, 4, 30, 12, 2, 1, tzinfo=UTC),
+    )
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+    store.mark_portal_activity(
+        track_number=2,
+        updated_at="2026-04-30T12:01:30.000Z",
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "offline",
+            "updatedAt": "2026-04-30T12:02:01.000Z",
+        }
+    ]
+
+
+def test_azure_table_control_state_keeps_fresh_online_portal_status() -> None:
+    store = make_store(
+        FakeTableClient(),
+        now=datetime(2026, 4, 30, 12, 1, 29, tzinfo=UTC),
+    )
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        }
+    ]
+
+
+def test_azure_table_control_state_keeps_offline_portal_status_without_ttl() -> None:
+    store = make_store(
+        FakeTableClient(),
+        now=datetime(2026, 4, 30, 12, 10, tzinfo=UTC),
+    )
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "offline",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "offline",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        }
+    ]
+
+
+def test_azure_table_control_state_omits_online_portal_status_with_invalid_timestamp() -> None:
+    store = make_store(FakeTableClient())
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "invalid",
+        },
+    )
+
+    assert store.latest_for_track(1) == []
+
+
+def test_azure_table_control_state_allows_custom_portal_online_ttl() -> None:
+    table_client = FakeTableClient()
+    store = AzureTableControlEventStateStore(
+        table_client_factory=lambda: table_client,
+        now_factory=lambda: datetime(2026, 4, 30, 12, 2, 1, tzinfo=UTC),
+        portal_online_status_ttl=timedelta(minutes=3),
+    )
+
+    store.update(
+        track_number=1,
+        event_name="portalStatus",
+        payload={
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        },
+    )
+
+    assert store.latest_for_track(1) == [
+        {
+            "type": "control",
+            "event": "portalStatus",
+            "status": "online",
+            "updatedAt": "2026-04-30T12:00:00.000Z",
+        }
+    ]
 
 
 def test_azure_table_control_state_wraps_update_errors() -> None:

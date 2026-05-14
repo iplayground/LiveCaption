@@ -94,6 +94,10 @@ def handle_caption_event_request(
 
     received_at = now or datetime.now(UTC)
     try:
+        control_event_state_store.mark_portal_activity(
+            track_number=event.track_number,
+            updated_at=_format_utc(received_at),
+        )
         for caption_mode in event.caption_modes:
             publish_payload = build_publish_payload(
                 event,
@@ -110,6 +114,14 @@ def handle_caption_event_request(
             "error": {
                 "code": "caption_publish_failed",
                 "message": "Caption event could not be published.",
+                "details": [],
+            }
+        }
+    except RelayControlStateError:
+        return 502, {
+            "error": {
+                "code": "control_state_update_failed",
+                "message": "Control event state could not be saved.",
                 "details": [],
             }
         }
@@ -146,6 +158,10 @@ def handle_control_event_request(
             event_name=event.event,
             payload=publish_payload,
         )
+        control_event_state_store.mark_portal_activity(
+            track_number=event.track_number,
+            updated_at=_format_utc(event.updated_at),
+        )
     except RelayControlStateError:
         return 502, {
             "error": {
@@ -165,6 +181,59 @@ def handle_control_event_request(
             "error": {
                 "code": "control_publish_failed",
                 "message": "Control event could not be published.",
+                "details": [],
+            }
+        }
+
+    return 202, {"accepted": True}
+
+
+def handle_portal_activity_request(
+    payload: Any,
+    *,
+    now: datetime | None = None,
+    control_event_state_store: ControlEventStateStore = _control_event_state_store,
+) -> tuple[int, dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return 400, {
+            "error": {
+                "code": "invalid_portal_activity",
+                "message": "Portal activity is invalid.",
+                "details": [
+                    {
+                        "field": "body",
+                        "reason": "Request body must be a JSON object.",
+                    }
+                ],
+            }
+        }
+
+    try:
+        track_number = validate_viewer_track_number(payload.get("trackNumber"))
+    except ValueError:
+        return 400, {
+            "error": {
+                "code": "invalid_portal_activity",
+                "message": "Portal activity is invalid.",
+                "details": [
+                    {
+                        "field": "trackNumber",
+                        "reason": "Track number must be a positive integer.",
+                    }
+                ],
+            }
+        }
+
+    try:
+        control_event_state_store.mark_portal_activity(
+            track_number=track_number,
+            updated_at=_format_utc(now or datetime.now(UTC)),
+        )
+    except RelayControlStateError:
+        return 502, {
+            "error": {
+                "code": "control_state_update_failed",
+                "message": "Control event state could not be saved.",
                 "details": [],
             }
         }

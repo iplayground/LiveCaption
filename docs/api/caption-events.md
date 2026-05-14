@@ -18,6 +18,22 @@ Relay 會拒絕舊版 `captionModes` 多模式 object。
 Portal 也使用同一個 endpoint 發送控制事件，例如 Portal 狀態、字幕 session 狀態與
 `captionAvailability`。控制事件 payload 的 `type` 必須為 `control`。
 
+Portal 未進行字幕 session 時，使用下列 endpoint 更新 Relay 內部 Portal 活動時間。此請求只用於
+判斷已保存的 `portalStatus: online` 是否仍新鮮，不會發布 Web PubSub 控制事件給 Viewer：
+
+```http
+POST /api/portal/activity
+Content-Type: application/json
+X-LiveCaption-Timestamp: <utc-iso-8601-timestamp>
+X-LiveCaption-Signature: sha256=<hmac-sha256-signature>
+```
+
+```json
+{
+  "trackNumber": 1
+}
+```
+
 Portal 使用同一個 endpoint 的 `HEAD` 方法測試 Relay 連線與簽章驗證：
 
 ```http

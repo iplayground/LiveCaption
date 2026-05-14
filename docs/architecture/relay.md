@@ -59,7 +59,15 @@ Relay 會把每個 `trackNumber` 最新的 `portalStatus`、`sessionStatus` 與 
 保存到 Azure Table Storage。這份狀態不能放在 Function process memory，因為 Azure Functions
 scale-out 後不同 instance 不共享記憶體。Web PubSub `connected` system event 抵達 Relay 時，
 Relay 依 Viewer access token 內的 `userId` 判斷軌道，並使用 connection id 對該 Viewer 補送目前
-控制狀態。
+控制狀態。若該次回放的 `portalStatus` 為 `offline`，Relay 不補送 `captionAvailability`。
+
+`portalStatus: online` 以 Portal 活動時間維持新鮮度。Portal 未進行字幕時會定期送內部 activity
+更新；字幕 session 進行中則以字幕事件與控制事件更新活動時間，不另送 activity 更新。activity
+更新不會發送給 Viewer，只有 `portalStatus` 狀態改變時才會發送控制事件。若 Portal 關閉或閃退而
+沒有成功發布 `offline`，新 Viewer 連線時 Relay 會在已保存的 `online` 超過有效時間後，對該
+connection 補送一筆合成的 `portalStatus: offline`；此合成事件不會寫回控制狀態，也不會推送給
+既有連線 Viewer。`offline` 不會因時間過期而被忽略。當新 connection 的回放狀態為 `offline`
+時，Relay 不補送已保存的 `captionAvailability`。
 
 Relay 必須使用 Azure Web PubSub track group fan-out 發送字幕。Viewer negotiate 成功後，Relay
 讓該 connection 加入對應 `trackNumber` 的字幕 group。Portal 字幕事件進入 Relay 後，Relay 保留
