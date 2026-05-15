@@ -91,10 +91,6 @@ actor AzureOpenAIRealtimeTranscriptionService {
             await self?.receiveMessages(task: task)
         }
         isStarted = true
-        emitDiagnostic(
-            level: .info,
-            detail: "phase=session.ready; deployment=\(configuration.transcriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines)); mode=websocket-transcriptions; inputAudioFormat=pcm16; inputAudioRate=24000; turnDetection=server_vad"
-        )
     }
 
     func stop() async {
@@ -167,6 +163,9 @@ actor AzureOpenAIRealtimeTranscriptionService {
                 let message = try await task.receive()
                 await handle(message: message)
             } catch {
+                guard isStarted, !Task.isCancelled else {
+                    return
+                }
                 emitDiagnostic(level: .warning, detail: "phase=receive; error=\(error.localizedDescription)")
                 return
             }
@@ -201,14 +200,16 @@ actor AzureOpenAIRealtimeTranscriptionService {
              "session.output_transcript.completed",
              "conversation.item.input_audio_transcription.completed":
             publishTranscript(payload)
-        case "input_audio_buffer.speech_started":
-            emitTimingDiagnostic(payload, type: type, key: "audio_start_ms", label: "startMs")
-        case "input_audio_buffer.speech_stopped":
-            emitTimingDiagnostic(payload, type: type, key: "audio_end_ms", label: "endMs")
-        case "input_audio_buffer.committed":
-            emitCommitDiagnostic(payload, type: type)
-        case "session.updated", "session.created", "transcription_session.updated", "transcription_session.created":
-            emitDiagnostic(level: .info, detail: "event=\(type); keys=\(Self.keysDescription(payload))")
+        case "input_audio_buffer.speech_started",
+             "input_audio_buffer.speech_stopped",
+             "input_audio_buffer.committed",
+             "session.updated",
+             "session.created",
+             "transcription_session.updated",
+             "transcription_session.created",
+             "conversation.item.done",
+             "conversation.item.added":
+            break
         default:
             recordUnhandledEventType(type, payload: payload)
         }
@@ -225,7 +226,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
     private func publishTranscript(_ payload: [String: Any]) {
         let text = Self.normalizedTranscriptionText(payload["transcript"] as? String, fallback: transcriptBuffer)
         guard !text.isEmpty else {
-            emitDiagnostic(level: .warning, detail: "event=session.output_transcript.done; transcriptLength=0")
+            transcriptBuffer = ""
             return
         }
 
@@ -241,30 +242,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
             durationTicks: (normalizedEndMilliseconds - startMilliseconds) * Self.ticksPerMillisecond
         )
         transcriptBuffer = ""
-        emitDiagnostic(
-            level: .info,
-            detail: "event=session.output_transcript.done; startMs=\(startMilliseconds); durationMs=\(normalizedEndMilliseconds - startMilliseconds); transcriptLength=\(text.count)"
-        )
         onTranscription?(result)
-    }
-
-    private func emitTimingDiagnostic(_ payload: [String: Any], type: String, key: String, label: String) {
-        var details = ["event=\(type)"]
-        if let milliseconds = Self.unsignedMilliseconds(from: payload[key]) {
-            details.append("\(label)=\(milliseconds)")
-        }
-        emitDiagnostic(level: .info, detail: details.joined(separator: "; "))
-    }
-
-    private func emitCommitDiagnostic(_ payload: [String: Any], type: String) {
-        var details = ["event=\(type)"]
-        if let itemID = payload["item_id"] as? String {
-            details.append("itemID=\(itemID)")
-        }
-        if let previousItemID = payload["previous_item_id"] as? String {
-            details.append("previousItemID=\(previousItemID)")
-        }
-        emitDiagnostic(level: .info, detail: details.joined(separator: "; "))
     }
 
     private func recordUnhandledEventType(_ type: String, payload: [String: Any]) {

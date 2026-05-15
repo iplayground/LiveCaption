@@ -124,6 +124,7 @@
 "log.srt.outputNotCreated" = "SRT output not created";
 "log.srt.outputPrepared" = "SRT output prepared";
 "log.srt.outputSavedToFallback" = "SRT saved to fallback";
+"srt.outputSummary" = "Saved %d SRT files to\n%@";
 "log.subtitle.storageCleared" = "Subtitle storage folder cleared";
 "log.subtitle.storageSaveFailed" = "Failed to save subtitle storage folder";
 "log.subtitle.storageUpdated" = "Subtitle storage folder updated";

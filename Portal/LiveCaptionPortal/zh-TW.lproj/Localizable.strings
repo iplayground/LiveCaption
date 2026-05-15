@@ -124,6 +124,7 @@
 "log.srt.outputNotCreated" = "未建立 SRT 輸出";
 "log.srt.outputPrepared" = "已準備 SRT 輸出";
 "log.srt.outputSavedToFallback" = "SRT 已暫存";
+"srt.outputSummary" = "已儲存 %d 個 SRT 檔案到\n%@";
 "log.subtitle.storageCleared" = "字幕檔存放位置已清除";
 "log.subtitle.storageSaveFailed" = "字幕檔存放位置保存失敗";
 "log.subtitle.storageUpdated" = "字幕檔存放位置已更新";

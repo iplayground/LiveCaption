@@ -820,7 +820,11 @@ struct ContentView: View {
             let writtenFileURLs = try subtitleExportSession.writeFiles()
             let detail = writtenFileURLs.isEmpty
                 ? L10n.text("srt.noCaptionEvents")
-                : writtenFileURLs.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
+                : L10n.text(
+                    "srt.outputSummary",
+                    writtenFileURLs.count,
+                    subtitleExportSession.directoryURL.path(percentEncoded: false)
+                )
             appendLog(level: .info, title: L10n.text("log.srt.outputCompleted"), detail: detail)
             captionSessionStatus = .completed
         } catch {

@@ -44,6 +44,8 @@ Portal 主畫面包含：
 
 各模式底下的 SRT 檔案依字幕語言代碼命名，例如 `zh-Hant.srt`、`en.srt`、`ja.srt`、`ko.srt`。若某模式沒有產生可寫入的字幕，例如未啟用精準模式或 Azure OpenAI 尚未回傳 final 結果，Portal 不會為該模式產生空檔案。若主要輸出位置失敗，Portal 會寫入 Application Support 下的 `LiveCaptionPortal/SRT Recovery/`，並維持相同的模式子資料夾結構。
 
+事件紀錄中的 SRT 成功訊息應保留操作端需要的摘要，例如已寫入檔案數與工作階段輸出資料夾，不逐一列出每個語言與模式的完整檔案路徑。備援暫存或寫入失敗時，才記錄足以讓操作端找回檔案或排除權限問題的路徑與錯誤摘要。
+
 ## 字幕品質模式
 
 Portal 的字幕輸出分為快速與精準兩種 final 字幕品質模式，且可在同一場 session 同時產生兩種 final 字幕：
@@ -80,6 +82,8 @@ Azure OpenAI realtime 連線測試失敗時，Portal 可把 Foundation / WebSock
 code 與 HTTP status；若底層 API 沒有提供 Azure response body，Portal 不應推測伺服器端
 原因。任何診斷紀錄都不得包含 API key、完整 headers、request / response body、prompt、
 字幕文字、逐字稿或 realtime session secret。
+
+Azure OpenAI realtime transcription 正常生命週期事件屬於高頻內部訊號，不應進入操作端事件紀錄，例如 `input_audio_buffer.speech_started`、`input_audio_buffer.speech_stopped`、`input_audio_buffer.committed`、`session.created`、`session.updated`、`conversation.item.added`、`conversation.item.done` 與成功的 transcription final。Portal 只在伺服器回傳錯誤、收到無效訊息、連線非預期中斷或遇到未支援事件類型時記錄摘要；使用者主動停止 session 所造成的 WebSocket receive 結束不視為 warning。
 
 Azure OpenAI realtime 整合使用 Portal 的 `AVCaptureAudioDataOutput` 音訊 sample 分流，
 轉為 24 kHz mono PCM16 後同時送往 Azure OpenAI realtime transcription WebSocket 與
