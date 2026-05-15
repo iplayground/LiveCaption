@@ -113,6 +113,7 @@
 "log.azureOpenAI.realtimeSkipped" = "Azure OpenAI captions did not start";
 "log.azureOpenAI.realtimeStopped" = "Azure OpenAI captions stopped";
 "log.azureOpenAI.realtimeFailed" = "Azure OpenAI captions failed";
+"log.azureOpenAI.transcriptionDiagnostic" = "Azure OpenAI transcription event";
 "log.azureOpenAI.connectionTestSucceeded" = "Azure OpenAI connection test succeeded";
 "log.azureOpenAI.connectionTestFailed" = "Azure OpenAI connection test failed";
 "log.speech.settingsTestFailed" = "Speech settings test failed";

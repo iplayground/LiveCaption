@@ -38,6 +38,7 @@ struct ContentView: View {
     @State private var logEntries: [LogEntry] = []
     @StateObject private var pubSubCaptionReceiver = PubSubCaptionReceiver()
     @State private var accurateCaptionService = AzureOpenAIRealtimeTranslationService()
+    @State private var accurateTranscriptionService = AzureOpenAIRealtimeTranscriptionService()
     @State private var sleepPreventionController = SleepPreventionController()
     @State private var projectionCaptureWindowPresenter = ProjectionCaptureWindowPresenter()
     @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
@@ -425,9 +426,10 @@ struct ContentView: View {
     }
 
     private func configureAudioCallbacks() {
-        audioInputController.onAudioPCM16Chunk = { [accurateCaptionService] chunk in
+        audioInputController.onAudioPCM16Chunk = { [accurateCaptionService, accurateTranscriptionService] chunk in
             Task {
                 await accurateCaptionService.appendPCM16Audio(chunk)
+                await accurateTranscriptionService.appendPCM16Audio(chunk)
             }
         }
     }
@@ -480,6 +482,19 @@ struct ContentView: View {
         speechRecognitionController.onCaptionEvent = { event in
             handleCaptionEvent(event)
         }
+
+        Task { [accurateTranscriptionService] in
+            await accurateTranscriptionService.setOnTranscription { result in
+                Task { @MainActor in
+                    handleOpenAITranscriptionResult(result)
+                }
+            }
+            await accurateTranscriptionService.setOnDiagnostic { diagnostic in
+                Task { @MainActor in
+                    appendOpenAITranscriptionDiagnostic(diagnostic)
+                }
+            }
+        }
     }
 
     private func handleRelayConnectionTested(_ result: RelayConnectionTestResult) {
@@ -489,15 +504,45 @@ struct ContentView: View {
     }
 
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
+        appendCaptionToSubtitleExportSession(event, mode: .fast)
+        publishCaptionEventToRelay(event, mode: .fast)
+    }
+
+    private func handleOpenAITranscriptionResult(_ result: AzureOpenAIRealtimeTranscriptionResult) {
         Task {
-            let enrichedEvent = await eventWithAccurateCaptionIfAvailable(event)
+            let translations = await openAITranslationsForCurrentTranscription()
+
             await MainActor.run {
-                appendCaptionToSubtitleExportSession(enrichedEvent, mode: .fast)
-                appendCaptionToSubtitleExportSession(enrichedEvent, mode: .accurate)
-                publishCaptionEventToRelay(enrichedEvent, mode: .fast)
-                publishCaptionEventToRelay(enrichedEvent, mode: .accurate)
+                guard isCaptionSessionActive else {
+                    return
+                }
+
+                let event = RecognizedCaptionEvent(
+                    text: result.text,
+                    translations: translations,
+                    offsetTicks: result.offsetTicks,
+                    durationTicks: result.durationTicks,
+                    captionModes: [
+                        .accurate: CaptionModeResult(
+                            providerID: CaptionQualityMode.accurate.providerID,
+                            text: result.text,
+                            translations: translations
+                        )
+                    ]
+                )
+
+                appendCaptionToSubtitleExportSession(event, mode: .accurate)
+                publishCaptionEventToRelay(event, mode: .accurate)
             }
         }
+    }
+
+    private func appendOpenAITranscriptionDiagnostic(_ diagnostic: AzureOpenAIRealtimeTranscriptionDiagnostic) {
+        appendLog(
+            level: diagnostic.level.logLevel,
+            title: L10n.text("log.azureOpenAI.transcriptionDiagnostic"),
+            detail: diagnostic.detail
+        )
     }
 
     private func startAccurateCaptionSessionIfNeeded() async -> Bool {
@@ -527,39 +572,46 @@ struct ContentView: View {
         let targetLanguages = speechSettings.selectedOutputLanguages.filter { language in
             language.id != inputLanguageOutputID
         }
-        let configuration = speechSettings.azureOpenAIRealtimeConfiguration(
+        let translationConfiguration = speechSettings.azureOpenAIRealtimeConfiguration(
             outputLanguages: targetLanguages
         )
+        let transcriptionConfiguration = speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(inputLanguage: inputLanguage)
 
         do {
-            try await accurateCaptionService.start(configuration: configuration)
+            try await accurateCaptionService.start(configuration: translationConfiguration)
+            try await accurateTranscriptionService.start(configuration: transcriptionConfiguration)
             appendLog(
                 level: .info,
                 title: L10n.text("log.azureOpenAI.realtimeStarted"),
-                detail: configuration.normalizedEndpointURLString
+                detail: transcriptionConfiguration.normalizedEndpointURLString
             )
             return true
         } catch {
+            await accurateCaptionService.stop()
+            await accurateTranscriptionService.stop()
+            let detail = (error as? AzureOpenAIRealtimeTranslationError)?.diagnosticDescription
+                ?? error.localizedDescription
             azureOpenAIConnectionStatus = .failed
             azureOpenAIConnectionStatus.save()
             appendLog(
                 level: .error,
                 title: L10n.text("log.azureOpenAI.realtimeFailed"),
-                detail: error.localizedDescription
+                detail: detail
             )
             return false
         }
     }
 
     private func stopAccurateCaptionSession() {
-        Task {
+        Task { [accurateCaptionService, accurateTranscriptionService] in
             await accurateCaptionService.stop()
+            await accurateTranscriptionService.stop()
         }
     }
 
-    private func eventWithAccurateCaptionIfAvailable(_ event: RecognizedCaptionEvent) async -> RecognizedCaptionEvent {
+    private func openAITranslationsForCurrentTranscription() async -> [String: String] {
         guard speechSettings.isAccurateCaptionEnabled else {
-            return event
+            return [:]
         }
 
         let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
@@ -568,20 +620,19 @@ struct ContentView: View {
             .intersection(selectedLanguageIDs)
             .filter { $0 != inputLanguageOutputID }
 
-        guard let translations = await accurateCaptionService.takeTranslations(
-            requiredLanguageIDs: requiredLanguageIDs
-        ) else {
-            return event
+        for attempt in 0..<5 {
+            if let translations = await accurateCaptionService.takeTranslations(requiredLanguageIDs: requiredLanguageIDs) {
+                return translations
+            }
+
+            guard attempt < 4 else {
+                break
+            }
+
+            try? await Task.sleep(for: .milliseconds(200))
         }
 
-        let accurateText = translations[inputLanguageOutputID]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = CaptionModeResult(
-            providerID: CaptionQualityMode.accurate.providerID,
-            text: accurateText ?? "",
-            translations: translations
-        )
-
-        return event.addingCaptionMode(.accurate, result: result)
+        return [:]
     }
 
     private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) {
@@ -816,5 +867,18 @@ private struct RelayCaptionAvailability: Equatable {
         self.sessionID = sessionID
         captionModeIDs = captionModes.map(\.rawValue)
         languageIDs = languages.map(\.id)
+    }
+}
+
+private extension AzureOpenAIRealtimeTranscriptionDiagnostic.Level {
+    var logLevel: LogLevel {
+        switch self {
+        case .info:
+            .info
+        case .warning:
+            .warning
+        case .error:
+            .error
+        }
     }
 }

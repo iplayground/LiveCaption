@@ -20,8 +20,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F28BC4D12F9E030B008AD6B2 /* LiveCaptionPortal */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = LiveCaptionPortal;
 			sourceTree = "<group>";
 		};
@@ -152,9 +150,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LiveCaptionPortal/Pods-LiveCaptionPortal-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
