@@ -117,7 +117,8 @@ struct SpeechSettings: Equatable {
             endpointURLString: azureOpenAIEndpointURLString,
             transcriptionDeploymentName: azureOpenAITranscriptionDeploymentName,
             apiKey: azureOpenAIAPIKey,
-            inputLanguage: inputLanguage
+            inputLanguage: inputLanguage,
+            sentenceSilenceTimeoutMilliseconds: sentenceSilenceTimeoutMilliseconds
         )
     }
 

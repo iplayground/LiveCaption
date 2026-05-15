@@ -5,6 +5,7 @@ struct AzureOpenAIRealtimeTranscriptionConfiguration: Equatable, Sendable {
     let transcriptionDeploymentName: String
     let apiKey: String
     let inputLanguage: InputLanguage
+    let sentenceSilenceTimeoutMilliseconds: Int
 
     nonisolated var isConfigured: Bool {
         !normalizedEndpointURLString.isEmpty
@@ -148,7 +149,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
                             "type": "server_vad",
                             "threshold": 0.5,
                             "prefix_padding_ms": 300,
-                            "silence_duration_ms": 500,
+                            "silence_duration_ms": configuration.sentenceSilenceTimeoutMilliseconds,
                         ],
                     ],
                 ],
