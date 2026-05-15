@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from relay.control_state import RelayControlStateError
 from relay.http import SessionSequenceStore, build_health_payload, build_publish_payload
@@ -519,7 +520,10 @@ def test_handle_viewer_negotiate_request_skips_access_code_when_disabled() -> No
     )
 
     assert status_code == 200
-    assert body["url"].startswith("wss://livecaption.webpubsub.azure.com/")
+    parsed_url = urlparse(body["url"])
+    assert parsed_url.scheme == "wss"
+    assert parsed_url.hostname == "livecaption.webpubsub.azure.com"
+    assert parsed_url.path == "/client/hubs/livecaption"
     assert provider.requests == [(1, now)]
     assert verifier.requests == []
 
