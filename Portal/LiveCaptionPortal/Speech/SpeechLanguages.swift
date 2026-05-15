@@ -70,3 +70,11 @@ struct SpeechOutputLanguage: Identifiable, Equatable, Sendable {
 
     nonisolated var id: String { code }
 }
+
+extension String {
+    nonisolated func applyingTaiwanTraditionalChineseNormalization() -> String {
+        let mutableText = NSMutableString(string: self)
+        CFStringTransform(mutableText, nil, "Simplified-Traditional" as CFString, false)
+        return mutableText as String
+    }
+}

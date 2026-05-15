@@ -511,6 +511,7 @@ struct ContentView: View {
     private func handleOpenAITranscriptionResult(_ result: AzureOpenAIRealtimeTranscriptionResult) {
         Task {
             let translations = await openAITranslationsForCurrentTranscription()
+            let text = normalizedOpenAITranscriptionText(result.text)
 
             await MainActor.run {
                 guard isCaptionSessionActive else {
@@ -518,14 +519,14 @@ struct ContentView: View {
                 }
 
                 let event = RecognizedCaptionEvent(
-                    text: result.text,
+                    text: text,
                     translations: translations,
                     offsetTicks: result.offsetTicks,
                     durationTicks: result.durationTicks,
                     captionModes: [
                         .accurate: CaptionModeResult(
                             providerID: CaptionQualityMode.accurate.providerID,
-                            text: result.text,
+                            text: text,
                             translations: translations
                         )
                     ]
@@ -633,6 +634,15 @@ struct ContentView: View {
         }
 
         return [:]
+    }
+
+    private func normalizedOpenAITranscriptionText(_ text: String) -> String {
+        switch inputLanguage {
+        case .mandarin:
+            text.applyingTaiwanTraditionalChineseNormalization()
+        case .english:
+            text
+        }
     }
 
     private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) {

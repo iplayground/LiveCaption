@@ -91,7 +91,7 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 }
 ```
 
-精準字幕會另以獨立 POST 傳送。Portal 由 Azure OpenAI realtime transcription final 決定精準字幕的原文、起訖時間與句段邊界，再將同一段音訊的 Azure OpenAI realtime translation 結果掛到同一筆精準字幕事件；`captions` 只需包含本次精準事件已產出的輸出語言。Portal 不會使用 Azure Speech final 補入精準模式的語音輸入語言字幕：
+精準字幕會另以獨立 POST 傳送。Portal 由 Azure OpenAI realtime transcription final 決定精準字幕的原文、起訖時間與句段邊界，再將同一段音訊的 Azure OpenAI realtime translation 結果掛到同一筆精準字幕事件；`captions` 只需包含本次精準事件已產出的輸出語言。`zh-Hant` 字幕不論來自國語 transcription 原文或其他語言 translation，Portal 都需正規化為台灣繁體中文。Portal 不會使用 Azure Speech final 補入精準模式的語音輸入語言字幕：
 
 ```json
 {
@@ -308,7 +308,7 @@ final 字幕來源；若 Portal 未提供或只提供空白，Relay 不會自動
 Portal 的 final 字幕品質模式分為：
 
 - `fast`：final 字幕使用 Azure Speech 結果。
-- `accurate`：final 原文與句段使用 Azure OpenAI realtime transcription 結果，其他輸出語言使用 Azure OpenAI realtime translation 結果。
+- `accurate`：final 原文與句段使用 Azure OpenAI realtime transcription 結果，其他輸出語言使用 Azure OpenAI realtime translation 結果；`zh-Hant` 輸出需由 Portal 正規化為台灣繁體中文。
 
 即時 recognizing / partial 解析一律由 Azure Speech 處理，不因 final 字幕品質模式而改變。
 Relay 不負責呼叫 Azure OpenAI 改寫字幕內容；Relay 只驗證並發布 Portal 傳入的 final 字幕。

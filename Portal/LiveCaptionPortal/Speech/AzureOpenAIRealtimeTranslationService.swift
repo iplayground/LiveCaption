@@ -79,7 +79,7 @@ actor AzureOpenAIRealtimeTranslationService {
             task.resume()
 
             do {
-                try await sendSessionUpdate(to: task, language: language.azureOpenAIRealtimeLanguageCode)
+                try await sendSessionUpdate(to: task, language: language)
             } catch {
                 await stop()
                 throw Self.connectionFailedError(
@@ -128,9 +128,12 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     func takeTranslations(requiredLanguageIDs: Set<String>) async -> [String: String]? {
-        let translations = transcriptBuffers.compactMapValues { value -> String? in
+        var translations = transcriptBuffers.compactMapValues { value -> String? in
             let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return normalizedValue.isEmpty ? nil : normalizedValue
+        }
+        if let text = translations["zh-Hant"] {
+            translations["zh-Hant"] = text.applyingTaiwanTraditionalChineseNormalization()
         }
 
         guard !translations.isEmpty else {
@@ -148,16 +151,21 @@ actor AzureOpenAIRealtimeTranslationService {
         return translations
     }
 
-    private func sendSessionUpdate(to task: URLSessionWebSocketTask, language: String) async throws {
-        let payload: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "audio": [
-                    "output": [
-                        "language": language,
-                    ],
+    private func sendSessionUpdate(to task: URLSessionWebSocketTask, language: SpeechOutputLanguage) async throws {
+        var session: [String: Any] = [
+            "audio": [
+                "output": [
+                    "language": language.azureOpenAIRealtimeLanguageCode,
                 ],
             ],
+        ]
+        if let instructions = language.azureOpenAIRealtimeInstructions {
+            session["instructions"] = instructions
+        }
+
+        let payload: [String: Any] = [
+            "type": "session.update",
+            "session": session,
         ]
 
         guard let message = Self.jsonString(from: payload) else {
@@ -271,6 +279,17 @@ private extension SpeechOutputLanguage {
             "zh"
         default:
             id
+        }
+    }
+
+    nonisolated var azureOpenAIRealtimeInstructions: String? {
+        switch id {
+        case "zh-Hant":
+            """
+            Translate to Taiwan Traditional Chinese using Taiwan terminology. Never output Simplified Chinese. Output subtitle text only.
+            """
+        default:
+            nil
         }
     }
 }

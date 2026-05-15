@@ -125,6 +125,14 @@ actor AzureOpenAIRealtimeTranscriptionService {
         to task: URLSessionWebSocketTask,
         configuration: AzureOpenAIRealtimeTranscriptionConfiguration
     ) async throws {
+        var transcription: [String: Any] = [
+            "model": configuration.transcriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "language": configuration.inputLanguage.azureOpenAIRealtimeLanguageCode,
+        ]
+        if let prompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
+            transcription["prompt"] = prompt
+        }
+
         let payload: [String: Any] = [
             "type": "session.update",
             "session": [
@@ -135,10 +143,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
                             "type": "audio/pcm",
                             "rate": 24_000,
                         ],
-                        "transcription": [
-                            "model": configuration.transcriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            "language": configuration.inputLanguage.azureOpenAIRealtimeLanguageCode,
-                        ],
+                        "transcription": transcription,
                         "turn_detection": [
                             "type": "server_vad",
                             "threshold": 0.5,
@@ -381,6 +386,15 @@ private extension InputLanguage {
             "zh"
         case .english:
             "en"
+        }
+    }
+
+    nonisolated var azureOpenAIRealtimePrompt: String? {
+        switch self {
+        case .mandarin:
+            "Transcribe Mandarin as Taiwan Traditional Chinese. Never output Simplified Chinese."
+        case .english:
+            nil
         }
     }
 }
