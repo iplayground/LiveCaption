@@ -86,7 +86,7 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     func normalizeAndTranslate(
-        draftText: String,
+        transcriptDrafts: [AccurateCaptionTranscriptDraft],
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguageIDs: Set<String>
@@ -97,8 +97,9 @@ actor AzureOpenAIRealtimeTranslationService {
             return nil
         }
 
-        let normalizedDraftText = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedDraftText.isEmpty else {
+        let normalizedTranscriptDrafts = transcriptDrafts
+            .map { AccurateCaptionTranscriptDraft(providerID: $0.providerID, text: $0.normalizedText) }
+        guard normalizedTranscriptDrafts.contains(where: { !$0.normalizedText.isEmpty }) else {
             return nil
         }
 
@@ -111,7 +112,7 @@ actor AzureOpenAIRealtimeTranslationService {
             }
 
             return await self.performNormalizeAndTranslate(
-                draftText: normalizedDraftText,
+                transcriptDrafts: normalizedTranscriptDrafts,
                 inputLanguage: inputLanguage,
                 phraseHints: phraseHints,
                 targetLanguages: targetLanguages,
@@ -123,7 +124,7 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     private func performNormalizeAndTranslate(
-        draftText normalizedDraftText: String,
+        transcriptDrafts: [AccurateCaptionTranscriptDraft],
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
@@ -131,7 +132,7 @@ actor AzureOpenAIRealtimeTranslationService {
     ) async -> AzureOpenAIRealtimeTranslationResult? {
         do {
             let result = try await requestNormalizationAndTranslationsWithRetry(
-                draftText: normalizedDraftText,
+                transcriptDrafts: transcriptDrafts,
                 inputLanguage: inputLanguage,
                 phraseHints: phraseHints,
                 targetLanguages: targetLanguages,
@@ -162,7 +163,7 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     private func requestNormalizationAndTranslationsWithRetry(
-        draftText: String,
+        transcriptDrafts: [AccurateCaptionTranscriptDraft],
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
@@ -173,7 +174,7 @@ actor AzureOpenAIRealtimeTranslationService {
         for attempt in 1...Self.maximumRequestAttempts {
             do {
                 return try await requestNormalizationAndTranslations(
-                    draftText: draftText,
+                    transcriptDrafts: transcriptDrafts,
                     inputLanguage: inputLanguage,
                     phraseHints: phraseHints,
                     targetLanguages: targetLanguages,
@@ -206,7 +207,7 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     private func requestNormalizationAndTranslations(
-        draftText: String,
+        transcriptDrafts: [AccurateCaptionTranscriptDraft],
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
@@ -230,7 +231,7 @@ actor AzureOpenAIRealtimeTranslationService {
                 ],
                 [
                     "role": "user",
-                    "content": draftText,
+                    "content": try Self.userContent(transcriptDrafts: transcriptDrafts),
                 ],
             ],
             "temperature": 0,
@@ -331,13 +332,17 @@ actor AzureOpenAIRealtimeTranslationService {
             : normalizedPhraseHints.joined(separator: ", ")
 
         return """
-        You receive one speech-to-text draft subtitle segment in \(inputLanguage.azureOpenAITextNormalizationName).
+        You receive speech-to-text candidate transcripts for one subtitle segment in \(inputLanguage.azureOpenAITextNormalizationName).
+        Candidate provider gpt-4o-mini-transcribe is the OpenAI audio transcription.
+        Candidate provider azure-speech is the Microsoft Speech SDK recognition result.
+        Compare the candidates before writing sourceText. Prefer wording supported by both candidates when they agree.
+        If gpt-4o-mini-transcribe is missing, empty, or clearly damaged, use azure-speech as the fallback candidate.
         First produce a corrected source-language subtitle as sourceText, then translate that corrected sourceText into the requested languages.
         Correct only likely speech recognition errors, proper nouns, brand/product names, technical terms, capitalization, punctuation, and Traditional Chinese normalization.
-        Do not paraphrase, summarize, expand, censor, or add information that is not supported by the draft.
-        Use the vocabulary hints as canonical spellings when the draft appears to refer to them.
+        Do not paraphrase, summarize, expand, censor, or add information that is not supported by the candidates.
+        Use the vocabulary hints as canonical spellings when the candidates appear to refer to them.
         Do not translate, localize, or partially replace Latin brand names with CJK characters in sourceText.
-        If uncertain, preserve the draft wording rather than guessing.
+        If uncertain, preserve the most reliable candidate wording rather than guessing.
         Return only a JSON object with this shape:
         {
           "sourceText": "corrected source-language subtitle",
@@ -355,6 +360,20 @@ actor AzureOpenAIRealtimeTranslationService {
         Languages:
         \(languageList)
         """
+    }
+
+    private static func userContent(transcriptDrafts: [AccurateCaptionTranscriptDraft]) throws -> String {
+        let candidates = transcriptDrafts.map { draft in
+            [
+                "provider": draft.providerID,
+                "text": draft.normalizedText,
+            ]
+        }
+        let payload: [String: Any] = [
+            "transcriptCandidates": candidates,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func responseErrorDetail(from data: Data) -> String {

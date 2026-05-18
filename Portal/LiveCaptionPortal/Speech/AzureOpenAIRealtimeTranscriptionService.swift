@@ -23,9 +23,17 @@ struct AzureOpenAIRealtimeTranscriptionConfiguration: Equatable, Sendable {
 }
 
 struct AzureOpenAIRealtimeTranscriptionResult: Equatable, Sendable {
-    let text: String
+    let openAIText: String
+    let speechText: String
     let offsetTicks: UInt64
     let durationTicks: UInt64
+
+    var transcriptDrafts: [AccurateCaptionTranscriptDraft] {
+        [
+            AccurateCaptionTranscriptDraft(providerID: "gpt-4o-mini-transcribe", text: openAIText),
+            AccurateCaptionTranscriptDraft(providerID: "azure-speech", text: speechText),
+        ]
+    }
 }
 
 struct AzureOpenAIRealtimeTranscriptionDiagnostic: Equatable, Sendable {
@@ -97,6 +105,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
             return
         }
 
+        let speechText = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let segmentStartMilliseconds = event.offsetTicks / Self.ticksPerMillisecond
         let segmentDurationMilliseconds = max(event.durationTicks / Self.ticksPerMillisecond, 1)
         let paddedStartMilliseconds = segmentStartMilliseconds > Self.audioPaddingMilliseconds
@@ -140,19 +149,34 @@ actor AzureOpenAIRealtimeTranscriptionService {
             )
 
             guard !normalizedText.isEmpty else {
+                publishTranscriptionResult(openAIText: normalizedText, speechText: speechText, event: event)
                 return
             }
 
-            onTranscription?(
-                AzureOpenAIRealtimeTranscriptionResult(
-                    text: normalizedText,
-                    offsetTicks: event.offsetTicks,
-                    durationTicks: event.durationTicks
-                )
-            )
+            publishTranscriptionResult(openAIText: normalizedText, speechText: speechText, event: event)
         } catch {
             emitDiagnostic(level: .error, detail: Self.errorDetail(error, phase: "transcriptionRequest"))
+            publishTranscriptionResult(openAIText: "", speechText: speechText, event: event)
         }
+    }
+
+    private func publishTranscriptionResult(
+        openAIText: String,
+        speechText: String,
+        event: RecognizedCaptionEvent
+    ) {
+        guard !openAIText.isEmpty || !speechText.isEmpty else {
+            return
+        }
+
+        onTranscription?(
+            AzureOpenAIRealtimeTranscriptionResult(
+                openAIText: openAIText,
+                speechText: speechText,
+                offsetTicks: event.offsetTicks,
+                durationTicks: event.durationTicks
+            )
+        )
     }
 
     private func audioSlice(startMilliseconds: UInt64, endMilliseconds: UInt64) -> Data {

@@ -25,7 +25,7 @@ API 契約分別記錄於：
 1. Portal 以 Azure Speech key 對 request body 產生 HMAC 簽章。
 2. Relay 透過 `AZURE_SPEECH_ACCOUNT_ID` 定位 Azure Speech resource，並使用 Managed Identity 讀取 Speech key 驗章。
 3. Relay 驗證字幕事件欄位、語言、時間碼、文字長度與安全邊界。
-4. Portal 依 final 字幕品質模式選擇字幕來源：快速使用 Azure Speech final，精準使用 Azure Speech final 作為時間 anchor，並以 Azure OpenAI transcription deployment 產生原始語言 draft，再由 Azure OpenAI text model 產生校正後原文與翻譯結果。
+4. Portal 依 final 字幕品質模式選擇字幕來源：快速使用 Azure Speech final，精準使用 Azure Speech final 作為時間 anchor 與候選文字，並以 Azure OpenAI transcription deployment 產生原始語言 draft，再由 Azure OpenAI text model 比對兩路候選後產生校正後原文與翻譯結果。
 5. Relay 要求每筆字幕事件提供單一 top-level `captionMode`，允許 `fast` 或 `accurate`；
    舊版 `captionModes` 多模式 object 會被拒絕。
 6. `captionProvider` 是選填顯示欄位。Relay 只驗證它是簡單短字串，不用它決定處理流程，

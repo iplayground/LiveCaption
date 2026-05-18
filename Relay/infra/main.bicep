@@ -92,7 +92,7 @@ param azureOpenAITranslationDeploymentSkuName string = 'Standard'
 
 @description('Azure OpenAI text model deployment capacity.')
 @minValue(1)
-param azureOpenAITranslationDeploymentCapacity int = 50
+param azureOpenAITranslationDeploymentCapacity int = 100
 
 @description('Azure OpenAI transcription deployment SKU name.')
 @allowed([

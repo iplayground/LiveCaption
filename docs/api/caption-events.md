@@ -92,11 +92,13 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 ```
 
 精準字幕會另以獨立 POST 傳送。Portal 以 Azure Speech final 的起訖時間與句段邊界作為
-anchor，切出同一段音訊送 Azure OpenAI transcription deployment 產生原始語言 draft，再把 draft、
-語音輸入語言、字幕輸出語言與詞彙提示送往 Azure OpenAI text model，由 OpenAI 產生校正後原文與
-translation 結果，掛到同一筆精準字幕事件。Portal 必須在選定的翻譯輸出語言都取得後才送出精準
+anchor，切出同一段音訊送 Azure OpenAI transcription deployment 產生原始語言 draft，再把 OpenAI
+transcription draft、Azure Speech final、語音輸入語言、字幕輸出語言與詞彙提示送往 Azure OpenAI
+text model，由 OpenAI 比對候選文字並產生校正後原文與 translation 結果，掛到同一筆精準字幕事件。
+Portal 必須在選定的翻譯輸出語言都取得後才送出精準
 Relay 事件；若翻譯缺失，該筆精準事件不得送往 Relay。`zh-Hant` 字幕需要求 OpenAI 使用台灣繁體
-中文。Portal 不會使用 Azure Speech final 補入精準模式的語音輸入語言字幕文字：
+中文。Azure Speech final 只作為 Azure OpenAI text model 候選輸入與 fallback 參考；Portal 不會直接使用
+Azure Speech final 補入精準模式的語音輸入語言字幕文字：
 
 ```json
 {
@@ -138,7 +140,7 @@ Relay 事件；若翻譯缺失，該筆精準事件不得送往 Relay。`zh-Hant
 | `speech.inputLanguage` | 是 | 語音輸入語言，目前允許 `zh-TW` 或 `en-US`。 |
 | `speech.offsetTicks` | 是 | 字幕區段起點 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式使用 Azure Speech final 區段作為時間 anchor。 |
 | `speech.durationTicks` | 是 | 字幕區段長度 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式使用 Azure Speech final 區段作為時間 anchor。 |
-| `speech.text` | 是 | 本筆事件的 final 原文。快速模式來自 Azure Speech final；精準模式來自 Azure OpenAI text model 對 OpenAI transcription draft 產生的校正後原文。Relay 只供驗證、相容性與時序脈絡使用，不得完整寫入 log。 |
+| `speech.text` | 是 | 本筆事件的 final 原文。快速模式來自 Azure Speech final；精準模式來自 Azure OpenAI text model 對 OpenAI transcription draft 與 Azure Speech final 候選文字比對後產生的校正後原文。Relay 只供驗證、相容性與時序脈絡使用，不得完整寫入 log。 |
 | `captions` | 是 | 向後相容欄位，代表本筆 POST 的 final 字幕輸出語言 object。快速 POST 至少包含 `zh-Hant` 與 `en`；精準 POST 以 Azure OpenAI 校正後原文搭配 translation 結果，且 Portal 必須等選定的翻譯輸出語言都產出後才送出。 |
 | `captions.<language>` | 是 | 字幕文字，目前允許 `zh-Hant`、`en`、`ja`、`ko`。 |
 | `captionMode` | 是 | final 字幕模式；允許 `fast` 或 `accurate`。 |
@@ -172,7 +174,7 @@ Relay 接收事件後必須先驗證：
 - `speech.inputLanguage` 在允許清單內。
 - `speech.offsetTicks` 與 `speech.durationTicks` 是非負整數，且 `durationTicks` 大於 0。
 - `speech.text` 去除前後空白後不可為空。
-- `captions` 不可為空；若 `captionMode` 為 `fast`，則至少包含 `zh-Hant` 與 `en`。`accurate` 必須由 Portal 等選定的翻譯輸出語言都產出後才送出，且不得用 Azure Speech final 補語音輸入語言。
+- `captions` 不可為空；若 `captionMode` 為 `fast`，則至少包含 `zh-Hant` 與 `en`。`accurate` 必須由 Portal 等選定的翻譯輸出語言都產出後才送出，且不得直接用 Azure Speech final 補語音輸入語言。
 - `captions` key 在字幕輸出語言允許清單內，value 是非空 string。
 - `captionMode` 必填，且只允許 `fast` 與 `accurate`。
 - `captionProvider` 選填；若存在必須是 string，去除前後空白後可為空。非空時長度上限 50，且只允許英數、`.`、`_`、`-`。Relay 不驗證它是否與 `captionMode` 對應。
@@ -313,7 +315,7 @@ final 字幕來源；若 Portal 未提供或只提供空白，Relay 不會自動
 Portal 的 final 字幕品質模式分為：
 
 - `fast`：final 字幕使用 Azure Speech 結果。
-- `accurate`：final 句段時間使用 Azure Speech final 作為 anchor，Azure OpenAI transcription deployment 先產生原始語言 draft，再由 Azure OpenAI text model 產生校正後原文與其他輸出語言；`zh-Hant` 輸出需要求 OpenAI 使用台灣繁體中文。
+- `accurate`：final 句段時間使用 Azure Speech final 作為 anchor，Azure OpenAI transcription deployment 先產生原始語言 draft，再由 Azure OpenAI text model 比對 OpenAI transcription 與 Azure Speech final 候選文字，產生校正後原文與其他輸出語言；`zh-Hant` 輸出需要求 OpenAI 使用台灣繁體中文。
 
 即時 recognizing / partial 解析一律由 Azure Speech 處理，不因 final 字幕品質模式而改變。
 Relay 不負責呼叫 Azure OpenAI 改寫字幕內容；Relay 只驗證並發布 Portal 傳入的 final 字幕。

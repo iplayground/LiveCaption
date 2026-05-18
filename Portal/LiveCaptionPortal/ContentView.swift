@@ -518,7 +518,7 @@ struct ContentView: View {
 
     private func handleOpenAITranscriptionResult(_ result: AzureOpenAIRealtimeTranscriptionResult) {
         Task {
-            guard let textResult = await openAITextResult(for: result.text) else {
+            guard let textResult = await openAITextResult(for: result.transcriptDrafts) else {
                 return
             }
 
@@ -627,13 +627,13 @@ struct ContentView: View {
         }
     }
 
-    private func openAITextResult(for text: String) async -> AzureOpenAIRealtimeTranslationResult? {
+    private func openAITextResult(for transcriptDrafts: [AccurateCaptionTranscriptDraft]) async -> AzureOpenAIRealtimeTranslationResult? {
         guard speechSettings.isAccurateCaptionEnabled else {
             return nil
         }
 
         return await accurateTranslationService.normalizeAndTranslate(
-            draftText: text,
+            transcriptDrafts: transcriptDrafts,
             inputLanguage: inputLanguage,
             phraseHints: speechSettings.phraseHints(for: inputLanguage),
             targetLanguageIDs: openAITranslationTargetLanguageIDs()

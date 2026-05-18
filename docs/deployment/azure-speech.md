@@ -115,7 +115,7 @@ Portal 使用 `UserDefaults` 保存短小的 Speech 與 Azure OpenAI 設定：
 | `speech.key` | Azure Speech key，只保存在本機。 |
 | `speech.azureOpenAI.endpoint` | Azure OpenAI endpoint，例如 `https://<resource>.openai.azure.com`。 |
 | `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI transcription deployment name，例如 `accurate-transcribe`，用於精準模式原始語言 draft。 |
-| `speech.azureOpenAI.translationDeployment` | Azure OpenAI text model deployment name，例如 `accurate-translate`，用於精準模式校正原文與其他輸出語言 final 字幕。 |
+| `speech.azureOpenAI.translationDeployment` | Azure OpenAI text model deployment name，例如 `accurate-translate`，用於精準模式比對 OpenAI transcription 與 Azure Speech final 候選文字，產生校正原文與其他輸出語言 final 字幕。 |
 | `speech.azureOpenAI.apiKey` | Azure OpenAI API key，只保存在本機。 |
 | `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI 連線測試狀態。 |
 | `speech.outputLanguageIDs` | 字幕輸出語言清單。 |
