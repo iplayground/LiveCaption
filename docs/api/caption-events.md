@@ -93,8 +93,9 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 
 精準字幕會另以獨立 POST 傳送。Portal 以 Azure Speech final 的起訖時間與句段邊界作為
 anchor，切出同一段音訊送 Azure OpenAI transcription deployment 產生原始語言 draft，再把 OpenAI
-transcription draft、Azure Speech final、語音輸入語言、字幕輸出語言與詞彙提示送往 Azure OpenAI
-text model，由 OpenAI 比對候選文字並產生校正後原文與 translation 結果，掛到同一筆精準字幕事件。
+transcription draft、Azure Speech final、語音輸入語言、字幕輸出語言、詞彙提示與同一場 session 最近 3 段
+OpenAI 原始語言字幕送往 Azure OpenAI text model，由 OpenAI 比對候選文字並產生校正後原文與
+translation 結果，掛到同一筆精準字幕事件。最近字幕只能作為同音字、近音字、專有名詞與技術詞辨識錯誤的保守上下文；Portal 的 prompt 會要求 OpenAI 不新增講者沒有說的內容、不美化文句、不把口語改成書面語，且不確定時保留原文。
 Portal 必須在選定的翻譯輸出語言都取得後才送出精準
 Relay 事件；若翻譯缺失，該筆精準事件不得送往 Relay。`zh-Hant` 字幕需要求 OpenAI 使用台灣繁體
 中文。Azure Speech final 只作為 Azure OpenAI text model 候選輸入與 fallback 參考；Portal 不會直接使用

@@ -57,8 +57,10 @@ enum AzureOpenAIRealtimeTranslationError: LocalizedError {
 actor AzureOpenAIRealtimeTranslationService {
     private static let apiVersion = "2025-04-01-preview"
     private static let maximumRequestAttempts = 5
+    private static let maximumPreviousSourceTextCount = 3
     private var configuration: AzureOpenAIRealtimeTranslationConfiguration?
     private var queuedTranslationTask: Task<AzureOpenAIRealtimeTranslationResult?, Never>?
+    private var recentSourceTexts: [String] = []
     private var isStarted = false
     var onDiagnostic: (@Sendable (AzureOpenAIRealtimeTranslationDiagnostic) -> Void)?
 
@@ -75,6 +77,7 @@ actor AzureOpenAIRealtimeTranslationService {
 
         _ = try Self.requestURL(for: configuration)
         self.configuration = configuration
+        recentSourceTexts.removeAll()
         isStarted = true
     }
 
@@ -83,6 +86,7 @@ actor AzureOpenAIRealtimeTranslationService {
         configuration = nil
         queuedTranslationTask?.cancel()
         queuedTranslationTask = nil
+        recentSourceTexts.removeAll()
     }
 
     func normalizeAndTranslate(
@@ -131,8 +135,10 @@ actor AzureOpenAIRealtimeTranslationService {
         configuration: AzureOpenAIRealtimeTranslationConfiguration
     ) async -> AzureOpenAIRealtimeTranslationResult? {
         do {
+            let previousSourceTexts = recentSourceTexts
             let result = try await requestNormalizationAndTranslationsWithRetry(
                 transcriptDrafts: transcriptDrafts,
+                previousSourceTexts: previousSourceTexts,
                 inputLanguage: inputLanguage,
                 phraseHints: phraseHints,
                 targetLanguages: targetLanguages,
@@ -140,6 +146,7 @@ actor AzureOpenAIRealtimeTranslationService {
             )
             let sourceText = result.sourceText
             let translations = result.translations
+            appendRecentSourceText(sourceText)
 
             let missingLanguageIDs = targetLanguages
                 .map(\.id)
@@ -164,6 +171,7 @@ actor AzureOpenAIRealtimeTranslationService {
 
     private func requestNormalizationAndTranslationsWithRetry(
         transcriptDrafts: [AccurateCaptionTranscriptDraft],
+        previousSourceTexts: [String],
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
@@ -175,6 +183,7 @@ actor AzureOpenAIRealtimeTranslationService {
             do {
                 return try await requestNormalizationAndTranslations(
                     transcriptDrafts: transcriptDrafts,
+                    previousSourceTexts: previousSourceTexts,
                     inputLanguage: inputLanguage,
                     phraseHints: phraseHints,
                     targetLanguages: targetLanguages,
@@ -208,6 +217,7 @@ actor AzureOpenAIRealtimeTranslationService {
 
     private func requestNormalizationAndTranslations(
         transcriptDrafts: [AccurateCaptionTranscriptDraft],
+        previousSourceTexts: [String],
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
@@ -231,7 +241,10 @@ actor AzureOpenAIRealtimeTranslationService {
                 ],
                 [
                     "role": "user",
-                    "content": try Self.userContent(transcriptDrafts: transcriptDrafts),
+                    "content": try Self.userContent(
+                        transcriptDrafts: transcriptDrafts,
+                        previousSourceTexts: previousSourceTexts
+                    ),
                 ],
             ],
             "temperature": 0,
@@ -337,8 +350,14 @@ actor AzureOpenAIRealtimeTranslationService {
         Candidate provider azure-speech is the Microsoft Speech SDK recognition result.
         Compare the candidates before writing sourceText. Prefer wording supported by both candidates when they agree.
         If gpt-4o-mini-transcribe is missing, empty, or clearly damaged, use azure-speech as the fallback candidate.
+        The user message may include previousSourceTexts, which are the most recent already-finalized OpenAI subtitles from the same live session.
+        Use previousSourceTexts only as local context for conservative ASR correction, such as homophones, near-sound words, segmentation, repeated terms, proper nouns, and technical terms.
+        Do not continue, summarize, rewrite, or add content from previousSourceTexts to the current subtitle.
         First produce a corrected source-language subtitle as sourceText, then translate that corrected sourceText into the requested languages.
-        Correct only likely speech recognition errors, proper nouns, brand/product names, technical terms, capitalization, punctuation, and Traditional Chinese normalization.
+        Correct only homophones, near-sound words, proper nouns, brand/product names, technical terms, capitalization, punctuation, and Traditional Chinese normalization.
+        Do not add content the speaker did not say.
+        Do not beautify wording.
+        Do not convert spoken language into formal written language.
         Do not paraphrase, summarize, expand, censor, or add information that is not supported by the candidates.
         Use the vocabulary hints as canonical spellings when the candidates appear to refer to them.
         Do not translate, localize, or partially replace Latin brand names with CJK characters in sourceText.
@@ -362,7 +381,10 @@ actor AzureOpenAIRealtimeTranslationService {
         """
     }
 
-    private static func userContent(transcriptDrafts: [AccurateCaptionTranscriptDraft]) throws -> String {
+    private static func userContent(
+        transcriptDrafts: [AccurateCaptionTranscriptDraft],
+        previousSourceTexts: [String]
+    ) throws -> String {
         let candidates = transcriptDrafts.map { draft in
             [
                 "provider": draft.providerID,
@@ -370,10 +392,32 @@ actor AzureOpenAIRealtimeTranslationService {
             ]
         }
         let payload: [String: Any] = [
+            "previousSourceTexts": normalizedPreviousSourceTexts(previousSourceTexts),
             "transcriptCandidates": candidates,
         ]
         let data = try JSONSerialization.data(withJSONObject: payload)
         return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func normalizedPreviousSourceTexts(_ sourceTexts: [String]) -> [String] {
+        Array(
+            sourceTexts
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .suffix(maximumPreviousSourceTextCount)
+        )
+    }
+
+    private func appendRecentSourceText(_ sourceText: String) {
+        let normalizedSourceText = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSourceText.isEmpty else {
+            return
+        }
+
+        recentSourceTexts.append(normalizedSourceText)
+        if recentSourceTexts.count > Self.maximumPreviousSourceTextCount {
+            recentSourceTexts.removeFirst(recentSourceTexts.count - Self.maximumPreviousSourceTextCount)
+        }
     }
 
     private static func responseErrorDetail(from data: Data) -> String {
