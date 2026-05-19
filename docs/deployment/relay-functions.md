@@ -56,6 +56,12 @@ python -m pytest
 
 `prod.bicepparam`、Bicep build 產物、`local.settings.json`、virtual environment、pytest 快取、測試檔與部署時不需要的本機檔案都不應包含在 Functions 部署包或提交內容中。
 
+## Azure Tags
+
+正式 Azure 資源應使用 `app=LiveCaption` 標示產品歸屬，並以 `component` 標示資源所屬元件或服務，例如 Relay 相關資源使用 `component=Relay`，既有 Azure Speech resource 使用 `component=Speech`，Azure Automation 排程與 runbook 等維運資源使用 `component=Operations`。
+
+`environment` tag 已廢除，不應再加到新資源或既有資源。若部署或維運時發現 Azure resource 仍有 `environment` tag，應移除該 tag，而不是改成其他 environment 值。
+
 ## 正式 Azure 資源
 
 `Relay/infra/main.bicep` 建立或設定：

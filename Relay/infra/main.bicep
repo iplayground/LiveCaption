@@ -138,7 +138,6 @@ param instanceMemoryMB int = 2048
 param tags object = {
   app: 'LiveCaption'
   component: 'Relay'
-  environment: 'production'
 }
 
 var roleDefinitions = {
