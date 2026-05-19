@@ -32,6 +32,35 @@ enum ProjectionCapturePreviewArrangement: String, CaseIterable, Identifiable {
     }
 }
 
+enum ProjectionCaptionSource: String, CaseIterable, Identifiable {
+    case speech
+    case openAI
+
+    var id: String { rawValue }
+
+    var captionMode: CaptionQualityMode {
+        switch self {
+        case .speech:
+            .fast
+        case .openAI:
+            .accurate
+        }
+    }
+
+    var localizedName: String {
+        switch self {
+        case .speech:
+            L10n.text("caption.projectionSource.speech")
+        case .openAI:
+            L10n.text("caption.projectionSource.openAI")
+        }
+    }
+
+    static func source(for rawValue: String) -> ProjectionCaptionSource {
+        ProjectionCaptionSource(rawValue: rawValue) ?? .speech
+    }
+}
+
 enum ProjectionCaptureLanguageSelection {
     static func selectedIDs(
         from rawValue: String,
@@ -254,6 +283,7 @@ struct ProjectionCaptureWindowContent: View {
     @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
     @AppStorage("projectionCapture.width") private var projectionCaptureWidth = 720.0
     @AppStorage("projectionCapture.height") private var projectionCaptureHeight = 180.0
+    @AppStorage("projectionCapture.captionSource") private var projectionCaptureCaptionSource = ProjectionCaptionSource.speech.rawValue
     @State private var screenMaximumContentWidth: Double?
 
     private let languageHeaderHeight = 24.0
@@ -315,6 +345,10 @@ struct ProjectionCaptureWindowContent: View {
         }
 
         return ProjectionCapturePreviewArrangement.arrangement(for: projectionCapturePreviewArrangement)
+    }
+
+    private var captionSource: CaptionQualityMode {
+        ProjectionCaptionSource.source(for: projectionCaptureCaptionSource).captionMode
     }
 
     private var previewStackWidth: Double {
@@ -382,6 +416,7 @@ struct ProjectionCaptureWindowContent: View {
                     languageIDs: selectedLanguageIDs,
                     outputLanguages: outputLanguages,
                     captionPreviewState: captionPreviewState,
+                    captionSource: captionSource,
                     previewSize: previewSize,
                     arrangement: previewArrangement,
                     languageHeaderHeight: languageHeaderHeight,
@@ -433,6 +468,7 @@ private struct ProjectionCaptureLanguageStackView: View {
     let languageIDs: [String]
     let outputLanguages: [SpeechOutputLanguage]
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
+    let captionSource: CaptionQualityMode
     let previewSize: CGSize
     let arrangement: ProjectionCapturePreviewArrangement
     let languageHeaderHeight: Double
@@ -480,7 +516,8 @@ private struct ProjectionCaptureLanguageStackView: View {
                 inputLanguage: inputLanguage,
                 languageID: languageID,
                 outputLanguages: outputLanguages,
-                captionPreviewState: captionPreviewState
+                captionPreviewState: captionPreviewState,
+                captionSource: captionSource
             )
             .frame(width: previewSize.width, height: previewSize.height)
         }
@@ -542,6 +579,7 @@ struct ProjectionCaptureView: View {
     let languageID: String
     let outputLanguages: [SpeechOutputLanguage]
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
+    var captionSource: CaptionQualityMode = .fast
     @AppStorage("projectionCapture.fontID") private var projectionCaptureFontID = ProjectionCaptionFontChoice.systemID
     @AppStorage("projectionCapture.fontSize") private var projectionCaptureFontSize = 32.0
     @AppStorage("projectionCapture.lineSpacing") private var projectionCaptureLineSpacing = 6.0
@@ -558,6 +596,7 @@ struct ProjectionCaptureView: View {
         captionPreviewState.projectionCaptionText(
             for: selectedLanguage,
             inputLanguage: inputLanguage,
+            source: captionSource,
             appendsText: projectionCaptureAppendsText,
             appendLineLimit: Int(clampedAppendLineLimit(projectionCaptureAppendLineLimit).rounded())
         )

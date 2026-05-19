@@ -81,6 +81,9 @@
 "caption.projectionOpenInWindow" = "以獨立視窗顯示字幕預覽";
 "caption.projectionPaddingHorizontal" = "左右間距";
 "caption.projectionPrimaryLanguage" = "優先語言";
+"caption.projectionSource" = "來源";
+"caption.projectionSource.openAI" = "OpenAI";
+"caption.projectionSource.speech" = "Speech";
 "caption.projectionVerticalPlacement" = "字幕位置";
 "caption.projectionVerticalPlacement.bottom" = "置底";
 "caption.projectionVerticalPlacement.top" = "置頂";

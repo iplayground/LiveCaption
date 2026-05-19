@@ -10,6 +10,7 @@ struct ProjectionCaptureSettingsInspector: View {
     @AppStorage("projectionCapture.languageID") private var projectionCaptureLanguageID = "zh-Hant"
     @AppStorage("projectionCapture.visibleLanguageIDs") private var projectionCaptureVisibleLanguageIDs = ""
     @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
+    @AppStorage("projectionCapture.captionSource") private var projectionCaptureCaptionSource = ProjectionCaptionSource.speech.rawValue
     @AppStorage("projectionCapture.width") private var projectionCaptureWidth = 720.0
     @AppStorage("projectionCapture.height") private var projectionCaptureHeight = 180.0
     @AppStorage("projectionCapture.fontID") private var projectionCaptureFontID = ProjectionCaptionFontChoice.systemID
@@ -43,6 +44,13 @@ struct ProjectionCaptureSettingsInspector: View {
         Binding(
             get: { validatedPreviewArrangement.rawValue },
             set: { projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.arrangement(for: $0).rawValue }
+        )
+    }
+
+    private var selectedCaptionSource: Binding<String> {
+        Binding(
+            get: { validatedCaptionSource.rawValue },
+            set: { projectionCaptureCaptionSource = ProjectionCaptionSource.source(for: $0).rawValue }
         )
     }
 
@@ -124,6 +132,10 @@ struct ProjectionCaptureSettingsInspector: View {
 
     private var validatedPreviewArrangement: ProjectionCapturePreviewArrangement {
         ProjectionCapturePreviewArrangement.arrangement(for: projectionCapturePreviewArrangement)
+    }
+
+    private var validatedCaptionSource: ProjectionCaptionSource {
+        ProjectionCaptionSource.source(for: projectionCaptureCaptionSource)
     }
 
     private var validatedVerticalPlacement: ProjectionCaptionVerticalPlacement {
@@ -211,6 +223,9 @@ struct ProjectionCaptureSettingsInspector: View {
     private var wideLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
+                captionSourcePicker
+                    .padding(.trailing, 28)
+
                 windowLanguageControls
 
                 appendModeToggle
@@ -289,6 +304,19 @@ struct ProjectionCaptureSettingsInspector: View {
             Picker(L10n.text("caption.projectionArrangement"), selection: selectedPreviewArrangement) {
                 ForEach(ProjectionCapturePreviewArrangement.allCases) { arrangement in
                     Text(arrangement.localizedName).tag(arrangement.rawValue)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 120)
+        }
+    }
+
+    private var captionSourcePicker: some View {
+        ProjectionInspectorRow(title: L10n.text("caption.projectionSource")) {
+            Picker(L10n.text("caption.projectionSource"), selection: selectedCaptionSource) {
+                ForEach(ProjectionCaptionSource.allCases) { source in
+                    Text(source.localizedName).tag(source.rawValue)
                 }
             }
             .labelsHidden()

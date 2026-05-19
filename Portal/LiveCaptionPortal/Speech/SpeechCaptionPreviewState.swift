@@ -11,7 +11,12 @@ private struct SpeechCaptionPreviewSnapshot {
     var finalTranslations: [String: String] = [:]
     var finalTranscriptHistory: [String] = []
     var finalTranslationHistory: [String: [String]] = [:]
+    var accurateFinalTranscript = ""
+    var accurateFinalTranslations: [String: String] = [:]
+    var accurateFinalTranscriptHistory: [String] = []
+    var accurateFinalTranslationHistory: [String: [String]] = [:]
     var lastFinalOffsetTicks: UInt64?
+    var lastAccurateFinalOffsetTicks: UInt64?
     var projectionOverrideText: String?
     var suppressesWelcomeText = false
 }
@@ -102,6 +107,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
     func projectionCaptionText(
         for language: SpeechOutputLanguage?,
         inputLanguage: InputLanguage,
+        source: CaptionQualityMode = .fast,
         appendsText: Bool,
         appendLineLimit: Int
     ) -> String {
@@ -112,6 +118,7 @@ final class SpeechCaptionPreviewState: ObservableObject {
         return computedProjectionCaptionText(
             for: language,
             inputLanguage: inputLanguage,
+            source: source,
             appendsText: appendsText,
             appendLineLimit: appendLineLimit
         )
@@ -121,6 +128,8 @@ final class SpeechCaptionPreviewState: ObservableObject {
         updateSnapshot { snapshot in
             snapshot.finalTranscriptHistory = []
             snapshot.finalTranslationHistory = [:]
+            snapshot.accurateFinalTranscriptHistory = []
+            snapshot.accurateFinalTranslationHistory = [:]
             snapshot.projectionOverrideText = ""
         }
     }
@@ -131,6 +140,12 @@ final class SpeechCaptionPreviewState: ObservableObject {
 
             snapshot.finalTranslations.forEach { languageID, translation in
                 Self.appendIfNeeded(translation, to: &snapshot.finalTranslationHistory[languageID, default: []])
+            }
+
+            Self.appendIfNeeded(snapshot.accurateFinalTranscript, to: &snapshot.accurateFinalTranscriptHistory)
+
+            snapshot.accurateFinalTranslations.forEach { languageID, translation in
+                Self.appendIfNeeded(translation, to: &snapshot.accurateFinalTranslationHistory[languageID, default: []])
             }
 
             snapshot.projectionOverrideText = nil
@@ -146,7 +161,12 @@ final class SpeechCaptionPreviewState: ObservableObject {
             snapshot.finalTranslations = [:]
             snapshot.finalTranscriptHistory = []
             snapshot.finalTranslationHistory = [:]
+            snapshot.accurateFinalTranscript = ""
+            snapshot.accurateFinalTranslations = [:]
+            snapshot.accurateFinalTranscriptHistory = []
+            snapshot.accurateFinalTranslationHistory = [:]
             snapshot.lastFinalOffsetTicks = nil
+            snapshot.lastAccurateFinalOffsetTicks = nil
             snapshot.projectionOverrideText = ""
             snapshot.suppressesWelcomeText = true
         }
@@ -155,9 +175,19 @@ final class SpeechCaptionPreviewState: ObservableObject {
     private func computedProjectionCaptionText(
         for language: SpeechOutputLanguage?,
         inputLanguage: InputLanguage,
+        source: CaptionQualityMode,
         appendsText: Bool,
         appendLineLimit: Int
     ) -> String {
+        if source == .accurate {
+            return computedAccurateProjectionCaptionText(
+                for: language,
+                inputLanguage: inputLanguage,
+                appendsText: appendsText,
+                appendLineLimit: appendLineLimit
+            )
+        }
+
         guard appendsText else {
             guard let language else {
                 return displayTranscript(for: inputLanguage)
@@ -180,6 +210,60 @@ final class SpeechCaptionPreviewState: ObservableObject {
 
         let lines = snapshot.finalTranslationHistory[language.id, default: []]
         return recentProjectionText(from: lines, previewText: language.previewText, lineLimit: appendLineLimit)
+    }
+
+    private func computedAccurateProjectionCaptionText(
+        for language: SpeechOutputLanguage?,
+        inputLanguage: InputLanguage,
+        appendsText: Bool,
+        appendLineLimit: Int
+    ) -> String {
+        guard appendsText else {
+            guard let language else {
+                return accurateFinalTranscriptText(for: inputLanguage)
+            }
+
+            return accurateFinalCaptionText(for: language, inputLanguage: inputLanguage)
+        }
+
+        guard let language else {
+            return recentProjectionText(
+                from: snapshot.accurateFinalTranscriptHistory,
+                previewText: inputLanguage.previewText,
+                lineLimit: appendLineLimit
+            )
+        }
+
+        if language.id == inputLanguage.matchingOutputLanguageID {
+            return recentProjectionText(
+                from: snapshot.accurateFinalTranscriptHistory,
+                previewText: inputLanguage.previewText,
+                lineLimit: appendLineLimit
+            )
+        }
+
+        let lines = snapshot.accurateFinalTranslationHistory[language.id, default: []]
+        return recentProjectionText(from: lines, previewText: language.previewText, lineLimit: appendLineLimit)
+    }
+
+    private func accurateFinalTranscriptText(for inputLanguage: InputLanguage) -> String {
+        if !snapshot.accurateFinalTranscript.isEmpty {
+            return snapshot.accurateFinalTranscript
+        }
+
+        return shouldShowWelcomeText ? inputLanguage.previewText : ""
+    }
+
+    private func accurateFinalCaptionText(for language: SpeechOutputLanguage, inputLanguage: InputLanguage) -> String {
+        if language.id == inputLanguage.matchingOutputLanguageID {
+            return accurateFinalTranscriptText(for: inputLanguage)
+        }
+
+        if let text = snapshot.accurateFinalTranslations[language.id], !text.isEmpty {
+            return text
+        }
+
+        return shouldShowWelcomeText ? language.previewText : ""
     }
 
     func setListening() {
@@ -253,6 +337,40 @@ final class SpeechCaptionPreviewState: ObservableObject {
         }
     }
 
+    func setAccurateFinalCaption(_ text: String, translations: [String: String], offsetTicks: UInt64) {
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            return
+        }
+
+        updateSnapshot { snapshot in
+            if let lastAccurateFinalOffsetTicks = snapshot.lastAccurateFinalOffsetTicks,
+               offsetTicks <= lastAccurateFinalOffsetTicks {
+                return
+            }
+
+            snapshot.accurateFinalTranscript = normalizedText
+            Self.mergeNonEmptyTranslations(translations, into: &snapshot.accurateFinalTranslations)
+            snapshot.accurateFinalTranscriptHistory.append(normalizedText)
+            Self.trimRetainedHistory(&snapshot.accurateFinalTranscriptHistory, limit: Self.retainedHistoryLimit())
+            snapshot.lastAccurateFinalOffsetTicks = offsetTicks
+            snapshot.projectionOverrideText = nil
+            snapshot.suppressesWelcomeText = false
+
+            translations.forEach { languageID, translation in
+                guard !translation.isEmpty else {
+                    return
+                }
+
+                snapshot.accurateFinalTranslationHistory[languageID, default: []].append(translation)
+                Self.trimRetainedHistory(
+                    &snapshot.accurateFinalTranslationHistory[languageID, default: []],
+                    limit: Self.retainedHistoryLimit()
+                )
+            }
+        }
+    }
+
     func setFailure(_ message: String) {
         updateSnapshot { snapshot in
             snapshot.state = .failed(message)
@@ -268,7 +386,12 @@ final class SpeechCaptionPreviewState: ObservableObject {
             snapshot.finalTranslations = [:]
             snapshot.finalTranscriptHistory = []
             snapshot.finalTranslationHistory = [:]
+            snapshot.accurateFinalTranscript = ""
+            snapshot.accurateFinalTranslations = [:]
+            snapshot.accurateFinalTranscriptHistory = []
+            snapshot.accurateFinalTranslationHistory = [:]
             snapshot.lastFinalOffsetTicks = nil
+            snapshot.lastAccurateFinalOffsetTicks = nil
             snapshot.projectionOverrideText = nil
             snapshot.suppressesWelcomeText = false
         }

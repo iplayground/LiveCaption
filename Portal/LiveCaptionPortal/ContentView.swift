@@ -541,6 +541,11 @@ struct ContentView: View {
                     ]
                 )
 
+                speechRecognitionController.captionPreviewState.setAccurateFinalCaption(
+                    textResult.sourceText,
+                    translations: textResult.translations,
+                    offsetTicks: result.offsetTicks
+                )
                 appendCaptionToSubtitleExportSession(event, mode: .accurate)
                 publishCaptionEventToRelay(event, mode: .accurate)
             }
