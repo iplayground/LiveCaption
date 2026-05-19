@@ -37,7 +37,7 @@ struct ContentView: View {
     @State private var selectedLogLevel = LogLevel.all
     @State private var logEntries: [LogEntry] = []
     @StateObject private var pubSubCaptionReceiver = PubSubCaptionReceiver()
-    @State private var accurateCaptionService = AzureOpenAIRealtimeTranslationService()
+    @State private var accurateTranslationService = AzureOpenAIRealtimeTranslationService()
     @State private var accurateTranscriptionService = AzureOpenAIRealtimeTranscriptionService()
     @State private var sleepPreventionController = SleepPreventionController()
     @State private var projectionCaptureWindowPresenter = ProjectionCaptureWindowPresenter()
@@ -426,9 +426,8 @@ struct ContentView: View {
     }
 
     private func configureAudioCallbacks() {
-        audioInputController.onAudioPCM16Chunk = { [accurateCaptionService, accurateTranscriptionService] chunk in
+        audioInputController.onAudioPCM16Chunk = { [accurateTranscriptionService] chunk in
             Task {
-                await accurateCaptionService.appendPCM16Audio(chunk)
                 await accurateTranscriptionService.appendPCM16Audio(chunk)
             }
         }
@@ -483,7 +482,7 @@ struct ContentView: View {
             handleCaptionEvent(event)
         }
 
-        Task { [accurateTranscriptionService] in
+        Task { [accurateTranscriptionService, accurateTranslationService] in
             await accurateTranscriptionService.setOnTranscription { result in
                 Task { @MainActor in
                     handleOpenAITranscriptionResult(result)
@@ -492,6 +491,11 @@ struct ContentView: View {
             await accurateTranscriptionService.setOnDiagnostic { diagnostic in
                 Task { @MainActor in
                     appendOpenAITranscriptionDiagnostic(diagnostic)
+                }
+            }
+            await accurateTranslationService.setOnDiagnostic { diagnostic in
+                Task { @MainActor in
+                    appendOpenAITranslationDiagnostic(diagnostic)
                 }
             }
         }
@@ -506,12 +510,17 @@ struct ContentView: View {
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
         appendCaptionToSubtitleExportSession(event, mode: .fast)
         publishCaptionEventToRelay(event, mode: .fast)
+
+        Task { [accurateTranscriptionService] in
+            await accurateTranscriptionService.transcribeAudio(for: event)
+        }
     }
 
     private func handleOpenAITranscriptionResult(_ result: AzureOpenAIRealtimeTranscriptionResult) {
         Task {
-            let translations = await openAITranslationsForCurrentTranscription()
-            let text = normalizedOpenAITranscriptionText(result.text)
+            guard let textResult = await openAITextResult(for: result.text) else {
+                return
+            }
 
             await MainActor.run {
                 guard isCaptionSessionActive else {
@@ -519,15 +528,15 @@ struct ContentView: View {
                 }
 
                 let event = RecognizedCaptionEvent(
-                    text: text,
-                    translations: translations,
+                    text: textResult.sourceText,
+                    translations: textResult.translations,
                     offsetTicks: result.offsetTicks,
                     durationTicks: result.durationTicks,
                     captionModes: [
                         .accurate: CaptionModeResult(
                             providerID: CaptionQualityMode.accurate.providerID,
-                            text: text,
-                            translations: translations
+                            text: textResult.sourceText,
+                            translations: textResult.translations
                         )
                     ]
                 )
@@ -542,6 +551,14 @@ struct ContentView: View {
         appendLog(
             level: diagnostic.level.logLevel,
             title: L10n.text("log.azureOpenAI.transcriptionDiagnostic"),
+            detail: diagnostic.detail
+        )
+    }
+
+    private func appendOpenAITranslationDiagnostic(_ diagnostic: AzureOpenAIRealtimeTranslationDiagnostic) {
+        appendLog(
+            level: diagnostic.level.logLevel,
+            title: L10n.text("log.azureOpenAI.translationDiagnostic"),
             detail: diagnostic.detail
         )
     }
@@ -579,7 +596,7 @@ struct ContentView: View {
         let transcriptionConfiguration = speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(inputLanguage: inputLanguage)
 
         do {
-            try await accurateCaptionService.start(configuration: translationConfiguration)
+            try await accurateTranslationService.start(configuration: translationConfiguration)
             try await accurateTranscriptionService.start(configuration: transcriptionConfiguration)
             appendLog(
                 level: .info,
@@ -588,7 +605,7 @@ struct ContentView: View {
             )
             return true
         } catch {
-            await accurateCaptionService.stop()
+            await accurateTranslationService.stop()
             await accurateTranscriptionService.stop()
             let detail = (error as? AzureOpenAIRealtimeTranslationError)?.diagnosticDescription
                 ?? error.localizedDescription
@@ -604,45 +621,35 @@ struct ContentView: View {
     }
 
     private func stopAccurateCaptionSession() {
-        Task { [accurateCaptionService, accurateTranscriptionService] in
-            await accurateCaptionService.stop()
+        Task { [accurateTranslationService, accurateTranscriptionService] in
+            await accurateTranslationService.stop()
             await accurateTranscriptionService.stop()
         }
     }
 
-    private func openAITranslationsForCurrentTranscription() async -> [String: String] {
+    private func openAITextResult(for text: String) async -> AzureOpenAIRealtimeTranslationResult? {
         guard speechSettings.isAccurateCaptionEnabled else {
-            return [:]
+            return nil
         }
 
-        let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
-        let selectedLanguageIDs = Set(speechSettings.selectedOutputLanguages.map(\.id))
-        let requiredLanguageIDs = SpeechSettings.requiredOutputLanguageIDs
-            .intersection(selectedLanguageIDs)
-            .filter { $0 != inputLanguageOutputID }
-
-        for attempt in 0..<5 {
-            if let translations = await accurateCaptionService.takeTranslations(requiredLanguageIDs: requiredLanguageIDs) {
-                return translations
-            }
-
-            guard attempt < 4 else {
-                break
-            }
-
-            try? await Task.sleep(for: .milliseconds(200))
-        }
-
-        return [:]
+        return await accurateTranslationService.normalizeAndTranslate(
+            draftText: text,
+            inputLanguage: inputLanguage,
+            phraseHints: speechSettings.phraseHints(for: inputLanguage),
+            targetLanguageIDs: openAITranslationTargetLanguageIDs()
+        )
     }
 
-    private func normalizedOpenAITranscriptionText(_ text: String) -> String {
-        switch inputLanguage {
-        case .mandarin:
-            text.applyingTaiwanTraditionalChineseNormalization()
-        case .english:
-            text
-        }
+    private func openAITranslationTargetLanguageIDs() -> Set<String> {
+        let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
+        return Set(speechSettings.selectedOutputLanguages.map(\.id))
+            .filter { $0 != inputLanguageOutputID }
+    }
+
+    private func missingOpenAITranslationLanguageIDs(in translations: [String: String]) -> [String] {
+        openAITranslationTargetLanguageIDs()
+            .filter { translations[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false }
+            .sorted()
     }
 
     private func appendCaptionToSubtitleExportSession(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) {
@@ -659,6 +666,24 @@ struct ContentView: View {
               relayConnectionStatus == .connected,
               let relayCaptionSessionID else {
             return
+        }
+
+        if mode == .accurate {
+            let translations = event.captionModes[mode]?.translations ?? [:]
+            let missingLanguageIDs = missingOpenAITranslationLanguageIDs(in: translations)
+            guard missingLanguageIDs.isEmpty else {
+                appendOpenAITranslationDiagnostic(
+                    AzureOpenAIRealtimeTranslationDiagnostic(
+                        level: .warning,
+                        detail: [
+                            "phase=relaySkipped",
+                            "reason=missingTranslations",
+                            "missingLanguages=\(missingLanguageIDs.joined(separator: ","))",
+                        ].joined(separator: "; ")
+                    )
+                )
+                return
+            }
         }
 
         guard let relayInput = RelayCaptionPublishInput(
@@ -889,6 +914,17 @@ private extension AzureOpenAIRealtimeTranscriptionDiagnostic.Level {
         switch self {
         case .info:
             .info
+        case .warning:
+            .warning
+        case .error:
+            .error
+        }
+    }
+}
+
+private extension AzureOpenAIRealtimeTranslationDiagnostic.Level {
+    var logLevel: LogLevel {
+        switch self {
         case .warning:
             .warning
         case .error:

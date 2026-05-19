@@ -100,24 +100,26 @@ az deployment group create \
 ```
 
 部署前需確認 `prod.bicepparam` 中的 Azure OpenAI 參數符合目標 region 的 model availability
-與 quota。精準 final 字幕目標使用 `gpt-realtime-whisper` 產生原始語言字幕，並使用
-`gpt-realtime-translate` 產生其他輸出語言字幕；若模型只在特定 region 可用，Azure OpenAI
-resource 需部署在同時支援這兩個模型的 region。
+與 quota。Portal 精準 final 字幕流程只依 deployment name 呼叫 Azure OpenAI：transcription
+deployment 產生原始語言 draft，text model deployment 比對 OpenAI transcription 與 Azure Speech
+final 候選文字，產生校正後原始語言字幕與其他輸出語言字幕。目前範例參數的預設模型為
+`gpt-4o-mini-transcribe` 與 `gpt-5.4-mini`；若模型只在特定 region 可用，Azure OpenAI resource
+需部署在同時支援這兩個模型的 region。
 
 | 參數 | 預設值 | 說明 |
 | --- | --- | --- |
-| `azureOpenAILocation` | `southindia` | 目前用於 realtime transcription / translation 的 Azure OpenAI region。 |
+| `azureOpenAILocation` | `southindia` | 目前用於 accurate transcription / text model 校正與翻譯的 Azure OpenAI region。 |
 | `azureOpenAIDisableLocalAuth` | `false` | 是否停用 Azure OpenAI local key authentication。Portal 目前直接使用 Azure OpenAI API key，因此正式活動設定需維持 `false`。 |
-| `azureOpenAITranscriptionDeploymentName` | `realtime-whisper` | Portal 精準模式原始語言字幕使用的 Azure OpenAI realtime transcription deployment name。 |
-| `azureOpenAITranscriptionModelName` | `gpt-realtime-whisper` | 精準 final 原始語言字幕目標模型。 |
-| `azureOpenAITranscriptionModelVersion` | `2026-05-06` | 目前 South India 已驗證可部署的 transcription model version。 |
-| `azureOpenAITranslationDeploymentName` | `realtime-translate` | Portal 精準模式翻譯字幕使用的 Azure OpenAI realtime translation deployment name。 |
-| `azureOpenAITranslationModelName` | `gpt-realtime-translate` | 精準 final 翻譯字幕目標模型。 |
-| `azureOpenAITranslationModelVersion` | `2026-05-06` | 目前 South India 已驗證可部署的 translation model version。 |
+| `azureOpenAITranscriptionDeploymentName` | `accurate-transcribe` | Portal 精準模式原始語言 draft 使用的 Azure OpenAI transcription deployment name。 |
+| `azureOpenAITranscriptionModelName` | `gpt-4o-mini-transcribe` | 精準模式原始語言 draft 目標模型。 |
+| `azureOpenAITranscriptionModelVersion` | `2025-12-15` | 目前 South India 已驗證可部署的 transcription model version。 |
+| `azureOpenAITranslationDeploymentName` | `accurate-translate` | Portal 精準模式校正原文與翻譯字幕使用的 Azure OpenAI text model deployment name。 |
+| `azureOpenAITranslationModelName` | `gpt-5.4-mini` | 精準 final 校正原文與翻譯字幕目標模型。 |
+| `azureOpenAITranslationModelVersion` | `2026-03-17` | 目前 South India 已驗證可部署的 text model version。 |
 | `azureOpenAITranscriptionDeploymentSkuName` / `azureOpenAITranslationDeploymentSkuName` | `GlobalStandard` | 目前 South India 已驗證可部署的 deployment SKU。 |
 
 Azure OpenAI resource 與 deployment 由 Bicep 管理。Portal 目前使用 Azure OpenAI API key
-連線 realtime transcription / translation，因此 `azureOpenAIDisableLocalAuth` 必須為
+連線 transcription / text model，因此 `azureOpenAIDisableLocalAuth` 必須為
 `false`。Azure OpenAI endpoint 與 deployment name 可由 Bicep output 取得；API key
 必須由操作端在 Azure Portal 或 Azure CLI 取得後輸入 Portal，不得注入 Relay Function App
 app settings、Bicep output、GitHub Actions secrets 或文件範例，也不授權 Relay runtime
@@ -204,7 +206,7 @@ Flex Consumption Function App 的 App Service Managed Certificate 需使用 `Mic
 - 不得提交 `local.settings.json`、`prod.bicepparam` 或任何真實機密。
 - 不得提交 Azure Storage connection string、Web PubSub connection string、SAS token、Speech key 或 Azure OpenAI API key 真值。
 - Relay log 不得包含完整逐字稿、翻譯文字、Speech key、HMAC 簽章、連線字串、Web PubSub token 或可識別個人的資料。
-- Relay 不處理 Azure OpenAI 音訊串流、prompt、response 或 realtime session secret。
+- Relay 不處理 Azure OpenAI 音訊串流、prompt、response 或 session secret。
 - CI/CD、部署 logs 與 Automation runbook output 不得包含完整 environment、完整 HTTP headers、完整 request/response body、viewer URL、access code 或可用來交換敏感資料的參數值。
 - `VIEWER_ACCESS_CODE_REQUIRED=false` 是公開活動模式規格，會讓外部觀眾端取得短效 viewer URL；仍不得授予發布字幕權限，且不得輸出或保存完整 viewer URL。
 - `roomName` 若需診斷，只記錄長度或遮蔽後的值。

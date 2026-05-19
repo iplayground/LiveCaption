@@ -44,6 +44,7 @@ az cognitiveservices account create \
   --location <speech-region> \
   --kind SpeechServices \
   --sku F0 \
+  --tags app=LiveCaption component=Speech \
   --yes
 ```
 
@@ -53,11 +54,11 @@ az cognitiveservices account create \
 az cognitiveservices account show \
   --name <speech-resource-name> \
   --resource-group <resource-group> \
-  --query "{name:name,kind:kind,location:location,sku:sku.name,endpoint:properties.endpoint,provisioningState:properties.provisioningState}" \
+  --query "{name:name,kind:kind,location:location,sku:sku.name,tags:tags,endpoint:properties.endpoint,provisioningState:properties.provisioningState}" \
   --output json
 ```
 
-預期 `provisioningState` 為 `Succeeded`。
+預期 `provisioningState` 為 `Succeeded`，且 tags 至少包含 `app=LiveCaption` 與 `component=Speech`。`environment` tag 已廢除，不應加到 Speech resource。
 
 ## 升級與降級
 
@@ -113,17 +114,17 @@ Portal 使用 `UserDefaults` 保存短小的 Speech 與 Azure OpenAI 設定：
 | `speech.region` | Azure Speech region，例如 `japaneast`。 |
 | `speech.key` | Azure Speech key，只保存在本機。 |
 | `speech.azureOpenAI.endpoint` | Azure OpenAI endpoint，例如 `https://<resource>.openai.azure.com`。 |
-| `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI realtime transcription deployment name，例如 `realtime-whisper`。目前 Portal 先保存此設定並納入完整性檢查，後續接上 transcription realtime session 後才會用於原始語言 final 字幕。 |
-| `speech.azureOpenAI.translationDeployment` | Azure OpenAI realtime translation deployment name，例如 `realtime-translate`，用於其他輸出語言 final 字幕。 |
+| `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI transcription deployment name，例如 `accurate-transcribe`，用於精準模式原始語言 draft。 |
+| `speech.azureOpenAI.translationDeployment` | Azure OpenAI text model deployment name，例如 `accurate-translate`，用於精準模式校正原文與其他輸出語言 final 字幕。 |
 | `speech.azureOpenAI.apiKey` | Azure OpenAI API key，只保存在本機。 |
-| `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI realtime 連線測試狀態。 |
+| `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI 連線測試狀態。 |
 | `speech.outputLanguageIDs` | 字幕輸出語言清單。 |
 | `speech.sentenceSilenceTimeoutMilliseconds` | Speech 句子分段靜音時間，範圍 100 ms 到 5000 ms，預設 800 ms。 |
 | `speech.authorizationStatus` | 上次 Speech 授權測試狀態。 |
 
 `speech.key` 與 `speech.azureOpenAI.apiKey` 是機密，不得提交、不得寫入文件，也不得輸出到事件紀錄。若後續改由後端提供短效 token，Portal 應重新設計設定項與憑證保存方式，不沿用目前的本機 key 流程。
 
-Azure OpenAI realtime 連線測試失敗時，Portal 設定視窗只顯示適合操作端閱讀的錯誤摘要；事件紀錄可保存 Foundation / WebSocket 可取得的診斷欄位，例如測試階段、translation deployment name、WebSocket close code、`NSError` domain / code、錯誤摘要，以及 Foundation 若有提供的 HTTP status。`URLSessionWebSocketTask` 在 handshake 失敗時不保證能取得 Azure response body，因此不得在 Portal 內推測或硬填不存在的伺服器細節。診斷事件不得包含 Azure OpenAI API key、完整 request / response body、HTTP headers、prompt、字幕文字、逐字稿或 realtime session secret。
+Azure OpenAI 連線測試失敗時，Portal 設定視窗只顯示適合操作端閱讀的錯誤摘要；事件紀錄可保存 Foundation / URLSession 可取得的診斷欄位，例如測試階段、deployment name、`NSError` domain / code、錯誤摘要，以及 Foundation 若有提供的 HTTP status。若底層 API 沒有提供 Azure response body，Portal 不得推測或硬填不存在的伺服器端細節。診斷事件不得包含 Azure OpenAI API key、完整 request / response body、HTTP headers、prompt、字幕文字、逐字稿或 session secret。
 
 辨識詞彙提示不放在 `UserDefaults`。Portal 啟動時會從 Application Support 讀取：
 

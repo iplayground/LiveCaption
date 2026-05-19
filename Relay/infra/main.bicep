@@ -48,12 +48,12 @@ param webPubSubGroupName string = 'caption-live'
 @description('Require the Portal-provided viewer access code when negotiating a viewer Web PubSub URL.')
 param viewerAccessCodeRequired bool = true
 
-@description('Globally unique Azure OpenAI resource name used for Portal accurate realtime captions.')
+@description('Globally unique Azure OpenAI resource name used for Portal accurate captions.')
 @minLength(2)
 @maxLength(64)
 param azureOpenAIName string
 
-@description('Azure region for the Azure OpenAI realtime caption resource. This can differ from the Relay Function App region when the target model is region-limited.')
+@description('Azure region for the Azure OpenAI accurate caption resource. This can differ from the Relay Function App region when the target model is region-limited.')
 param azureOpenAILocation string = location
 
 @description('Azure OpenAI custom subdomain name. Required for Microsoft Entra ID authentication.')
@@ -64,23 +64,23 @@ param azureOpenAICustomSubdomainName string = azureOpenAIName
 @description('Disable Azure OpenAI local key authentication. Keep false while Portal authenticates directly with an Azure OpenAI API key.')
 param azureOpenAIDisableLocalAuth bool = false
 
-@description('Azure OpenAI realtime translation deployment name used by Portal accurate captions.')
-param azureOpenAITranslationDeploymentName string = 'realtime-translate'
+@description('Azure OpenAI text model deployment name used by Portal accurate caption correction and translation.')
+param azureOpenAITranslationDeploymentName string = 'accurate-translate'
 
-@description('Azure OpenAI realtime translation base model name for accurate captions.')
-param azureOpenAITranslationModelName string = 'gpt-realtime-translate'
+@description('Azure OpenAI text model base model name for accurate caption correction and translation.')
+param azureOpenAITranslationModelName string = 'gpt-5.4-mini'
 
-@description('Azure OpenAI realtime translation base model version. Confirm region availability before production deployment.')
-param azureOpenAITranslationModelVersion string = '2026-05-06'
+@description('Azure OpenAI text model base model version. Confirm region availability before production deployment.')
+param azureOpenAITranslationModelVersion string = '2026-03-17'
 
-@description('Azure OpenAI realtime transcription deployment name used by Portal source-language accurate captions.')
-param azureOpenAITranscriptionDeploymentName string = 'realtime-whisper'
+@description('Azure OpenAI transcription deployment name used by Portal source-language accurate captions.')
+param azureOpenAITranscriptionDeploymentName string = 'accurate-transcribe'
 
-@description('Azure OpenAI realtime transcription base model name for source-language accurate captions.')
-param azureOpenAITranscriptionModelName string = 'gpt-realtime-whisper'
+@description('Azure OpenAI transcription base model name for source-language accurate captions.')
+param azureOpenAITranscriptionModelName string = 'gpt-4o-mini-transcribe'
 
-@description('Azure OpenAI realtime transcription base model version. Confirm region availability before production deployment.')
-param azureOpenAITranscriptionModelVersion string = '2026-05-06'
+@description('Azure OpenAI transcription base model version. Confirm region availability before production deployment.')
+param azureOpenAITranscriptionModelVersion string = '2025-12-15'
 
 @description('Azure OpenAI deployment SKU name.')
 @allowed([
@@ -90,11 +90,11 @@ param azureOpenAITranscriptionModelVersion string = '2026-05-06'
 ])
 param azureOpenAITranslationDeploymentSkuName string = 'Standard'
 
-@description('Azure OpenAI realtime translation deployment capacity.')
+@description('Azure OpenAI text model deployment capacity.')
 @minValue(1)
-param azureOpenAITranslationDeploymentCapacity int = 1
+param azureOpenAITranslationDeploymentCapacity int = 50
 
-@description('Azure OpenAI realtime transcription deployment SKU name.')
+@description('Azure OpenAI transcription deployment SKU name.')
 @allowed([
   'Standard'
   'GlobalStandard'
@@ -102,9 +102,9 @@ param azureOpenAITranslationDeploymentCapacity int = 1
 ])
 param azureOpenAITranscriptionDeploymentSkuName string = azureOpenAITranslationDeploymentSkuName
 
-@description('Azure OpenAI realtime transcription deployment capacity.')
+@description('Azure OpenAI transcription deployment capacity.')
 @minValue(1)
-param azureOpenAITranscriptionDeploymentCapacity int = 1
+param azureOpenAITranscriptionDeploymentCapacity int = 10
 
 @description('Existing Azure Speech resource group name.')
 param speechResourceGroupName string = resourceGroup().name
@@ -318,6 +318,9 @@ resource azureOpenAITranslationDeployment 'Microsoft.CognitiveServices/accounts/
 resource azureOpenAITranscriptionDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
   parent: azureOpenAI
   name: azureOpenAITranscriptionDeploymentName
+  dependsOn: [
+    azureOpenAITranslationDeployment
+  ]
   sku: {
     name: azureOpenAITranscriptionDeploymentSkuName
     capacity: azureOpenAITranscriptionDeploymentCapacity

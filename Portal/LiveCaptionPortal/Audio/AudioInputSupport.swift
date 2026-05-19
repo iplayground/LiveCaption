@@ -160,43 +160,74 @@ enum RealtimeAudioPCMConverter {
             return nil
         }
 
-        var audioBufferList = AudioBufferList(
-            mNumberBuffers: 1,
-            mBuffers: AudioBuffer(mNumberChannels: 0, mDataByteSize: 0, mData: nil)
-        )
+        let description = streamDescription.pointee
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frameCount > 0 else {
+            return nil
+        }
+
+        var audioBufferListSize = 0
         var blockBuffer: CMBlockBuffer?
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        let sizeStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
             sampleBuffer,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: &audioBufferList,
-            bufferListSize: MemoryLayout<AudioBufferList>.size,
+            bufferListSizeNeededOut: &audioBufferListSize,
+            bufferListOut: nil,
+            bufferListSize: 0,
             blockBufferAllocator: nil,
             blockBufferMemoryAllocator: nil,
             flags: 0,
             blockBufferOut: &blockBuffer
         )
 
-        guard status == noErr,
-              let data = audioBufferList.mBuffers.mData,
-              audioBufferList.mBuffers.mDataByteSize > 0
-        else {
+        guard sizeStatus == noErr, audioBufferListSize > 0 else {
             return nil
         }
 
-        let description = streamDescription.pointee
-        let byteSize = Int(audioBufferList.mBuffers.mDataByteSize)
-        let bytesPerFrame = max(Int(description.mBytesPerFrame), 1)
-        let frameCount = max(byteSize / bytesPerFrame, 1)
-        let channelCount = max(Int(description.mChannelsPerFrame), 1)
+        let audioBufferListPointer = UnsafeMutableRawPointer.allocate(
+            byteCount: audioBufferListSize,
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer {
+            audioBufferListPointer.deallocate()
+        }
+
+        let audioBufferList = audioBufferListPointer.bindMemory(
+            to: AudioBufferList.self,
+            capacity: 1
+        )
+        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: audioBufferList,
+            bufferListSize: audioBufferListSize,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+
+        guard status == noErr else {
+            return nil
+        }
+
+        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
         let sampleRate = description.mSampleRate > 0 ? description.mSampleRate : 48_000.0
         let isFloat = description.mFormatFlags & kAudioFormatFlagIsFloat != 0
         let isSignedInteger = description.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0
 
         let monoSamples: [Float]
         if isFloat {
-            monoSamples = floatMonoSamples(data: data, byteSize: byteSize, channelCount: channelCount)
-        } else if isSignedInteger || description.mBitsPerChannel == 16 {
-            monoSamples = int16MonoSamples(data: data, byteSize: byteSize, channelCount: channelCount)
+            monoSamples = floatMonoSamples(
+                from: buffers,
+                description: description,
+                frameCount: frameCount
+            )
+        } else if isSignedInteger {
+            monoSamples = integerMonoSamples(
+                from: buffers,
+                description: description,
+                frameCount: frameCount
+            )
         } else {
             return nil
         }
@@ -205,43 +236,100 @@ enum RealtimeAudioPCMConverter {
             return nil
         }
 
-        return pcm16Data(from: resampled(monoSamples, sourceSampleRate: sampleRate), frameCount: frameCount)
+        return pcm16Data(from: resampled(monoSamples, sourceSampleRate: sampleRate))
     }
 
     private static func floatMonoSamples(
-        data: UnsafeMutableRawPointer,
-        byteSize: Int,
-        channelCount: Int
+        from buffers: UnsafeMutableAudioBufferListPointer,
+        description: AudioStreamBasicDescription,
+        frameCount: Int
     ) -> [Float] {
-        let sampleCount = byteSize / MemoryLayout<Float>.size
-        let samples = data.assumingMemoryBound(to: Float.self)
-        let frameCount = sampleCount / channelCount
-
-        return (0..<frameCount).map { frameIndex in
-            let baseIndex = frameIndex * channelCount
-            let channelSum = (0..<channelCount).reduce(Float(0)) { partialResult, channelIndex in
-                partialResult + samples[baseIndex + channelIndex]
+        switch description.mBitsPerChannel {
+        case 32:
+            return monoSamples(
+                from: buffers,
+                frameCount: frameCount,
+                bytesPerSample: MemoryLayout<Float>.size
+            ) { data, index in
+                data.assumingMemoryBound(to: Float.self)[index]
             }
-            return channelSum / Float(channelCount)
+        case 64:
+            return monoSamples(
+                from: buffers,
+                frameCount: frameCount,
+                bytesPerSample: MemoryLayout<Double>.size
+            ) { data, index in
+                Float(data.assumingMemoryBound(to: Double.self)[index])
+            }
+        default:
+            return []
         }
     }
 
-    private static func int16MonoSamples(
-        data: UnsafeMutableRawPointer,
-        byteSize: Int,
-        channelCount: Int
+    private static func integerMonoSamples(
+        from buffers: UnsafeMutableAudioBufferListPointer,
+        description: AudioStreamBasicDescription,
+        frameCount: Int
     ) -> [Float] {
-        let sampleCount = byteSize / MemoryLayout<Int16>.size
-        let samples = data.assumingMemoryBound(to: Int16.self)
-        let frameCount = sampleCount / channelCount
-
-        return (0..<frameCount).map { frameIndex in
-            let baseIndex = frameIndex * channelCount
-            let channelSum = (0..<channelCount).reduce(Float(0)) { partialResult, channelIndex in
-                partialResult + Float(samples[baseIndex + channelIndex]) / Float(Int16.max)
+        switch description.mBitsPerChannel {
+        case 16:
+            return monoSamples(
+                from: buffers,
+                frameCount: frameCount,
+                bytesPerSample: MemoryLayout<Int16>.size
+            ) { data, index in
+                Float(data.assumingMemoryBound(to: Int16.self)[index]) / Float(Int16.max)
             }
-            return channelSum / Float(channelCount)
+        case 32:
+            return monoSamples(
+                from: buffers,
+                frameCount: frameCount,
+                bytesPerSample: MemoryLayout<Int32>.size
+            ) { data, index in
+                Float(data.assumingMemoryBound(to: Int32.self)[index]) / Float(Int32.max)
+            }
+        default:
+            return []
         }
+    }
+
+    private static func monoSamples(
+        from buffers: UnsafeMutableAudioBufferListPointer,
+        frameCount: Int,
+        bytesPerSample: Int,
+        sampleValue: (UnsafeMutableRawPointer, Int) -> Float
+    ) -> [Float] {
+        var monoSamples: [Float] = []
+        monoSamples.reserveCapacity(frameCount)
+
+        for frameIndex in 0..<frameCount {
+            var channelSum: Float = 0
+            var channelCount = 0
+
+            for buffer in buffers {
+                guard let data = buffer.mData else {
+                    continue
+                }
+
+                let channelsInBuffer = max(Int(buffer.mNumberChannels), 1)
+                let sampleCount = Int(buffer.mDataByteSize) / bytesPerSample
+                let availableFrames = sampleCount / channelsInBuffer
+                guard frameIndex < availableFrames else {
+                    continue
+                }
+
+                for channelIndex in 0..<channelsInBuffer {
+                    channelSum += sampleValue(data, frameIndex * channelsInBuffer + channelIndex)
+                    channelCount += 1
+                }
+            }
+
+            if channelCount > 0 {
+                monoSamples.append(channelSum / Float(channelCount))
+            }
+        }
+
+        return monoSamples
     }
 
     private static func resampled(_ samples: [Float], sourceSampleRate: Double) -> [Float] {
@@ -259,10 +347,10 @@ enum RealtimeAudioPCMConverter {
         }
     }
 
-    private static func pcm16Data(from samples: [Float], frameCount: Int) -> Data {
-        var data = Data(capacity: max(samples.count, frameCount) * MemoryLayout<Int16>.size)
+    private static func pcm16Data(from samples: [Float]) -> Data {
+        var data = Data(capacity: samples.count * MemoryLayout<Int16>.size)
         for sample in samples {
-            var value = Int16(max(Float(Int16.min), min(Float(Int16.max), sample * Float(Int16.max))))
+            var value = Int16(max(Float(Int16.min), min(Float(Int16.max), sample * Float(Int16.max)))).littleEndian
             withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
         }
         return data

@@ -5,7 +5,7 @@ struct AzureOpenAIRealtimeTranscriptionConfiguration: Equatable, Sendable {
     let transcriptionDeploymentName: String
     let apiKey: String
     let inputLanguage: InputLanguage
-    let sentenceSilenceTimeoutMilliseconds: Int
+    let phraseHints: [String]
 
     nonisolated var isConfigured: Bool {
         !normalizedEndpointURLString.isEmpty
@@ -44,12 +44,14 @@ actor AzureOpenAIRealtimeTranscriptionService {
     var onDiagnostic: (@Sendable (AzureOpenAIRealtimeTranscriptionDiagnostic) -> Void)?
 
     private static let ticksPerMillisecond: UInt64 = 10_000
-    private static let minimumDurationMilliseconds: UInt64 = 500
-    private var session: URLSessionWebSocketTask?
-    private var receiveTask: Task<Void, Never>?
-    private var transcriptBuffer = ""
-    private var lastCompletedEndMilliseconds: UInt64 = 0
-    private var observedUnhandledEventTypes: Set<String> = []
+    private static let sampleRate = 24_000
+    private static let bytesPerSample = MemoryLayout<Int16>.size
+    private static let audioPaddingMilliseconds: UInt64 = 250
+    private static let apiVersion = "2025-04-01-preview"
+    private static let transcriptionModelName = "gpt-4o-mini-transcribe"
+    private var configuration: AzureOpenAIRealtimeTranscriptionConfiguration?
+    private var audioBuffer = Data()
+    private var bufferedAudioMilliseconds: UInt64 = 0
     private var isStarted = false
 
     func setOnTranscription(_ handler: (@Sendable (AzureOpenAIRealtimeTranscriptionResult) -> Void)?) {
@@ -67,42 +69,18 @@ actor AzureOpenAIRealtimeTranscriptionService {
             throw AzureOpenAIRealtimeTranslationError.incompleteConfiguration
         }
 
-        let requestURL = try Self.requestURL(for: configuration)
-        var request = URLRequest(url: requestURL)
-        request.setValue(configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "api-key")
-        request.setValue("LiveCaptionPortal", forHTTPHeaderField: "OpenAI-Safety-Identifier")
-
-        let task = URLSession.shared.webSocketTask(with: request)
-        session = task
-        task.resume()
-
-        do {
-            try await sendSessionUpdate(to: task, configuration: configuration)
-        } catch {
-            await stop()
-            throw Self.connectionFailedError(
-                error,
-                task: task,
-                phase: "session.update transcription",
-                deploymentName: configuration.transcriptionDeploymentName
-            )
-        }
-
-        receiveTask = Task { [weak self] in
-            await self?.receiveMessages(task: task)
-        }
+        _ = try Self.requestURL(for: configuration)
+        self.configuration = configuration
+        audioBuffer.removeAll(keepingCapacity: true)
+        bufferedAudioMilliseconds = 0
         isStarted = true
     }
 
     func stop() async {
         isStarted = false
-        receiveTask?.cancel()
-        receiveTask = nil
-        session?.cancel(with: .goingAway, reason: nil)
-        session = nil
-        transcriptBuffer = ""
-        lastCompletedEndMilliseconds = 0
-        observedUnhandledEventTypes.removeAll()
+        configuration = nil
+        audioBuffer.removeAll(keepingCapacity: false)
+        bufferedAudioMilliseconds = 0
     }
 
     func appendPCM16Audio(_ audio: Data) async {
@@ -110,154 +88,142 @@ actor AzureOpenAIRealtimeTranscriptionService {
             return
         }
 
-        let payload: [String: Any] = [
-            "type": "input_audio_buffer.append",
-            "audio": audio.base64EncodedString(),
-        ]
+        audioBuffer.append(audio)
+        bufferedAudioMilliseconds += Self.audioMilliseconds(forPCM16ByteCount: audio.count)
+    }
 
-        guard let message = Self.jsonString(from: payload) else {
+    func transcribeAudio(for event: RecognizedCaptionEvent) async {
+        guard isStarted, let configuration else {
             return
         }
 
-        try? await session?.send(.string(message))
-    }
+        let segmentStartMilliseconds = event.offsetTicks / Self.ticksPerMillisecond
+        let segmentDurationMilliseconds = max(event.durationTicks / Self.ticksPerMillisecond, 1)
+        let paddedStartMilliseconds = segmentStartMilliseconds > Self.audioPaddingMilliseconds
+            ? segmentStartMilliseconds - Self.audioPaddingMilliseconds
+            : 0
+        let paddedEndMilliseconds = min(
+            bufferedAudioMilliseconds,
+            segmentStartMilliseconds + segmentDurationMilliseconds + Self.audioPaddingMilliseconds
+        )
 
-    private func sendSessionUpdate(
-        to task: URLSessionWebSocketTask,
-        configuration: AzureOpenAIRealtimeTranscriptionConfiguration
-    ) async throws {
-        var transcription: [String: Any] = [
-            "model": configuration.transcriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines),
-            "language": configuration.inputLanguage.azureOpenAIRealtimeLanguageCode,
-        ]
-        if let prompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
-            transcription["prompt"] = prompt
-        }
-
-        let payload: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "type": "transcription",
-                "audio": [
-                    "input": [
-                        "format": [
-                            "type": "audio/pcm",
-                            "rate": 24_000,
-                        ],
-                        "transcription": transcription,
-                        "turn_detection": [
-                            "type": "server_vad",
-                            "threshold": 0.5,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": configuration.sentenceSilenceTimeoutMilliseconds,
-                        ],
-                    ],
-                ],
-            ],
-        ]
-
-        guard let message = Self.jsonString(from: payload) else {
+        guard paddedEndMilliseconds > paddedStartMilliseconds else {
+            emitDiagnostic(
+                level: .warning,
+                detail: "phase=transcriptionSkipped; reason=missingAudio; audioStartMs=\(segmentStartMilliseconds); audioDurationMs=\(segmentDurationMilliseconds); bufferedAudioMs=\(bufferedAudioMilliseconds)"
+            )
             return
         }
 
-        try await task.send(.string(message))
-    }
+        let audio = audioSlice(
+            startMilliseconds: paddedStartMilliseconds,
+            endMilliseconds: paddedEndMilliseconds
+        )
+        guard !audio.isEmpty else {
+            emitDiagnostic(
+                level: .warning,
+                detail: "phase=transcriptionSkipped; reason=emptyAudioSlice; audioStartMs=\(segmentStartMilliseconds); audioDurationMs=\(segmentDurationMilliseconds); bufferedAudioMs=\(bufferedAudioMilliseconds)"
+            )
+            return
+        }
 
-    private func receiveMessages(task: URLSessionWebSocketTask) async {
-        while !Task.isCancelled {
-            do {
-                let message = try await task.receive()
-                await handle(message: message)
-            } catch {
-                guard isStarted, !Task.isCancelled else {
-                    return
-                }
-                emitDiagnostic(level: .warning, detail: "phase=receive; error=\(error.localizedDescription)")
+        do {
+            let text = try await transcribe(
+                wavAudio: Self.wavData(fromPCM16Mono24k: audio),
+                configuration: configuration
+            )
+            let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            emitTranscriptDiagnostic(
+                text: normalizedText,
+                audioStartMilliseconds: segmentStartMilliseconds,
+                audioEndMilliseconds: segmentStartMilliseconds + segmentDurationMilliseconds
+            )
+
+            guard !normalizedText.isEmpty else {
                 return
             }
+
+            onTranscription?(
+                AzureOpenAIRealtimeTranscriptionResult(
+                    text: normalizedText,
+                    offsetTicks: event.offsetTicks,
+                    durationTicks: event.durationTicks
+                )
+            )
+        } catch {
+            emitDiagnostic(level: .error, detail: Self.errorDetail(error, phase: "transcriptionRequest"))
         }
     }
 
-    private func handle(message: URLSessionWebSocketTask.Message) async {
-        let data: Data?
-        switch message {
-        case .string(let text):
-            data = Data(text.utf8)
-        case .data(let messageData):
-            data = messageData
-        @unknown default:
-            data = nil
+    private func audioSlice(startMilliseconds: UInt64, endMilliseconds: UInt64) -> Data {
+        let startByte = Self.byteOffset(forAudioMilliseconds: startMilliseconds)
+        let endByte = min(Self.byteOffset(forAudioMilliseconds: endMilliseconds), audioBuffer.count)
+        guard startByte < endByte else {
+            return Data()
         }
 
-        guard let data,
-              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = payload["type"] as? String
-        else {
-            emitDiagnostic(level: .warning, detail: "phase=message; error=Invalid Azure OpenAI transcription event.")
-            return
-        }
-
-        switch type {
-        case "error", "session.error":
-            emitDiagnostic(level: .error, detail: Self.serverErrorDetail(from: payload, phase: "serverEvent"))
-        case "session.output_transcript.delta", "conversation.item.input_audio_transcription.delta":
-            recordTranscriptDelta(payload)
-        case "session.output_transcript.done",
-             "session.output_transcript.completed",
-             "conversation.item.input_audio_transcription.completed":
-            publishTranscript(payload)
-        case "input_audio_buffer.speech_started",
-             "input_audio_buffer.speech_stopped",
-             "input_audio_buffer.committed",
-             "session.updated",
-             "session.created",
-             "transcription_session.updated",
-             "transcription_session.created",
-             "conversation.item.done",
-             "conversation.item.added":
-            break
-        default:
-            recordUnhandledEventType(type, payload: payload)
-        }
+        return audioBuffer.subdata(in: startByte..<endByte)
     }
 
-    private func recordTranscriptDelta(_ payload: [String: Any]) {
-        guard let delta = payload["delta"] as? String, !delta.isEmpty else {
-            return
-        }
+    private func transcribe(
+        wavAudio: Data,
+        configuration: AzureOpenAIRealtimeTranscriptionConfiguration
+    ) async throws -> String {
+        var request = URLRequest(url: try Self.requestURL(for: configuration))
+        let boundary = "LiveCaptionBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        request.httpMethod = "POST"
+        request.setValue(configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "api-key")
+        request.setValue("LiveCaptionPortal", forHTTPHeaderField: "OpenAI-Safety-Identifier")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        transcriptBuffer.append(delta)
-    }
-
-    private func publishTranscript(_ payload: [String: Any]) {
-        let text = Self.normalizedTranscriptionText(payload["transcript"] as? String, fallback: transcriptBuffer)
-        guard !text.isEmpty else {
-            transcriptBuffer = ""
-            return
-        }
-
-        let startMilliseconds = Self.unsignedMilliseconds(from: payload["audio_start_ms"]) ?? lastCompletedEndMilliseconds
-        let endMilliseconds = Self.unsignedMilliseconds(from: payload["audio_end_ms"])
-            ?? startMilliseconds + max(Self.minimumDurationMilliseconds, UInt64(text.count * 120))
-        let normalizedEndMilliseconds = max(endMilliseconds, startMilliseconds + Self.minimumDurationMilliseconds)
-        lastCompletedEndMilliseconds = normalizedEndMilliseconds
-
-        let result = AzureOpenAIRealtimeTranscriptionResult(
-            text: text,
-            offsetTicks: startMilliseconds * Self.ticksPerMillisecond,
-            durationTicks: (normalizedEndMilliseconds - startMilliseconds) * Self.ticksPerMillisecond
+        let body = Self.multipartBody(
+            boundary: boundary,
+            wavAudio: wavAudio,
+            languageCode: configuration.inputLanguage.azureOpenAITranscriptionLanguageCode,
+            prompt: Self.transcriptionPrompt(for: configuration)
         )
-        transcriptBuffer = ""
-        onTranscription?(result)
+        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AzureOpenAIAudioTranscriptionError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AzureOpenAIAudioTranscriptionError.httpError(
+                statusCode: httpResponse.statusCode,
+                detail: Self.responseErrorDetail(from: data)
+            )
+        }
+
+        guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let text = payload["text"] as? String
+        else {
+            throw AzureOpenAIAudioTranscriptionError.invalidResponse
+        }
+
+        return text
     }
 
-    private func recordUnhandledEventType(_ type: String, payload: [String: Any]) {
-        guard !observedUnhandledEventTypes.contains(type), observedUnhandledEventTypes.count < 20 else {
+    private func emitTranscriptDiagnostic(
+        text: String,
+        audioStartMilliseconds: UInt64,
+        audioEndMilliseconds: UInt64
+    ) {
+        let replacementCharacterCount = Self.replacementCharacterCount(in: text)
+        guard text.isEmpty || replacementCharacterCount > 0 else {
             return
         }
 
-        observedUnhandledEventTypes.insert(type)
-        emitDiagnostic(level: .info, detail: "event=unhandled; type=\(type); keys=\(Self.keysDescription(payload))")
+        let detailParts = [
+            "phase=transcriptionCompleted",
+            "endpoint=audioTranscriptions",
+            "issue=\(text.isEmpty ? "emptyTranscript" : "replacementCharacters")",
+            "transcriptChars=\(text.count)",
+            "transcriptReplacementCount=\(replacementCharacterCount)",
+            "audioStartMs=\(audioStartMilliseconds)",
+            "audioEndMs=\(audioEndMilliseconds)",
+        ]
+        emitDiagnostic(level: .warning, detail: detailParts.joined(separator: "; "))
     }
 
     private func emitDiagnostic(level: AzureOpenAIRealtimeTranscriptionDiagnostic.Level, detail: String) {
@@ -276,11 +242,10 @@ actor AzureOpenAIRealtimeTranscriptionService {
             throw AzureOpenAIRealtimeTranslationError.invalidEndpoint
         }
 
-        components.scheme = "wss"
-        components.path = "/openai/v1/realtime"
+        components.scheme = "https"
+        components.path = "/openai/deployments/\(deploymentName)/audio/transcriptions"
         components.queryItems = [
-            URLQueryItem(name: "deployment", value: deploymentName),
-            URLQueryItem(name: "intent", value: "transcription"),
+            URLQueryItem(name: "api-version", value: Self.apiVersion),
         ]
 
         guard let url = components.url else {
@@ -290,98 +255,165 @@ actor AzureOpenAIRealtimeTranscriptionService {
         return url
     }
 
-    private static func jsonString(from payload: [String: Any]) -> String? {
-        guard JSONSerialization.isValidJSONObject(payload),
-              let data = try? JSONSerialization.data(
-                withJSONObject: payload,
-                options: [.sortedKeys, .withoutEscapingSlashes]
-              )
+    private static func multipartBody(
+        boundary: String,
+        wavAudio: Data,
+        languageCode: String,
+        prompt: String
+    ) -> Data {
+        var body = Data()
+        appendFormField(name: "model", value: Self.transcriptionModelName, boundary: boundary, to: &body)
+        appendFormField(name: "language", value: languageCode, boundary: boundary, to: &body)
+        appendFormField(name: "prompt", value: prompt, boundary: boundary, to: &body)
+        appendFormField(name: "response_format", value: "json", boundary: boundary, to: &body)
+        appendFormField(name: "temperature", value: "0", boundary: boundary, to: &body)
+        appendFileField(
+            name: "file",
+            filename: "caption-segment.wav",
+            contentType: "audio/wav",
+            data: wavAudio,
+            boundary: boundary,
+            to: &body
+        )
+        body.append("--\(boundary)--\r\n")
+        return body
+    }
+
+    private static func appendFormField(name: String, value: String, boundary: String, to body: inout Data) {
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+        body.append("\(value)\r\n")
+    }
+
+    private static func appendFileField(
+        name: String,
+        filename: String,
+        contentType: String,
+        data: Data,
+        boundary: String,
+        to body: inout Data
+    ) {
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n")
+        body.append("Content-Type: \(contentType)\r\n\r\n")
+        body.append(data)
+        body.append("\r\n")
+    }
+
+    private static func wavData(fromPCM16Mono24k pcmAudio: Data) -> Data {
+        let sampleRate = UInt32(Self.sampleRate)
+        let channelCount: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let byteRate = sampleRate * UInt32(channelCount) * UInt32(bitsPerSample / 8)
+        let blockAlign = channelCount * (bitsPerSample / 8)
+        let dataSize = UInt32(pcmAudio.count)
+        let riffSize = UInt32(36) + dataSize
+
+        var wav = Data()
+        wav.append("RIFF")
+        wav.append(riffSize.littleEndianData)
+        wav.append("WAVE")
+        wav.append("fmt ")
+        wav.append(UInt32(16).littleEndianData)
+        wav.append(UInt16(1).littleEndianData)
+        wav.append(channelCount.littleEndianData)
+        wav.append(sampleRate.littleEndianData)
+        wav.append(byteRate.littleEndianData)
+        wav.append(blockAlign.littleEndianData)
+        wav.append(bitsPerSample.littleEndianData)
+        wav.append("data")
+        wav.append(dataSize.littleEndianData)
+        wav.append(pcmAudio)
+        return wav
+    }
+
+    private static func transcriptionPrompt(for configuration: AzureOpenAIRealtimeTranscriptionConfiguration) -> String {
+        var lines: [String] = []
+        if let languagePrompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
+            lines.append(languagePrompt)
+        }
+        lines.append("Never output the Unicode replacement character �. If speech is unclear, choose the most likely readable word instead.")
+
+        let phraseHints = configuration.phraseHints
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if !phraseHints.isEmpty {
+            lines.append("Use these likely vocabulary terms as canonical spellings when heard.")
+            lines.append("Do not translate, localize, or partially replace Latin brand names with CJK characters.")
+            lines.append("If the audio sounds like one of these terms, output the full term exactly as listed, preserving capitalization.")
+            lines.append("Likely vocabulary: \(phraseHints.joined(separator: ", ")).")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func responseErrorDetail(from data: Data) -> String {
+        guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = payload["error"] as? [String: Any]
         else {
-            return nil
+            return "missing"
         }
 
-        return String(data: data, encoding: .utf8)
+        let message = error["message"] as? String ?? "missing"
+        let type = error["type"] as? String ?? "missing"
+        let code = error["code"] as? String ?? "missing"
+        return "serverError=\(message); type=\(type); code=\(code)"
     }
 
-    private static func normalizedTranscriptionText(_ text: String?, fallback: String?) -> String {
-        let normalizedText = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !normalizedText.isEmpty {
-            return normalizedText
-        }
-
-        return fallback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
-    private static func unsignedMilliseconds(from value: Any?) -> UInt64? {
-        switch value {
-        case let value as UInt64:
-            value
-        case let value as Int where value >= 0:
-            UInt64(value)
-        case let value as Double where value >= 0:
-            UInt64(value.rounded())
-        case let value as String:
-            UInt64(value)
+    private static func errorDetail(_ error: Error, phase: String) -> String {
+        switch error {
+        case let error as AzureOpenAIAudioTranscriptionError:
+            "phase=\(phase); \(error.diagnosticDescription)"
         default:
-            nil
+            "phase=\(phase); error=\(error.localizedDescription)"
         }
     }
 
-    private static func keysDescription(_ payload: [String: Any]) -> String {
-        payload.keys.sorted().joined(separator: ",")
+    private static func replacementCharacterCount(in text: String) -> Int {
+        text.unicodeScalars.filter { $0.value == 0xFFFD }.count
     }
 
-    private static func serverErrorDetail(from payload: [String: Any], phase: String) -> String {
-        let errorPayload = payload["error"] as? [String: Any]
-        let type = errorPayload?["type"] as? String
-        let code = errorPayload?["code"] as? String
-        let message = errorPayload?["message"] as? String ?? "Azure OpenAI realtime server error."
-        let param = errorPayload?["param"] as? String
-
-        var details = [
-            "phase=\(phase)",
-            "serverError=\(message)",
-        ]
-        if let type, !type.isEmpty {
-            details.append("type=\(type)")
-        }
-        if let code, !code.isEmpty {
-            details.append("code=\(code)")
-        }
-        if let param, !param.isEmpty {
-            details.append("param=\(param)")
-        }
-
-        return details.joined(separator: "; ")
+    private static func audioMilliseconds(forPCM16ByteCount byteCount: Int) -> UInt64 {
+        let sampleCount = byteCount / Self.bytesPerSample
+        return UInt64((Double(sampleCount) / Double(Self.sampleRate) * 1_000).rounded())
     }
 
-    private static func connectionFailedError(
-        _ error: Error,
-        task: URLSessionWebSocketTask,
-        phase: String,
-        deploymentName: String
-    ) -> AzureOpenAIRealtimeTranslationError {
-        let summary = error.localizedDescription
-        let nsError = error as NSError
-        var details = [
-            "phase=\(phase)",
-            "deployment=\(deploymentName.trimmingCharacters(in: .whitespacesAndNewlines))",
-            "closeCode=\(task.closeCode.rawValue)",
-            "errorDomain=\(nsError.domain)",
-            "errorCode=\(nsError.code)",
-            "error=\(summary)",
-        ]
+    private static func byteOffset(forAudioMilliseconds milliseconds: UInt64) -> Int {
+        let sampleCount = Int((Double(milliseconds) / 1_000 * Double(Self.sampleRate)).rounded())
+        return sampleCount * Self.bytesPerSample
+    }
+}
 
-        if let response = nsError.userInfo["NSErrorFailingURLResponseKey"] as? HTTPURLResponse {
-            details.append("httpStatus=\(response.statusCode)")
+private enum AzureOpenAIAudioTranscriptionError: Error {
+    case httpError(statusCode: Int, detail: String)
+    case invalidResponse
+
+    var diagnosticDescription: String {
+        switch self {
+        case .httpError(let statusCode, let detail):
+            "httpStatus=\(statusCode); \(detail)"
+        case .invalidResponse:
+            "error=invalidResponse"
         }
+    }
+}
 
-        return .connectionFailed(summary: summary, detail: details.joined(separator: "; "))
+private extension Data {
+    mutating func append(_ string: String) {
+        append(Data(string.utf8))
+    }
+}
+
+private extension FixedWidthInteger {
+    var littleEndianData: Data {
+        var value = littleEndian
+        return withUnsafeBytes(of: &value) { Data($0) }
     }
 }
 
 private extension InputLanguage {
-    nonisolated var azureOpenAIRealtimeLanguageCode: String {
+    nonisolated var azureOpenAITranscriptionLanguageCode: String {
         switch self {
         case .mandarin:
             "zh"

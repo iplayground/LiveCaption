@@ -50,6 +50,7 @@ struct SubtitleExportSession {
         let duration = Self.timeInterval(fromTicks: event.durationTicks)
         let endTime = startTime + max(duration, Self.minimumCueDuration)
 
+        var cuesByLanguageID: [String: SubtitleCue] = [:]
         for language in outputLanguages {
             let text: String?
             if let languageText = captionMode.translations[language.id] {
@@ -66,11 +67,20 @@ struct SubtitleExportSession {
                 continue
             }
 
-            appendCue(
-                SubtitleCue(startTime: startTime, endTime: endTime, text: normalizedText),
-                mode: mode,
-                languageID: language.id
+            cuesByLanguageID[language.id] = SubtitleCue(
+                startTime: startTime,
+                endTime: endTime,
+                text: normalizedText
             )
+        }
+
+        if mode == .accurate {
+            appendAccurateCues(cuesByLanguageID)
+            return
+        }
+
+        for (languageID, cue) in cuesByLanguageID {
+            appendCue(cue, mode: mode, languageID: languageID)
         }
     }
 
@@ -131,17 +141,6 @@ struct SubtitleExportSession {
 
     private mutating func appendCue(_ cue: SubtitleCue, mode: CaptionQualityMode, languageID: String) {
         var cues = cuesByModeAndLanguageID[mode, default: [:]][languageID, default: []]
-        if mode == .accurate,
-           let lastCue = cues.last,
-           Self.shouldMergeAccurateCue(lastCue, with: cue) {
-            cues[cues.count - 1] = SubtitleCue(
-                startTime: lastCue.startTime,
-                endTime: max(lastCue.endTime, cue.endTime),
-                text: Self.mergedText(lastCue.text, cue.text)
-            )
-            cuesByModeAndLanguageID[mode, default: [:]][languageID] = cues
-            return
-        }
 
         if let lastCue = cues.last, lastCue.endTime > cue.startTime {
             cues[cues.count - 1] = SubtitleCue(
@@ -155,57 +154,9 @@ struct SubtitleExportSession {
         cuesByModeAndLanguageID[mode, default: [:]][languageID] = cues
     }
 
-    private static func shouldMergeAccurateCue(_ previousCue: SubtitleCue, with nextCue: SubtitleCue) -> Bool {
-        let maximumGap: TimeInterval = 0.35
-        guard nextCue.startTime - previousCue.endTime <= maximumGap else {
-            return false
-        }
-
-        return !endsWithSentenceBoundary(previousCue.text)
-    }
-
-    private static func endsWithSentenceBoundary(_ value: String) -> Bool {
-        guard let lastCharacter = value.trimmingCharacters(in: .whitespacesAndNewlines).last else {
-            return false
-        }
-
-        return ".。！？!?".contains(lastCharacter)
-    }
-
-    private static func mergedText(_ first: String, _ second: String) -> String {
-        let trimmedFirst = first.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedSecond = second.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmedFirst.isEmpty else {
-            return trimmedSecond
-        }
-
-        guard !trimmedSecond.isEmpty else {
-            return trimmedFirst
-        }
-
-        if let firstCharacter = trimmedSecond.first,
-           ",.。！？!?、，；;：:)）]」』".contains(firstCharacter) {
-            return trimmedFirst + trimmedSecond
-        }
-
-        if let lastCharacter = trimmedFirst.last,
-           "（([「『".contains(lastCharacter) {
-            return trimmedFirst + trimmedSecond
-        }
-
-        if containsCJKText(trimmedFirst) || containsCJKText(trimmedSecond) {
-            return trimmedFirst + trimmedSecond
-        }
-
-        return trimmedFirst + " " + trimmedSecond
-    }
-
-    private static func containsCJKText(_ value: String) -> Bool {
-        value.unicodeScalars.contains { scalar in
-            (0x3040...0x30FF).contains(scalar.value)
-                || (0x3400...0x9FFF).contains(scalar.value)
-                || (0xF900...0xFAFF).contains(scalar.value)
+    private mutating func appendAccurateCues(_ cuesByLanguageID: [String: SubtitleCue]) {
+        for (languageID, cue) in cuesByLanguageID {
+            appendCue(cue, mode: .accurate, languageID: languageID)
         }
     }
 

@@ -70,8 +70,8 @@ struct SpeechSettings: Equatable {
     var speechKey = ""
     var isAccurateCaptionEnabled = false
     var azureOpenAIEndpointURLString = ""
-    var azureOpenAITranscriptionDeploymentName = "realtime-whisper"
-    var azureOpenAITranslationDeploymentName = "realtime-translate"
+    var azureOpenAITranscriptionDeploymentName = "accurate-transcribe"
+    var azureOpenAITranslationDeploymentName = "accurate-translate"
     var azureOpenAIAPIKey = ""
     var phraseHintsByScope = defaultPhraseHintsByScope
     var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMilliseconds {
@@ -103,7 +103,6 @@ struct SpeechSettings: Equatable {
     ) -> AzureOpenAIRealtimeTranslationConfiguration {
         AzureOpenAIRealtimeTranslationConfiguration(
             endpointURLString: azureOpenAIEndpointURLString,
-            transcriptionDeploymentName: azureOpenAITranscriptionDeploymentName,
             translationDeploymentName: azureOpenAITranslationDeploymentName,
             apiKey: azureOpenAIAPIKey,
             targetLanguages: outputLanguages
@@ -118,7 +117,7 @@ struct SpeechSettings: Equatable {
             transcriptionDeploymentName: azureOpenAITranscriptionDeploymentName,
             apiKey: azureOpenAIAPIKey,
             inputLanguage: inputLanguage,
-            sentenceSilenceTimeoutMilliseconds: sentenceSilenceTimeoutMilliseconds
+            phraseHints: phraseHints(for: inputLanguage)
         )
     }
 
@@ -202,12 +201,18 @@ struct SpeechSettings: Equatable {
         settings.speechKey = userDefaults.string(forKey: UserDefaultsKey.speechKey.rawValue) ?? ""
         settings.isAccurateCaptionEnabled = userDefaults.bool(forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
         settings.azureOpenAIEndpointURLString = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue) ?? ""
-        settings.azureOpenAITranscriptionDeploymentName = userDefaults.string(
+        let storedTranscriptionDeploymentName = userDefaults.string(
             forKey: UserDefaultsKey.azureOpenAITranscriptionDeployment.rawValue
-        ) ?? "realtime-whisper"
-        settings.azureOpenAITranslationDeploymentName = userDefaults.string(
+        ) ?? "accurate-transcribe"
+        settings.azureOpenAITranscriptionDeploymentName = storedTranscriptionDeploymentName == "realtime-whisper"
+            ? "accurate-transcribe"
+            : storedTranscriptionDeploymentName
+        let storedTranslationDeploymentName = userDefaults.string(
             forKey: UserDefaultsKey.azureOpenAITranslationDeployment.rawValue
-        ) ?? userDefaults.string(forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue) ?? "realtime-translate"
+        ) ?? userDefaults.string(forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue) ?? "accurate-translate"
+        settings.azureOpenAITranslationDeploymentName = storedTranslationDeploymentName == "realtime-translate"
+            ? "accurate-translate"
+            : storedTranslationDeploymentName
         settings.azureOpenAIAPIKey = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue) ?? ""
         settings.phraseHintsByScope = loadPhraseHintsByScope()
 
