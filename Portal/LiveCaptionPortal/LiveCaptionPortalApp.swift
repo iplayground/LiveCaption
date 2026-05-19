@@ -20,6 +20,7 @@ struct LiveCaptionPortalApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
             }
+            PortalEnvironmentCommands()
         }
     }
 }
