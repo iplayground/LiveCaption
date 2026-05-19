@@ -57,7 +57,7 @@ enum AzureOpenAIRealtimeTranslationError: LocalizedError {
 actor AzureOpenAIRealtimeTranslationService {
     private static let apiVersion = "2025-04-01-preview"
     private static let maximumRequestAttempts = 5
-    private static let maximumPreviousSourceTextCount = 3
+    private static let maximumPreviousSourceTextCount = 5
     private var configuration: AzureOpenAIRealtimeTranslationConfiguration?
     private var queuedTranslationTask: Task<AzureOpenAIRealtimeTranslationResult?, Never>?
     private var recentSourceTexts: [String] = []
@@ -345,23 +345,17 @@ actor AzureOpenAIRealtimeTranslationService {
             : normalizedPhraseHints.joined(separator: ", ")
 
         return """
-        You receive speech-to-text candidate transcripts for one subtitle segment in \(inputLanguage.azureOpenAITextNormalizationName).
-        Candidate provider gpt-4o-mini-transcribe is the OpenAI audio transcription.
-        Candidate provider azure-speech is the Microsoft Speech SDK recognition result.
-        Compare the candidates before writing sourceText. Prefer wording supported by both candidates when they agree.
-        If gpt-4o-mini-transcribe is missing, empty, or clearly damaged, use azure-speech as the fallback candidate.
-        The user message may include previousSourceTexts, which are the most recent already-finalized OpenAI subtitles from the same live session.
-        Use previousSourceTexts only as local context for conservative ASR correction, such as homophones, near-sound words, segmentation, repeated terms, proper nouns, and technical terms.
-        Do not continue, summarize, rewrite, or add content from previousSourceTexts to the current subtitle.
-        First produce a corrected source-language subtitle as sourceText, then translate that corrected sourceText into the requested languages.
-        Correct only homophones, near-sound words, proper nouns, brand/product names, technical terms, capitalization, punctuation, and Traditional Chinese normalization.
-        Do not add content the speaker did not say.
-        Do not beautify wording.
-        Do not convert spoken language into formal written language.
-        Do not paraphrase, summarize, expand, censor, or add information that is not supported by the candidates.
-        Use the vocabulary hints as canonical spellings when the candidates appear to refer to them.
-        Do not translate, localize, or partially replace Latin brand names with CJK characters in sourceText.
-        If uncertain, preserve the most reliable candidate wording rather than guessing.
+        Produce one faithful source-language subtitle in \(inputLanguage.azureOpenAITextNormalizationName) as sourceText, then translate sourceText into the requested languages.
+        Choose sourceText from transcriptCandidates. Prefer the Azure OpenAI candidate when it is present and coherent.
+        Use the Azure Speech candidate only as secondary evidence. Ignore Azure Speech when it is clearly garbled, phonetically mistranscribed, or conflicts with stable previousSourceTexts.
+        Use Azure Speech as the fallback source only when the Azure OpenAI candidate is missing, empty, or clearly damaged.
+        Use previousSourceTexts and vocabulary hints only as conservative context for homophones, near-sound words, segmentation, proper nouns, brand/product names, technical terms, capitalization, punctuation, and Traditional Chinese normalization.
+        Preserve English words, technical terms, and Latin brand/product names in sourceText when they are supported by the candidates or previousSourceTexts.
+        Do not replace Latin-script English terms with phonetically similar non-Latin words.
+        If a candidate phrase is unnatural in the source language and a homophone or near-sound alternative is supported by context, use the natural source-language alternative.
+        If an English code-switch phrase is unnatural in the surrounding talk or technical context, and a near-sound English phrase is supported by context, use the contextual English phrase.
+        Do not add content the speaker did not say, copy from previousSourceTexts, beautify wording, formalize spoken language, paraphrase, summarize, expand, or censor.
+        If uncertain, keep the most reliable candidate wording.
         Return only a JSON object with this shape:
         {
           "sourceText": "corrected source-language subtitle",

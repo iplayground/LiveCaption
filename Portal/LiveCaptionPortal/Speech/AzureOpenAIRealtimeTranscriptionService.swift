@@ -30,8 +30,14 @@ struct AzureOpenAIRealtimeTranscriptionResult: Equatable, Sendable {
 
     var transcriptDrafts: [AccurateCaptionTranscriptDraft] {
         [
-            AccurateCaptionTranscriptDraft(providerID: "gpt-4o-mini-transcribe", text: openAIText),
-            AccurateCaptionTranscriptDraft(providerID: "azure-speech", text: speechText),
+            AccurateCaptionTranscriptDraft(
+                providerID: AccurateCaptionTranscriptDraft.azureOpenAIProviderID,
+                text: openAIText
+            ),
+            AccurateCaptionTranscriptDraft(
+                providerID: AccurateCaptionTranscriptDraft.azureSpeechProviderID,
+                text: speechText
+            ),
         ]
     }
 }
@@ -56,7 +62,6 @@ actor AzureOpenAIRealtimeTranscriptionService {
     private static let bytesPerSample = MemoryLayout<Int16>.size
     private static let audioPaddingMilliseconds: UInt64 = 250
     private static let apiVersion = "2025-04-01-preview"
-    private static let transcriptionModelName = "gpt-4o-mini-transcribe"
     private var configuration: AzureOpenAIRealtimeTranscriptionConfiguration?
     private var audioBuffer = Data()
     private var bufferedAudioMilliseconds: UInt64 = 0
@@ -203,6 +208,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
         let body = Self.multipartBody(
             boundary: boundary,
             wavAudio: wavAudio,
+            deploymentName: configuration.transcriptionDeploymentName,
             languageCode: configuration.inputLanguage.azureOpenAITranscriptionLanguageCode,
             prompt: Self.transcriptionPrompt(for: configuration)
         )
@@ -282,11 +288,12 @@ actor AzureOpenAIRealtimeTranscriptionService {
     private static func multipartBody(
         boundary: String,
         wavAudio: Data,
+        deploymentName: String,
         languageCode: String,
         prompt: String
     ) -> Data {
         var body = Data()
-        appendFormField(name: "model", value: Self.transcriptionModelName, boundary: boundary, to: &body)
+        appendFormField(name: "model", value: deploymentName.trimmingCharacters(in: .whitespacesAndNewlines), boundary: boundary, to: &body)
         appendFormField(name: "language", value: languageCode, boundary: boundary, to: &body)
         appendFormField(name: "prompt", value: prompt, boundary: boundary, to: &body)
         appendFormField(name: "response_format", value: "json", boundary: boundary, to: &body)
@@ -356,16 +363,14 @@ actor AzureOpenAIRealtimeTranscriptionService {
         if let languagePrompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
             lines.append(languagePrompt)
         }
-        lines.append("Never output the Unicode replacement character �. If speech is unclear, choose the most likely readable word instead.")
+        lines.append("Transcribe only the speech that was heard. Preserve English words, technical terms, and Latin brand/product names when the speaker code-switches. Do not add content, polish wording, summarize, or formalize spoken language.")
 
         let phraseHints = configuration.phraseHints
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
         if !phraseHints.isEmpty {
-            lines.append("Use these likely vocabulary terms as canonical spellings when heard.")
-            lines.append("Do not translate, localize, or partially replace Latin brand names with CJK characters.")
-            lines.append("If the audio sounds like one of these terms, output the full term exactly as listed, preserving capitalization.")
+            lines.append("Use likely vocabulary as canonical spelling only when the audio sounds like it; preserve Latin spelling and capitalization without translation or localization.")
             lines.append("Likely vocabulary: \(phraseHints.joined(separator: ", ")).")
         }
 
@@ -449,9 +454,9 @@ private extension InputLanguage {
     nonisolated var azureOpenAIRealtimePrompt: String? {
         switch self {
         case .mandarin:
-            "Transcribe Mandarin as Taiwan Traditional Chinese. Never output Simplified Chinese."
+            "Transcribe Mandarin in Taiwan Traditional Chinese. Do not output Simplified Chinese."
         case .english:
-            nil
+            "Transcribe English in English. If the English speaker briefly code-switches into Mandarin or Chinese, translate that Chinese speech into English for the transcript."
         }
     }
 }
