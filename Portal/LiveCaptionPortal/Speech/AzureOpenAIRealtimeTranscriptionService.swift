@@ -363,7 +363,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
         if let languagePrompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
             lines.append(languagePrompt)
         }
-        lines.append("Transcribe only the speech that was heard. Preserve English words, technical terms, and Latin brand/product names when the speaker code-switches. Do not add content, polish wording, summarize, or formalize spoken language.")
+        lines.append("Transcribe only the speech that was heard. Preserve the heard language form when the speaker code-switches. Do not add content, polish wording, summarize, or formalize spoken language.")
 
         let phraseHints = configuration.phraseHints
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -454,7 +454,7 @@ private extension InputLanguage {
     nonisolated var azureOpenAIRealtimePrompt: String? {
         switch self {
         case .mandarin:
-            "Transcribe Mandarin in Taiwan Traditional Chinese. Do not output Simplified Chinese."
+            "Transcribe Mandarin in Taiwan Traditional Chinese. Do not output Simplified Chinese. Mandarin speech may code-switch into English; preserve the heard language form, and do not convert code-switched speech into phonetically similar words in another language."
         case .english:
             "Transcribe English in English. If the English speaker briefly code-switches into Mandarin or Chinese, translate that Chinese speech into English for the transcript."
         }

@@ -349,11 +349,13 @@ actor AzureOpenAIRealtimeTranslationService {
         Choose sourceText from transcriptCandidates. Prefer the Azure OpenAI candidate when it is present and coherent.
         Use the Azure Speech candidate only as secondary evidence. Ignore Azure Speech when it is clearly garbled, phonetically mistranscribed, or conflicts with stable previousSourceTexts.
         Use Azure Speech as the fallback source only when the Azure OpenAI candidate is missing, empty, or clearly damaged.
-        Use previousSourceTexts and vocabulary hints only as conservative context for homophones, near-sound words, segmentation, proper nouns, brand/product names, technical terms, capitalization, punctuation, and Traditional Chinese normalization.
-        Preserve English words, technical terms, and Latin brand/product names in sourceText when they are supported by the candidates or previousSourceTexts.
-        Do not replace Latin-script English terms with phonetically similar non-Latin words.
+        Use previousSourceTexts and vocabulary hints only as conservative source-language context for homophones, near-sound words, segmentation, code-switching, topic continuity, spelling, capitalization, punctuation, and Traditional Chinese normalization.
+        Treat previousSourceTexts as source-language context, not translated evidence. Preserve the current talk topic across adjacent subtitles when resolving ambiguous candidates.
+        Preserve the heard language form in sourceText when it is supported by the candidates or previousSourceTexts.
+        Do not replace code-switched text with phonetically similar words in another language.
         If a candidate phrase is unnatural in the source language and a homophone or near-sound alternative is supported by context, use the natural source-language alternative.
-        If an English code-switch phrase is unnatural in the surrounding talk or technical context, and a near-sound English phrase is supported by context, use the contextual English phrase.
+        If a code-switch phrase is unnatural in the surrounding source-language context, and a near-sound code-switch phrase is supported by context, use the contextual phrase.
+        For Mandarin sourceText, be especially careful when speech includes English code-switching. Do not normalize an ambiguous candidate into a meaning that changes the current topic unless the current candidates clearly support that topic shift.
         Do not add content the speaker did not say, copy from previousSourceTexts, beautify wording, formalize spoken language, paraphrase, summarize, expand, or censor.
         If uncertain, keep the most reliable candidate wording.
         Return only a JSON object with this shape:

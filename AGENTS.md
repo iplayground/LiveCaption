@@ -26,6 +26,7 @@ Portal 的責任：
 - Portal 目前需求系統為 macOS 26。
 - 目前 Portal 的語音輸入支援國語與英語；字幕輸出支援台灣繁體中文、日文、英文與韓文，其中台灣繁體中文與英文為必要輸出，並依使用者字幕輸出設定傳送給 Relay。
 - App 介面在地化目前只支援 `zh-TW` 與 `en-US`，且需清楚區分語音輸入語言、字幕輸出語言與 App 介面在地化語言。
+- Portal 的 Azure OpenAI prompt 應描述通用判斷規則；避免為了修正單一案例而列舉特定詞或案例類別。處理中英 code-switch、近音誤判與前文一致性時，應以來源語言前文作為保守上下文，不得用翻譯結果回推原文。
 - Portal 一台電腦同時間只允許一個 App 實例，且同一個 App 同時間只允許一個主視窗；主視窗關閉時 App 應結束。
 - Portal 沒有對外散佈需求時，Xcode 專案應使用本機 ad-hoc 簽署，不設定 `DEVELOPMENT_TEAM` 或個人 Apple ID 相關資訊。
 - 避免把後端發布、連線廣播、Azure Web PubSub 細節放進 Portal，除非是呼叫 Relay 所需的最小整合。

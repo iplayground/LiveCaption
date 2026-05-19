@@ -95,8 +95,8 @@ signature = "sha256=" + HMAC-SHA256(<azure-speech-key>, message)
 anchor，切出同一段音訊送 Azure OpenAI transcription deployment 產生原始語言 draft，再把 OpenAI
 transcription draft、Azure Speech final、語音輸入語言、字幕輸出語言、詞彙提示與同一場 session 最近 5 段
 OpenAI 原始語言字幕送往 Azure OpenAI text model，由 OpenAI 比對候選文字並產生校正後原文與
-translation 結果，掛到同一筆精準字幕事件。最近字幕只能作為同音字、近音字、專有名詞與技術詞辨識錯誤的保守上下文；Portal 的 prompt 會要求 OpenAI 不新增講者沒有說的內容、不美化文句、不把口語改成書面語，且不確定時保留原文。
-Azure OpenAI transcription draft 是精準原文主要候選；Azure Speech final 只作為輔助證據，明顯亂碼、近音誤轉或與穩定前文衝突時不得採用，只有 Azure OpenAI transcription 缺失、空白或明顯損壞時才作為 fallback。Portal 也會要求 OpenAI 保留候選文字或最近前文支持的英文技術詞與拉丁字母專有名詞，不得把它們替換成非拉丁文字近音詞。
+translation 結果，掛到同一筆精準字幕事件。最近字幕只能作為來源語言的保守上下文，用於處理同音、近音、斷詞、詞形拼寫、外語 code-switch 與相鄰字幕主題一致性；不得用翻譯結果回推原文，也不得用前文續寫、摘要、補內容、潤飾文句或把口語改成書面語。Portal 的 prompt 應描述通用判斷規則，不以單一錯誤案例或案例詞類列舉作為主要約束；若不確定，必須保留較可靠的候選原文。
+Azure OpenAI transcription draft 是精準原文主要候選；Azure Speech final 只作為輔助證據，明顯亂碼、近音誤轉或與穩定前文衝突時不得採用，只有 Azure OpenAI transcription 缺失、空白或明顯損壞時才作為 fallback。Portal 也會要求 OpenAI 保留候選文字或最近前文支持的外語 code-switch，不得把它們替換成來源語言的近音詞；模糊候選若會改變當前主題，必須有當前候選明確支持才可採用。
 Portal 必須在選定的翻譯輸出語言都取得後才送出精準
 Relay 事件；若翻譯缺失，該筆精準事件不得送往 Relay。`zh-Hant` 字幕需要求 OpenAI 使用台灣繁體
 中文。Azure Speech final 只作為 Azure OpenAI text model 候選輸入與 fallback 參考；Portal 不會直接使用
