@@ -529,16 +529,12 @@ private enum AzureOpenAITextTranslationError: Error {
 }
 
 private enum HTTPDateFormatter {
-    private static let formatter: DateFormatter = {
+    nonisolated static func date(from value: String) -> Date? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "EEE',' dd MMM yyyy HH':'mm':'ss z"
-        return formatter
-    }()
-
-    static func date(from value: String) -> Date? {
-        formatter.date(from: value)
+        return formatter.date(from: value)
     }
 }
 

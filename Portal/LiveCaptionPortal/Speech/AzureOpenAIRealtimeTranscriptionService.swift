@@ -429,13 +429,13 @@ private enum AzureOpenAIAudioTranscriptionError: Error {
 }
 
 private extension Data {
-    mutating func append(_ string: String) {
+    nonisolated mutating func append(_ string: String) {
         append(Data(string.utf8))
     }
 }
 
 private extension FixedWidthInteger {
-    var littleEndianData: Data {
+    nonisolated var littleEndianData: Data {
         var value = littleEndian
         return withUnsafeBytes(of: &value) { Data($0) }
     }
