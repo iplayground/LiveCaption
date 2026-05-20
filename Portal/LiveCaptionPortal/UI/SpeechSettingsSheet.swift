@@ -192,10 +192,11 @@ struct SpeechSettingsSheet: View {
                     SpeechSettingsSection(title: L10n.text("speechSettings.section.captionOutput"), systemImage: "captions.bubble") {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(availableSpeechOutputLanguages) { language in
-                                OutputLanguageToggleRow(
+                                OutputLanguageDisplayModeRow(
                                     language: language,
                                     isRequired: SpeechSettings.requiredOutputLanguageIDs.contains(language.id),
-                                    selectedLanguageIDs: $settings.selectedOutputLanguageIDs
+                                    selectedLanguageIDs: $settings.selectedOutputLanguageIDs,
+                                    portalVisibleLanguageIDs: $settings.portalVisibleOutputLanguageIDs
                                 )
                             }
                         }
@@ -516,54 +517,6 @@ struct SpeechConnectionTestButton: View {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.62)
         .accessibilityHint(isEnabled ? accessibilityHint : disabledAccessibilityHint)
-    }
-}
-
-struct OutputLanguageToggleRow: View {
-    let language: SpeechOutputLanguage
-    let isRequired: Bool
-    @Binding var selectedLanguageIDs: Set<String>
-
-    private var isSelected: Binding<Bool> {
-        Binding {
-            isRequired || selectedLanguageIDs.contains(language.id)
-        } set: { newValue in
-            if isRequired {
-                selectedLanguageIDs.insert(language.id)
-            } else if newValue {
-                selectedLanguageIDs.insert(language.id)
-            } else {
-                selectedLanguageIDs.remove(language.id)
-            }
-        }
-    }
-
-    var body: some View {
-        Toggle(isOn: isSelected) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(language.nativeName)
-                        .font(.subheadline.weight(.medium))
-                    Text(language.name)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if isRequired {
-                    Text(L10n.text("speechSettings.outputLanguage.required"))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .toggleStyle(.checkbox)
-        .disabled(isRequired)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 

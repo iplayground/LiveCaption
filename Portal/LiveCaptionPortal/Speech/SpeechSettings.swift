@@ -84,6 +84,14 @@ struct SpeechSettings: Equatable {
     var selectedOutputLanguageIDs = defaultOutputLanguageIDs {
         didSet {
             selectedOutputLanguageIDs.formUnion(Self.requiredOutputLanguageIDs)
+            portalVisibleOutputLanguageIDs.formIntersection(selectedOutputLanguageIDs)
+            portalVisibleOutputLanguageIDs.formUnion(Self.requiredOutputLanguageIDs)
+        }
+    }
+    var portalVisibleOutputLanguageIDs = defaultOutputLanguageIDs {
+        didSet {
+            portalVisibleOutputLanguageIDs.formIntersection(selectedOutputLanguageIDs)
+            portalVisibleOutputLanguageIDs.formUnion(Self.requiredOutputLanguageIDs)
         }
     }
 
@@ -141,6 +149,12 @@ struct SpeechSettings: Equatable {
     var selectedOutputLanguages: [SpeechOutputLanguage] {
         availableSpeechOutputLanguages.filter {
             selectedOutputLanguageIDs.contains($0.id)
+        }
+    }
+
+    var portalVisibleOutputLanguages: [SpeechOutputLanguage] {
+        availableSpeechOutputLanguages.filter {
+            portalVisibleOutputLanguageIDs.contains($0.id)
         }
     }
 
@@ -220,6 +234,11 @@ struct SpeechSettings: Equatable {
         if let outputLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.outputLanguageIDs.rawValue) as? [String] {
             settings.selectedOutputLanguageIDs = Set(outputLanguageIDs).union(requiredOutputLanguageIDs)
         }
+        if let visibleLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.portalVisibleOutputLanguageIDs.rawValue) as? [String] {
+            settings.portalVisibleOutputLanguageIDs = Set(visibleLanguageIDs).union(requiredOutputLanguageIDs)
+        } else {
+            settings.portalVisibleOutputLanguageIDs = settings.selectedOutputLanguageIDs
+        }
 
         if userDefaults.object(forKey: UserDefaultsKey.sentenceSilenceTimeoutMilliseconds.rawValue) != nil {
             settings.sentenceSilenceTimeoutMilliseconds = clampedSentenceSilenceTimeoutMilliseconds(
@@ -249,6 +268,10 @@ struct SpeechSettings: Equatable {
         Self.userDefaults.set(
             Array(selectedOutputLanguageIDs.union(Self.requiredOutputLanguageIDs)).sorted(),
             forKey: UserDefaultsKey.outputLanguageIDs.rawValue
+        )
+        Self.userDefaults.set(
+            Array(portalVisibleOutputLanguageIDs.union(Self.requiredOutputLanguageIDs)).sorted(),
+            forKey: UserDefaultsKey.portalVisibleOutputLanguageIDs.rawValue
         )
         Self.userDefaults.set(
             sentenceSilenceTimeoutMilliseconds,
@@ -412,6 +435,7 @@ struct SpeechSettings: Equatable {
         case azureOpenAITranscriptionDeployment = "speech.azureOpenAI.transcriptionDeployment"
         case azureOpenAITranslationDeployment = "speech.azureOpenAI.translationDeployment"
         case outputLanguageIDs = "speech.outputLanguageIDs"
+        case portalVisibleOutputLanguageIDs = "speech.portalVisibleOutputLanguageIDs"
         case sentenceSilenceTimeoutMilliseconds = "speech.sentenceSilenceTimeoutMilliseconds"
     }
 }

@@ -116,7 +116,8 @@ Portal 使用 `UserDefaults` 保存短小且非機密的 Speech 與 Azure OpenAI
 | `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI transcription deployment name，例如 `accurate-transcribe`，用於精準模式原始語言 draft。 |
 | `speech.azureOpenAI.translationDeployment` | Azure OpenAI text model deployment name，例如 `accurate-translate`，用於精準模式比對 OpenAI transcription 與 Azure Speech final 候選文字，產生校正原文與其他輸出語言 final 字幕。 |
 | `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI 連線測試狀態。 |
-| `speech.outputLanguageIDs` | 字幕輸出語言清單。 |
+| `speech.outputLanguageIDs` | 需要分析、翻譯、Relay 發布與 SRT 輸出的字幕語言清單。台灣繁體中文與英文會強制包含。 |
+| `speech.portalVisibleOutputLanguageIDs` | Portal 主畫面語音分析預覽要顯示的字幕語言清單。此設定不影響獨立字幕預覽、投影截取預覽、Relay 發布或 SRT 輸出。 |
 | `speech.sentenceSilenceTimeoutMilliseconds` | Speech 句子分段靜音時間，範圍 100 ms 到 5000 ms，預設 800 ms。 |
 | `speech.authorizationStatus` | 上次 Speech 授權測試狀態。 |
 

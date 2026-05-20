@@ -114,7 +114,7 @@ struct ContentViewLayout: View {
                 inputLanguage: $inputLanguage,
                 processingInputLanguage: processingInputLanguage,
                 areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
-                outputLanguages: speechSettings.selectedOutputLanguages,
+                outputLanguages: speechSettings.portalVisibleOutputLanguages,
                 captionPreviewState: captionPreviewState,
                 pubSubCaptionReceiver: pubSubCaptionReceiver
             )

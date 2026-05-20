@@ -281,18 +281,29 @@ private struct AzureOpenAISettingsConfiguration: Codable {
 private struct CaptionOutputAndSegmentationConfiguration: Codable {
     var sentenceSilenceTimeoutMilliseconds: Int
     var selectedOutputLanguageIDs: [String]
+    var portalVisibleOutputLanguageIDs: [String]?
 
     init(settings: SpeechSettings) {
         sentenceSilenceTimeoutMilliseconds = settings.sentenceSilenceTimeoutMilliseconds
         selectedOutputLanguageIDs = Array(
             settings.selectedOutputLanguageIDs.union(SpeechSettings.requiredOutputLanguageIDs)
         ).sorted()
+        portalVisibleOutputLanguageIDs = Array(
+            settings.portalVisibleOutputLanguageIDs.union(SpeechSettings.requiredOutputLanguageIDs)
+        ).sorted()
     }
 
     func apply(to settings: inout SpeechSettings) {
+        let availableLanguageIDs = Set(availableSpeechOutputLanguages.map(\.id))
+        let selectedLanguageIDs = Set(selectedOutputLanguageIDs)
+            .intersection(availableLanguageIDs)
+            .union(SpeechSettings.requiredOutputLanguageIDs)
+
         settings.sentenceSilenceTimeoutMilliseconds = sentenceSilenceTimeoutMilliseconds
-        settings.selectedOutputLanguageIDs = Set(selectedOutputLanguageIDs)
-            .intersection(Set(availableSpeechOutputLanguages.map(\.id)))
+        settings.selectedOutputLanguageIDs = selectedLanguageIDs
+        settings.portalVisibleOutputLanguageIDs = Set(portalVisibleOutputLanguageIDs ?? selectedOutputLanguageIDs)
+            .intersection(availableLanguageIDs)
+            .intersection(selectedLanguageIDs)
             .union(SpeechSettings.requiredOutputLanguageIDs)
     }
 }
@@ -350,6 +361,7 @@ private struct LegacySpeechSettingsConfiguration: Codable {
     var phraseHintsByScope: [String: [SpeechPhraseHint]]
     var sentenceSilenceTimeoutMilliseconds: Int
     var selectedOutputLanguageIDs: [String]
+    var portalVisibleOutputLanguageIDs: [String]?
 
     func applyAzureSpeechAuthorization(to settings: inout SpeechSettings) {
         settings.region = region
@@ -365,9 +377,16 @@ private struct LegacySpeechSettingsConfiguration: Codable {
     }
 
     func applyCaptionOutputAndSegmentation(to settings: inout SpeechSettings) {
+        let availableLanguageIDs = Set(availableSpeechOutputLanguages.map(\.id))
+        let selectedLanguageIDs = Set(selectedOutputLanguageIDs)
+            .intersection(availableLanguageIDs)
+            .union(SpeechSettings.requiredOutputLanguageIDs)
+
         settings.sentenceSilenceTimeoutMilliseconds = sentenceSilenceTimeoutMilliseconds
-        settings.selectedOutputLanguageIDs = Set(selectedOutputLanguageIDs)
-            .intersection(Set(availableSpeechOutputLanguages.map(\.id)))
+        settings.selectedOutputLanguageIDs = selectedLanguageIDs
+        settings.portalVisibleOutputLanguageIDs = Set(portalVisibleOutputLanguageIDs ?? selectedOutputLanguageIDs)
+            .intersection(availableLanguageIDs)
+            .intersection(selectedLanguageIDs)
             .union(SpeechSettings.requiredOutputLanguageIDs)
     }
 

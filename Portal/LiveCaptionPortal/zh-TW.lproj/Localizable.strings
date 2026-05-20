@@ -250,7 +250,10 @@
 "speechSettings.error.missingRegion" = "尚未設定 Region";
 "speechSettings.error.missingSpeechKey" = "尚未設定 Speech Key";
 "speechSettings.error.serviceRejected" = "Azure Speech 拒絕連線，HTTP %d";
-"speechSettings.outputLanguage.required" = "必選";
+"speechSettings.outputLanguage.mode" = "輸出模式";
+"speechSettings.outputLanguage.mode.analyzedHidden" = "分析";
+"speechSettings.outputLanguage.mode.analyzedVisible" = "分析＋顯示";
+"speechSettings.outputLanguage.mode.disabled" = "關閉";
 "speechSettings.region.placeholder" = "例如：japaneast";
 "speechSettings.requirements.missing" = "補齊 %@ 後可測試。";
 "speechSettings.requirements.ready" = "設定完整，可測試 Azure Speech 連線。";

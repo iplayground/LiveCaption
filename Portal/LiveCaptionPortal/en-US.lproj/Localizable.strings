@@ -250,7 +250,10 @@
 "speechSettings.error.missingRegion" = "Region is not configured";
 "speechSettings.error.missingSpeechKey" = "Speech Key is not configured";
 "speechSettings.error.serviceRejected" = "Azure Speech rejected the connection, HTTP %d";
-"speechSettings.outputLanguage.required" = "Required";
+"speechSettings.outputLanguage.mode" = "Output mode";
+"speechSettings.outputLanguage.mode.analyzedHidden" = "Analyze";
+"speechSettings.outputLanguage.mode.analyzedVisible" = "Analyze + Show";
+"speechSettings.outputLanguage.mode.disabled" = "Off";
 "speechSettings.region.placeholder" = "Example: japaneast";
 "speechSettings.requirements.missing" = "Add %@ to enable testing.";
 "speechSettings.requirements.ready" = "Settings are complete. Azure Speech connection can be tested.";
