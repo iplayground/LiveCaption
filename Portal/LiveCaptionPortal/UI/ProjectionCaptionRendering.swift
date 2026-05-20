@@ -146,7 +146,12 @@ enum ProjectionCaptionTextTruncator {
 
             let candidateTokens = Array(tokens[startIndex...])
 
-            if let wrappedText = wrappedText(tokens: candidateTokens, fitting: size, font: font, lineSpacing: lineSpacing) {
+            if let wrappedText = wrappedText(
+                tokens: candidateTokens,
+                fitting: size,
+                font: font,
+                lineSpacing: lineSpacing
+            ) {
                 return wrappedText
             }
         }
@@ -183,7 +188,12 @@ enum ProjectionCaptionTextTruncator {
                 continue
             }
 
-            if let wrappedText = wrappedText(tokens: candidateTokens, fitting: size, font: font, lineSpacing: lineSpacing) {
+            if let wrappedText = wrappedText(
+                tokens: candidateTokens,
+                fitting: size,
+                font: font,
+                lineSpacing: lineSpacing
+            ) {
                 return wrappedText
             }
         }

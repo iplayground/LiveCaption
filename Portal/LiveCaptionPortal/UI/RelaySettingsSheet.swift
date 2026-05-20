@@ -77,10 +77,16 @@ struct RelaySettingsSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    SpeechSettingsSection(title: L10n.text("relaySettings.section.connection"), systemImage: "server.rack") {
+                    SpeechSettingsSection(
+                        title: L10n.text("relaySettings.section.connection"),
+                        systemImage: "server.rack"
+                    ) {
                         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
                             SpeechSettingsFieldRow(label: L10n.text("relaySettings.relayURL")) {
-                                TextField(L10n.text("relaySettings.relayURL.placeholder"), text: $settings.relayURLString)
+                                TextField(
+                                    L10n.text("relaySettings.relayURL.placeholder"),
+                                    text: $settings.relayURLString
+                                )
                                     .textFieldStyle(.roundedBorder)
                             }
 
@@ -99,7 +105,10 @@ struct RelaySettingsSheet: View {
                         }
                     }
 
-                    SpeechSettingsSection(title: L10n.text("relaySettings.section.check"), systemImage: "checkmark.seal") {
+                    SpeechSettingsSection(
+                        title: L10n.text("relaySettings.section.check"),
+                        systemImage: "checkmark.seal"
+                    ) {
                         VStack(alignment: .leading, spacing: 12) {
                             SpeechSettingsStatusRow(
                                 title: L10n.text("relaySettings.configuration"),

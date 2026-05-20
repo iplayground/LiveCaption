@@ -56,7 +56,11 @@ struct HeaderView: View {
             )
             .controlSize(.large)
             .disabled(!canToggleCaptionSession)
-            .help(canToggleCaptionSession ? captionButtonTitle : captionSessionDisabledReason ?? L10n.text("caption.disabled.unavailable"))
+            .help(
+                canToggleCaptionSession
+                    ? captionButtonTitle
+                    : captionSessionDisabledReason ?? L10n.text("caption.disabled.unavailable")
+            )
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)

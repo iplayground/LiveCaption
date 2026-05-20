@@ -108,11 +108,31 @@ struct ProjectionCaptionFontChoice: Identifiable {
     static let systemID = "system"
 
     private static let commonChoices: [ProjectionCaptionFontChoice] = [
-        ProjectionCaptionFontChoice(id: systemID, familyName: nil, localizedNameKey: "caption.projectionFont.system"),
-        ProjectionCaptionFontChoice(id: "pingfang-tc", familyName: "PingFang TC", localizedNameKey: "caption.projectionFont.pingFangTC"),
-        ProjectionCaptionFontChoice(id: "hiragino-sans", familyName: "Hiragino Sans", localizedNameKey: "caption.projectionFont.hiraginoSans"),
-        ProjectionCaptionFontChoice(id: "apple-sd-gothic-neo", familyName: "Apple SD Gothic Neo", localizedNameKey: "caption.projectionFont.appleSDGothicNeo"),
-        ProjectionCaptionFontChoice(id: "helvetica-neue", familyName: "Helvetica Neue", localizedNameKey: "caption.projectionFont.helveticaNeue")
+        ProjectionCaptionFontChoice(
+            id: systemID,
+            familyName: nil,
+            localizedNameKey: "caption.projectionFont.system"
+        ),
+        ProjectionCaptionFontChoice(
+            id: "pingfang-tc",
+            familyName: "PingFang TC",
+            localizedNameKey: "caption.projectionFont.pingFangTC"
+        ),
+        ProjectionCaptionFontChoice(
+            id: "hiragino-sans",
+            familyName: "Hiragino Sans",
+            localizedNameKey: "caption.projectionFont.hiraginoSans"
+        ),
+        ProjectionCaptionFontChoice(
+            id: "apple-sd-gothic-neo",
+            familyName: "Apple SD Gothic Neo",
+            localizedNameKey: "caption.projectionFont.appleSDGothicNeo"
+        ),
+        ProjectionCaptionFontChoice(
+            id: "helvetica-neue",
+            familyName: "Helvetica Neue",
+            localizedNameKey: "caption.projectionFont.helveticaNeue"
+        ),
     ]
 
     let id: String

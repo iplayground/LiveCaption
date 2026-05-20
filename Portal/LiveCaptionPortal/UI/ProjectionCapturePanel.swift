@@ -219,7 +219,10 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
         window = nil
 
         if !isClosingProgrammatically {
-            UserDefaults.standard.set(ProjectionPreviewDisplayMode.inline.rawValue, forKey: "projectionCapture.displayMode")
+            UserDefaults.standard.set(
+                ProjectionPreviewDisplayMode.inline.rawValue,
+                forKey: "projectionCapture.displayMode"
+            )
         }
     }
 
@@ -255,7 +258,10 @@ final class ProjectionCaptureWindowPresenter: NSObject, NSWindowDelegate {
             Double($0.visibleFrame.width - (WindowLayout.projectionCaptureHorizontalPadding * 2))
         }
 
-        return max(WindowLayout.projectionCaptureMinimumWidth, visibleWidths.max() ?? WindowLayout.projectionCaptureMinimumWidth)
+        return max(
+            WindowLayout.projectionCaptureMinimumWidth,
+            visibleWidths.max() ?? WindowLayout.projectionCaptureMinimumWidth
+        )
     }
 
     private func saveFrame(from notification: Notification) {
@@ -280,10 +286,12 @@ struct ProjectionCaptureWindowContent: View {
     let areConfigurationControlsLocked: Bool
     @AppStorage("projectionCapture.languageID") private var projectionCaptureLanguageID = "zh-Hant"
     @AppStorage("projectionCapture.visibleLanguageIDs") private var projectionCaptureVisibleLanguageIDs = ""
-    @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
+    @AppStorage("projectionCapture.previewArrangement")
+    private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
     @AppStorage("projectionCapture.width") private var projectionCaptureWidth = 720.0
     @AppStorage("projectionCapture.height") private var projectionCaptureHeight = 180.0
-    @AppStorage("projectionCapture.captionSource") private var projectionCaptureCaptionSource = ProjectionCaptionSource.speech.rawValue
+    @AppStorage("projectionCapture.captionSource")
+    private var projectionCaptureCaptionSource = ProjectionCaptionSource.speech.rawValue
     @State private var screenMaximumContentWidth: Double?
 
     private let languageHeaderHeight = 24.0
@@ -586,7 +594,8 @@ struct ProjectionCaptureView: View {
     @AppStorage("projectionCapture.appendsText") private var projectionCaptureAppendsText = false
     @AppStorage("projectionCapture.appendLineLimit") private var projectionCaptureAppendLineLimit = 3.0
     @AppStorage("projectionCapture.paddingHorizontal") private var projectionCapturePaddingHorizontal = 28.0
-    @AppStorage("projectionCapture.verticalPlacement") private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
+    @AppStorage("projectionCapture.verticalPlacement")
+    private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
 
     private var selectedLanguage: SpeechOutputLanguage? {
         outputLanguages.first { $0.id == languageID }

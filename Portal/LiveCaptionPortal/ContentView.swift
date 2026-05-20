@@ -47,7 +47,8 @@ struct ContentView: View {
     @State private var accurateTranscriptionService = AzureOpenAIRealtimeTranscriptionService()
     @State private var sleepPreventionController = SleepPreventionController()
     @State private var projectionCaptureWindowPresenter = ProjectionCaptureWindowPresenter()
-    @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
+    @AppStorage("projectionCapture.displayMode")
+    private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
     private let windowMinimumSize = WindowLayout.minimumSize
     private let relayPublishRetryLimit = 3
     private let maximumLogEntryCount = 300
@@ -289,10 +290,18 @@ struct ContentView: View {
                 relaySettings: relaySettings
             )
             .writeConfiguration(to: exportRequest.fileURL, selection: exportRequest.selection)
-            appendLog(level: .info, title: L10n.text("log.portalEnvironment.settingsExported"), detail: exportRequest.fileURL.path)
+            appendLog(
+                level: .info,
+                title: L10n.text("log.portalEnvironment.settingsExported"),
+                detail: exportRequest.fileURL.path
+            )
         } catch {
             PortalEnvironmentTransferPanel.showError(error.localizedDescription)
-            appendLog(level: .error, title: L10n.text("log.portalEnvironment.settingsExportFailed"), detail: error.localizedDescription)
+            appendLog(
+                level: .error,
+                title: L10n.text("log.portalEnvironment.settingsExportFailed"),
+                detail: error.localizedDescription
+            )
         }
     }
 
@@ -340,7 +349,11 @@ struct ContentView: View {
             appendLog(level: .info, title: L10n.text("log.portalEnvironment.settingsImported"), detail: fileURL.path)
         } catch {
             PortalEnvironmentTransferPanel.showError(error.localizedDescription)
-            appendLog(level: .error, title: L10n.text("log.portalEnvironment.settingsImportFailed"), detail: error.localizedDescription)
+            appendLog(
+                level: .error,
+                title: L10n.text("log.portalEnvironment.settingsImportFailed"),
+                detail: error.localizedDescription
+            )
         }
     }
 
@@ -555,7 +568,10 @@ struct ContentView: View {
             captionProcessingGeneration += 1
             speechRecognitionController.stopRecognition(keepsCurrentTranscript: true)
 
-            guard await startAccurateCaptionSessionIfNeeded(inputLanguage: inputLanguage, restartsTranslation: false) else {
+            guard await startAccurateCaptionSessionIfNeeded(
+                inputLanguage: inputLanguage,
+                restartsTranslation: false
+            ) else {
                 isCaptionSessionActive = false
                 publishSessionStoppedToRelayIfNeeded()
                 finishCaptionSessionTiming()

@@ -42,7 +42,9 @@ enum PortalEnvironmentTransferPanel {
         return openPanel.url
     }
 
-    static func importSelection(availableSections: PortalEnvironmentExportSelection) -> PortalEnvironmentExportSelection? {
+    static func importSelection(
+        availableSections: PortalEnvironmentExportSelection
+    ) -> PortalEnvironmentExportSelection? {
         PortalEnvironmentImportSelectionPanel(availableSections: availableSections).runModal()
     }
 

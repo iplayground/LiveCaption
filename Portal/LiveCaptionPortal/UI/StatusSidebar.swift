@@ -19,7 +19,8 @@ struct StatusSidebar: View {
     @State private var projectionSettingsPanelPresenter = ProjectionSettingsPanelPresenter()
     @State private var isSpeechSettingsPresented = false
     @State private var isRelaySettingsPresented = false
-    @AppStorage("projectionCapture.displayMode") private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
+    @AppStorage("projectionCapture.displayMode")
+    private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
 
     private var areProjectionSettingsLocked: Bool {
         areConfigurationControlsLocked
@@ -40,7 +41,10 @@ struct StatusSidebar: View {
                     VStack(alignment: .leading, spacing: 12) {
                         LabeledValue(label: "Region", value: speechSettings.regionSummary)
                         LabeledValue(label: L10n.text("speech.inputLanguage"), value: inputLanguage.nativeName)
-                        LabeledValue(label: L10n.text("speech.outputLanguages"), value: speechSettings.outputLanguageSummary)
+                        LabeledValue(
+                            label: L10n.text("speech.outputLanguages"),
+                            value: speechSettings.outputLanguageSummary
+                        )
                         LabeledValue(label: L10n.text("azureOpenAI.status"), value: azureOpenAIConnectionStatus.title)
 
                         Button {
@@ -94,8 +98,14 @@ struct StatusSidebar: View {
                         LabeledValue(label: L10n.text("relay.roomName"), value: relaySettings.roomNameSummary)
                         LabeledValue(label: L10n.text("relay.trackNumber"), value: relaySettings.trackNumberSummary)
                         LabeledValue(label: L10n.text("relay.lastPublishedAt"), value: relayLastPublishedAtSummary)
-                        LabeledValue(label: L10n.text("relay.captionEvents.fast"), value: "\(relayPublishedCaptionCount(for: .fast))")
-                        LabeledValue(label: L10n.text("relay.captionEvents.accurate"), value: "\(relayPublishedCaptionCount(for: .accurate))")
+                        LabeledValue(
+                            label: L10n.text("relay.captionEvents.fast"),
+                            value: "\(relayPublishedCaptionCount(for: .fast))"
+                        )
+                        LabeledValue(
+                            label: L10n.text("relay.captionEvents.accurate"),
+                            value: "\(relayPublishedCaptionCount(for: .accurate))"
+                        )
 
                         Button {
                             isRelaySettingsPresented = true
@@ -249,7 +259,9 @@ struct StatusSidebar: View {
     }
 
     private func focusProjectionCaptureWindow() {
-        guard let window = NSApp.windows.first(where: { $0.title == L10n.text("caption.projectionWindow.title") }) else {
+        guard let window = NSApp.windows.first(
+            where: { $0.title == L10n.text("caption.projectionWindow.title") }
+        ) else {
             openProjectionCaptureWindow()
             return
         }

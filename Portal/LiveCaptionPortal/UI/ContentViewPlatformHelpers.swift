@@ -31,7 +31,9 @@ struct KeyboardEventBlocker: NSViewRepresentable {
                 return
             }
 
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.keyDown, .keyUp, .flagsChanged]
+            ) { [weak self] event in
                 self?.isEnabled == true ? nil : event
             }
         }

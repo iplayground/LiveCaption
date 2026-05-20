@@ -9,8 +9,10 @@ struct ProjectionCaptureSettingsInspector: View {
     var areConfigurationControlsLocked = false
     @AppStorage("projectionCapture.languageID") private var projectionCaptureLanguageID = "zh-Hant"
     @AppStorage("projectionCapture.visibleLanguageIDs") private var projectionCaptureVisibleLanguageIDs = ""
-    @AppStorage("projectionCapture.previewArrangement") private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
-    @AppStorage("projectionCapture.captionSource") private var projectionCaptureCaptionSource = ProjectionCaptionSource.speech.rawValue
+    @AppStorage("projectionCapture.previewArrangement")
+    private var projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.vertical.rawValue
+    @AppStorage("projectionCapture.captionSource")
+    private var projectionCaptureCaptionSource = ProjectionCaptionSource.speech.rawValue
     @AppStorage("projectionCapture.width") private var projectionCaptureWidth = 720.0
     @AppStorage("projectionCapture.height") private var projectionCaptureHeight = 180.0
     @AppStorage("projectionCapture.fontID") private var projectionCaptureFontID = ProjectionCaptionFontChoice.systemID
@@ -19,7 +21,8 @@ struct ProjectionCaptureSettingsInspector: View {
     @AppStorage("projectionCapture.appendsText") private var projectionCaptureAppendsText = false
     @AppStorage("projectionCapture.appendLineLimit") private var projectionCaptureAppendLineLimit = 3.0
     @AppStorage("projectionCapture.paddingHorizontal") private var projectionCapturePaddingHorizontal = 28.0
-    @AppStorage("projectionCapture.verticalPlacement") private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
+    @AppStorage("projectionCapture.verticalPlacement")
+    private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
 
     private var usesWideLayout: Bool {
         preferredWidth == nil
@@ -43,7 +46,11 @@ struct ProjectionCaptureSettingsInspector: View {
     private var selectedPreviewArrangement: Binding<String> {
         Binding(
             get: { validatedPreviewArrangement.rawValue },
-            set: { projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement.arrangement(for: $0).rawValue }
+            set: {
+                projectionCapturePreviewArrangement = ProjectionCapturePreviewArrangement
+                    .arrangement(for: $0)
+                    .rawValue
+            }
         )
     }
 
@@ -367,30 +374,51 @@ struct ProjectionCaptureSettingsInspector: View {
     }
 
     private var lineSpacingField: some View {
-        ProjectionInspectorRow(title: L10n.text("caption.projectionLineSpacing")) {
+        let range = ClosedRange(
+            uncheckedBounds: (
+                lower: WindowLayout.projectionCaptureMinimumLineSpacing,
+                upper: WindowLayout.projectionCaptureMaximumLineSpacing
+            )
+        )
+
+        return ProjectionInspectorRow(title: L10n.text("caption.projectionLineSpacing")) {
             ProjectionDimensionField(
                 value: lineSpacing,
-                range: WindowLayout.projectionCaptureMinimumLineSpacing...WindowLayout.projectionCaptureMaximumLineSpacing,
+                range: range,
                 step: 1
             )
         }
     }
 
     private var paddingField: some View {
-        ProjectionInspectorRow(title: L10n.text("caption.projectionPaddingHorizontal")) {
+        let range = ClosedRange(
+            uncheckedBounds: (
+                lower: WindowLayout.projectionCaptureMinimumPadding,
+                upper: WindowLayout.projectionCaptureMaximumPadding
+            )
+        )
+
+        return ProjectionInspectorRow(title: L10n.text("caption.projectionPaddingHorizontal")) {
             ProjectionDimensionField(
                 value: paddingHorizontal,
-                range: WindowLayout.projectionCaptureMinimumPadding...WindowLayout.projectionCaptureMaximumPadding,
+                range: range,
                 step: 2
             )
         }
     }
 
     private var appendLineLimitField: some View {
-        ProjectionInspectorRow(title: L10n.text("caption.projectionAppendLineLimit")) {
+        let range = ClosedRange(
+            uncheckedBounds: (
+                lower: WindowLayout.projectionCaptureMinimumAppendLineLimit,
+                upper: WindowLayout.projectionCaptureMaximumAppendLineLimit
+            )
+        )
+
+        return ProjectionInspectorRow(title: L10n.text("caption.projectionAppendLineLimit")) {
             ProjectionDimensionField(
                 value: appendLineLimit,
-                range: WindowLayout.projectionCaptureMinimumAppendLineLimit...WindowLayout.projectionCaptureMaximumAppendLineLimit,
+                range: range,
                 step: 1,
                 unit: L10n.text("caption.projectionAppendLineLimitUnit")
             )
@@ -488,7 +516,9 @@ struct ProjectionCaptureSettingsInspector: View {
 
     private func normalizeStoredValues() {
         projectionCaptureLanguageID = validatedLanguageID
-        projectionCaptureVisibleLanguageIDs = ProjectionCaptureLanguageSelection.rawValue(from: selectedWindowLanguageIDs)
+        projectionCaptureVisibleLanguageIDs = ProjectionCaptureLanguageSelection.rawValue(
+            from: selectedWindowLanguageIDs
+        )
         projectionCapturePreviewArrangement = validatedPreviewArrangement.rawValue
         projectionCaptureVerticalPlacement = validatedVerticalPlacement.rawValue
         projectionCaptureWidth = clampedWidth(projectionCaptureWidth)
@@ -505,15 +535,24 @@ struct ProjectionCaptureSettingsInspector: View {
     }
 
     private func clampedHeight(_ value: Double) -> Double {
-        min(max(value, WindowLayout.projectionCaptureMinimumHeight), WindowLayout.projectionCaptureMaximumHeight)
+        min(
+            max(value, WindowLayout.projectionCaptureMinimumHeight),
+            WindowLayout.projectionCaptureMaximumHeight
+        )
     }
 
     private func clampedFontSize(_ value: Double) -> Double {
-        min(max(value, WindowLayout.projectionCaptureMinimumFontSize), WindowLayout.projectionCaptureMaximumFontSize)
+        min(
+            max(value, WindowLayout.projectionCaptureMinimumFontSize),
+            WindowLayout.projectionCaptureMaximumFontSize
+        )
     }
 
     private func clampedLineSpacing(_ value: Double) -> Double {
-        min(max(value, WindowLayout.projectionCaptureMinimumLineSpacing), WindowLayout.projectionCaptureMaximumLineSpacing)
+        min(
+            max(value, WindowLayout.projectionCaptureMinimumLineSpacing),
+            WindowLayout.projectionCaptureMaximumLineSpacing
+        )
     }
 
     private func clampedPadding(_ value: Double) -> Double {

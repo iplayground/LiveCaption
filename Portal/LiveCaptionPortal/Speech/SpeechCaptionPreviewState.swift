@@ -279,7 +279,11 @@ final class SpeechCaptionPreviewState: ObservableObject {
         }
 
         let lines = snapshot.accurateFinalCaptionHistoryByLanguageID[language.id, default: []]
-        return recentProjectionText(from: lines.map(\.text), previewText: language.previewText, lineLimit: appendLineLimit)
+        return recentProjectionText(
+            from: lines.map(\.text),
+            previewText: language.previewText,
+            lineLimit: appendLineLimit
+        )
     }
 
     private func accurateFinalTranscriptText(for inputLanguage: InputLanguage) -> String {

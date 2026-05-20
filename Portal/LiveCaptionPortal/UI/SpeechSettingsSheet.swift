@@ -41,7 +41,10 @@ struct SpeechSettingsSheet: View {
             return L10n.text("speechSettings.requirements.ready")
         }
 
-        return L10n.text("speechSettings.requirements.missing", missingItems.joined(separator: L10n.text("list.separator")))
+        return L10n.text(
+            "speechSettings.requirements.missing",
+            missingItems.joined(separator: L10n.text("list.separator"))
+        )
     }
 
     private var connectionHintMessage: String {
@@ -148,7 +151,10 @@ struct SpeechSettingsSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    SpeechSettingsSection(title: L10n.text("speechSettings.section.authentication"), systemImage: "key.horizontal") {
+                    SpeechSettingsSection(
+                        title: L10n.text("speechSettings.section.authentication"),
+                        systemImage: "key.horizontal"
+                    ) {
                         VStack(alignment: .leading, spacing: 14) {
                             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
                                 SpeechSettingsFieldRow(label: "Region") {
@@ -157,14 +163,20 @@ struct SpeechSettingsSheet: View {
                                 }
 
                                 SpeechSettingsFieldRow(label: "Speech Key") {
-                                    SecureField(L10n.text("speechSettings.speechKey.placeholder"), text: $settings.speechKey)
+                                    SecureField(
+                                        L10n.text("speechSettings.speechKey.placeholder"),
+                                        text: $settings.speechKey
+                                    )
                                         .textFieldStyle(.roundedBorder)
                                 }
                             }
                         }
                     }
 
-                    SpeechSettingsSection(title: L10n.text("speechSettings.section.check"), systemImage: "checkmark.seal") {
+                    SpeechSettingsSection(
+                        title: L10n.text("speechSettings.section.check"),
+                        systemImage: "checkmark.seal"
+                    ) {
                         VStack(alignment: .leading, spacing: 12) {
                             SpeechSettingsStatusRow(
                                 title: L10n.text("speechSettings.connectionTest"),
@@ -189,7 +201,10 @@ struct SpeechSettingsSheet: View {
                         }
                     }
 
-                    SpeechSettingsSection(title: L10n.text("speechSettings.section.captionOutput"), systemImage: "captions.bubble") {
+                    SpeechSettingsSection(
+                        title: L10n.text("speechSettings.section.captionOutput"),
+                        systemImage: "captions.bubble"
+                    ) {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(availableSpeechOutputLanguages) { language in
                                 OutputLanguageDisplayModeRow(
@@ -202,13 +217,22 @@ struct SpeechSettingsSheet: View {
                         }
                     }
 
-                    SpeechSettingsSection(title: L10n.text("speechSettings.section.accurateCaption"), systemImage: "sparkles") {
+                    SpeechSettingsSection(
+                        title: L10n.text("speechSettings.section.accurateCaption"),
+                        systemImage: "sparkles"
+                    ) {
                         VStack(alignment: .leading, spacing: 14) {
-                            Toggle(L10n.text("azureOpenAI.accurateCaptionEnabled"), isOn: $settings.isAccurateCaptionEnabled)
+                            Toggle(
+                                L10n.text("azureOpenAI.accurateCaptionEnabled"),
+                                isOn: $settings.isAccurateCaptionEnabled
+                            )
 
                             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
                                 SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.endpoint")) {
-                                    TextField(L10n.text("azureOpenAI.endpoint.placeholder"), text: $settings.azureOpenAIEndpointURLString)
+                                    TextField(
+                                        L10n.text("azureOpenAI.endpoint.placeholder"),
+                                        text: $settings.azureOpenAIEndpointURLString
+                                    )
                                         .textFieldStyle(.roundedBorder)
                                 }
 
@@ -229,7 +253,10 @@ struct SpeechSettingsSheet: View {
                                 }
 
                                 SpeechSettingsFieldRow(label: L10n.text("azureOpenAI.apiKey")) {
-                                    SecureField(L10n.text("azureOpenAI.apiKey.placeholder"), text: $settings.azureOpenAIAPIKey)
+                                    SecureField(
+                                        L10n.text("azureOpenAI.apiKey.placeholder"),
+                                        text: $settings.azureOpenAIAPIKey
+                                    )
                                         .textFieldStyle(.roundedBorder)
                                 }
                             }
@@ -243,7 +270,8 @@ struct SpeechSettingsSheet: View {
                             HStack {
                                 SpeechConnectionTestButton(
                                     title: L10n.text("azureOpenAI.testConnection"),
-                                    isEnabled: canTestAzureOpenAIConnection && !azureOpenAIConnectionTestStatus.isTesting,
+                                    isEnabled: canTestAzureOpenAIConnection
+                                        && !azureOpenAIConnectionTestStatus.isTesting,
                                     accessibilityHint: L10n.text("azureOpenAI.testConnection.hint"),
                                     disabledAccessibilityHint: L10n.text("azureOpenAI.testConnection.disabledHint"),
                                     action: testAzureOpenAIConnection
@@ -260,13 +288,19 @@ struct SpeechSettingsSheet: View {
                         }
                     }
 
-                    SpeechSettingsSection(title: L10n.text("speechSettings.section.segmentation"), systemImage: "timer") {
+                    SpeechSettingsSection(
+                        title: L10n.text("speechSettings.section.segmentation"),
+                        systemImage: "timer"
+                    ) {
                         SpeechSegmentationTimeoutControl(
                             timeoutMilliseconds: $settings.sentenceSilenceTimeoutMilliseconds
                         )
                     }
 
-                    SpeechSettingsSection(title: L10n.text("speechSettings.section.phraseHints"), systemImage: "text.badge.checkmark") {
+                    SpeechSettingsSection(
+                        title: L10n.text("speechSettings.section.phraseHints"),
+                        systemImage: "text.badge.checkmark"
+                    ) {
                         SpeechPhraseHintsEditor(
                             selectedScope: $selectedPhraseHintScope,
                             newPhraseText: $newPhraseHintText,
@@ -524,6 +558,13 @@ struct SpeechSegmentationTimeoutControl: View {
     @Binding var timeoutMilliseconds: Int
 
     var body: some View {
+        let range = ClosedRange(
+            uncheckedBounds: (
+                lower: SpeechSettings.minimumSentenceSilenceTimeoutMilliseconds,
+                upper: SpeechSettings.maximumSentenceSilenceTimeoutMilliseconds
+            )
+        )
+
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text(L10n.text("speechSettings.segmentation.silenceTimeout"))
@@ -542,7 +583,7 @@ struct SpeechSegmentationTimeoutControl: View {
                 Stepper(
                     L10n.text("speechSettings.segmentation.silenceTimeout"),
                     value: $timeoutMilliseconds,
-                    in: SpeechSettings.minimumSentenceSilenceTimeoutMilliseconds...SpeechSettings.maximumSentenceSilenceTimeoutMilliseconds,
+                    in: range,
                     step: 100
                 )
                 .labelsHidden()

@@ -162,7 +162,8 @@ struct SpeechSettings: Equatable {
 
     func phraseHints(for inputLanguage: InputLanguage) -> [String] {
         Self.normalizedPhraseHintTexts(
-            from: phraseHintsByScope[.shared, default: []] + phraseHintsByScope[inputLanguage.phraseHintScope, default: []]
+            from: phraseHintsByScope[.shared, default: []]
+                + phraseHintsByScope[inputLanguage.phraseHintScope, default: []]
         )
     }
 
@@ -181,7 +182,9 @@ struct SpeechSettings: Equatable {
         let endpointURLString = "https://\(normalizedRegion).api.cognitive.microsoft.com/sts/v1.0/issueToken"
 
         guard let endpointURL = URL(string: endpointURLString) else {
-            throw SpeechSettingsValidationError.connectionFailed(L10n.text("speechSettings.error.invalidRegionFormat"))
+            throw SpeechSettingsValidationError.connectionFailed(
+                L10n.text("speechSettings.error.invalidRegionFormat")
+            )
         }
 
         var request = URLRequest(url: endpointURL)
@@ -193,7 +196,9 @@ struct SpeechSettings: Equatable {
             let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                throw SpeechSettingsValidationError.connectionFailed(L10n.text("speechSettings.error.missingHTTPResponse"))
+                throw SpeechSettingsValidationError.connectionFailed(
+                    L10n.text("speechSettings.error.missingHTTPResponse")
+                )
             }
 
             guard (200..<300).contains(httpResponse.statusCode), !data.isEmpty else {
@@ -216,27 +221,38 @@ struct SpeechSettings: Equatable {
 
         settings.region = userDefaults.string(forKey: UserDefaultsKey.region.rawValue) ?? ""
         settings.speechKey = credentials.speechKey
-        settings.isAccurateCaptionEnabled = userDefaults.bool(forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
-        settings.azureOpenAIEndpointURLString = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue) ?? ""
+        settings.isAccurateCaptionEnabled = userDefaults.bool(
+            forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue
+        )
+        settings.azureOpenAIEndpointURLString = userDefaults.string(
+            forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue
+        ) ?? ""
         let storedTranscriptionDeploymentName = userDefaults.string(
             forKey: UserDefaultsKey.azureOpenAITranscriptionDeployment.rawValue
         ) ?? "accurate-transcribe"
         settings.azureOpenAITranscriptionDeploymentName = storedTranscriptionDeploymentName == "realtime-whisper"
             ? "accurate-transcribe"
             : storedTranscriptionDeploymentName
+        let legacyTranslationDeploymentName = userDefaults.string(
+            forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue
+        )
         let storedTranslationDeploymentName = userDefaults.string(
             forKey: UserDefaultsKey.azureOpenAITranslationDeployment.rawValue
-        ) ?? userDefaults.string(forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue) ?? "accurate-translate"
+        ) ?? legacyTranslationDeploymentName ?? "accurate-translate"
         settings.azureOpenAITranslationDeploymentName = storedTranslationDeploymentName == "realtime-translate"
             ? "accurate-translate"
             : storedTranslationDeploymentName
         settings.azureOpenAIAPIKey = credentials.azureOpenAIAPIKey
         settings.phraseHintsByScope = loadPhraseHintsByScope()
 
-        if let outputLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.outputLanguageIDs.rawValue) as? [String] {
+        if let outputLanguageIDs = userDefaults.object(
+            forKey: UserDefaultsKey.outputLanguageIDs.rawValue
+        ) as? [String] {
             settings.selectedOutputLanguageIDs = Set(outputLanguageIDs).union(requiredOutputLanguageIDs)
         }
-        if let visibleLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.portalVisibleOutputLanguageIDs.rawValue) as? [String] {
+        if let visibleLanguageIDs = userDefaults.object(
+            forKey: UserDefaultsKey.portalVisibleOutputLanguageIDs.rawValue
+        ) as? [String] {
             settings.portalVisibleOutputLanguageIDs = Set(visibleLanguageIDs).union(requiredOutputLanguageIDs)
         } else {
             settings.portalVisibleOutputLanguageIDs = settings.selectedOutputLanguageIDs

@@ -291,8 +291,12 @@ struct RelaySettings: Equatable {
                 throw RelayConnectionTestError.serviceRejected(httpResponse.statusCode)
             }
 
-            guard let viewerAccessCode = httpResponse.value(forHTTPHeaderField: "X-LiveCaption-Viewer-Access-Code"),
-                  let expiresAtString = httpResponse.value(forHTTPHeaderField: "X-LiveCaption-Viewer-Access-Expires-At"),
+            guard let viewerAccessCode = httpResponse.value(
+                forHTTPHeaderField: "X-LiveCaption-Viewer-Access-Code"
+            ),
+                  let expiresAtString = httpResponse.value(
+                    forHTTPHeaderField: "X-LiveCaption-Viewer-Access-Expires-At"
+                  ),
                   let viewerAccessExpiresAt = Self.parseTimestamp(expiresAtString)
             else {
                 throw RelayConnectionTestError.invalidResponse

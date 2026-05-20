@@ -253,7 +253,11 @@ final class SpeechRecognitionController: ObservableObject {
         recognizer.addCanceledEventHandler { [weak self] _, event in
             let message = event.errorDetails?.trimmingCharacters(in: .whitespacesAndNewlines)
             DispatchQueue.main.async { [weak self] in
-                self?.captionPreviewState.setFailure(message?.isEmpty == false ? message! : L10n.text("speechRecognition.cancelled"))
+                self?.captionPreviewState.setFailure(
+                    message?.isEmpty == false
+                        ? message!
+                        : L10n.text("speechRecognition.cancelled")
+                )
             }
         }
     }

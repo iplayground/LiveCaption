@@ -225,7 +225,10 @@ actor AzureOpenAIRealtimeTranslationService {
     ) async throws -> AzureOpenAIRealtimeTranslationResult {
         var request = URLRequest(url: try Self.requestURL(for: configuration))
         request.httpMethod = "POST"
-        request.setValue(configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "api-key")
+        request.setValue(
+            configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            forHTTPHeaderField: "api-key"
+        )
         request.setValue("LiveCaptionPortal", forHTTPHeaderField: "OpenAI-Safety-Identifier")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
@@ -269,7 +272,9 @@ actor AzureOpenAIRealtimeTranslationService {
         }
 
         guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AzureOpenAITextTranslationError.invalidResponse(detail: "reason=invalidJSON; responseBytes=\(data.count)")
+            throw AzureOpenAITextTranslationError.invalidResponse(
+                detail: "reason=invalidJSON; responseBytes=\(data.count)"
+            )
         }
 
         guard let choices = payload["choices"] as? [[String: Any]],
@@ -345,18 +350,30 @@ actor AzureOpenAIRealtimeTranslationService {
             : normalizedPhraseHints.joined(separator: ", ")
 
         return """
-        Produce one faithful source-language subtitle in \(inputLanguage.azureOpenAITextNormalizationName) as sourceText, then translate sourceText into the requested languages.
+        Produce one faithful source-language subtitle in \(inputLanguage.azureOpenAITextNormalizationName)
+        as sourceText,
+        then translate sourceText into the requested languages.
         Choose sourceText from transcriptCandidates. Prefer the Azure OpenAI candidate when it is present and coherent.
-        Use the Azure Speech candidate only as secondary evidence. Ignore Azure Speech when it is clearly garbled, phonetically mistranscribed, or conflicts with stable previousSourceTexts.
-        Use Azure Speech as the fallback source only when the Azure OpenAI candidate is missing, empty, or clearly damaged.
-        Use previousSourceTexts and vocabulary hints only as conservative source-language context for homophones, near-sound words, segmentation, code-switching, topic continuity, spelling, capitalization, punctuation, and Traditional Chinese normalization.
-        Treat previousSourceTexts as source-language context, not translated evidence. Preserve the current talk topic across adjacent subtitles when resolving ambiguous candidates.
+        Use the Azure Speech candidate only as secondary evidence. Ignore Azure Speech when it is clearly garbled,
+        phonetically mistranscribed, or conflicts with stable previousSourceTexts.
+        Use Azure Speech as the fallback source only when the Azure OpenAI candidate is missing, empty,
+        or clearly damaged.
+        Use previousSourceTexts and vocabulary hints only as conservative source-language context for homophones,
+        near-sound words, segmentation, code-switching, topic continuity, spelling, capitalization, punctuation,
+        and Traditional Chinese normalization.
+        Treat previousSourceTexts as source-language context, not translated evidence. Preserve the current talk topic
+        across adjacent subtitles when resolving ambiguous candidates.
         Preserve the heard language form in sourceText when it is supported by the candidates or previousSourceTexts.
         Do not replace code-switched text with phonetically similar words in another language.
-        If a candidate phrase is unnatural in the source language and a homophone or near-sound alternative is supported by context, use the natural source-language alternative.
-        If a code-switch phrase is unnatural in the surrounding source-language context, and a near-sound code-switch phrase is supported by context, use the contextual phrase.
-        For Mandarin sourceText, be especially careful when speech includes English code-switching. Do not normalize an ambiguous candidate into a meaning that changes the current topic unless the current candidates clearly support that topic shift.
-        Do not add content the speaker did not say, copy from previousSourceTexts, beautify wording, formalize spoken language, paraphrase, summarize, expand, or censor.
+        If a candidate phrase is unnatural in the source language and a homophone or near-sound alternative is supported
+        by context, use the natural source-language alternative.
+        If a code-switch phrase is unnatural in the surrounding source-language context, and a near-sound code-switch
+        phrase is supported by context, use the contextual phrase.
+        For Mandarin sourceText, be especially careful when speech includes English code-switching. Do not normalize
+        an ambiguous candidate into a meaning that changes the current topic unless the current candidates clearly
+        support that topic shift.
+        Do not add content the speaker did not say, copy from previousSourceTexts, beautify wording,
+        formalize spoken language, paraphrase, summarize, expand, or censor.
         If uncertain, keep the most reliable candidate wording.
         Return only a JSON object with this shape:
         {

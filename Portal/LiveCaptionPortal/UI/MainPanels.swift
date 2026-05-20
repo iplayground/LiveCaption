@@ -171,7 +171,10 @@ struct ControlSidebar: View {
         .onChange(of: subtitleFileSettings) {
             refreshSubtitleFileAccessStatus()
         }
-        .alert(L10n.text("alert.microphonePermission.title"), isPresented: $audioInputController.isMicrophoneSettingsPromptPresented) {
+        .alert(
+            L10n.text("alert.microphonePermission.title"),
+            isPresented: $audioInputController.isMicrophoneSettingsPromptPresented
+        ) {
             Button(L10n.text("common.cancel"), role: .cancel) {}
             Button(L10n.text("common.openSystemSettings")) {
                 audioInputController.openMicrophoneSettingsAfterConfirmation()

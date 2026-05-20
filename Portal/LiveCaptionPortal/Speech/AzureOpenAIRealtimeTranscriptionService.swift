@@ -129,7 +129,13 @@ actor AzureOpenAIRealtimeTranscriptionService {
         guard paddedEndMilliseconds > paddedStartMilliseconds else {
             emitDiagnostic(
                 level: .warning,
-                detail: "phase=transcriptionSkipped; reason=missingAudio; audioStartMs=\(segmentStartMilliseconds); audioDurationMs=\(segmentDurationMilliseconds); bufferedAudioMs=\(bufferedAudioMilliseconds)"
+                detail: [
+                    "phase=transcriptionSkipped",
+                    "reason=missingAudio",
+                    "audioStartMs=\(segmentStartMilliseconds)",
+                    "audioDurationMs=\(segmentDurationMilliseconds)",
+                    "bufferedAudioMs=\(bufferedAudioMilliseconds)",
+                ].joined(separator: "; ")
             )
             return
         }
@@ -141,7 +147,13 @@ actor AzureOpenAIRealtimeTranscriptionService {
         guard !audio.isEmpty else {
             emitDiagnostic(
                 level: .warning,
-                detail: "phase=transcriptionSkipped; reason=emptyAudioSlice; audioStartMs=\(segmentStartMilliseconds); audioDurationMs=\(segmentDurationMilliseconds); bufferedAudioMs=\(bufferedAudioMilliseconds)"
+                detail: [
+                    "phase=transcriptionSkipped",
+                    "reason=emptyAudioSlice",
+                    "audioStartMs=\(segmentStartMilliseconds)",
+                    "audioDurationMs=\(segmentDurationMilliseconds)",
+                    "bufferedAudioMs=\(bufferedAudioMilliseconds)",
+                ].joined(separator: "; ")
             )
             return
         }
@@ -210,7 +222,10 @@ actor AzureOpenAIRealtimeTranscriptionService {
         var request = URLRequest(url: try Self.requestURL(for: configuration))
         let boundary = "LiveCaptionBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         request.httpMethod = "POST"
-        request.setValue(configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "api-key")
+        request.setValue(
+            configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            forHTTPHeaderField: "api-key"
+        )
         request.setValue("LiveCaptionPortal", forHTTPHeaderField: "OpenAI-Safety-Identifier")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
@@ -302,7 +317,12 @@ actor AzureOpenAIRealtimeTranscriptionService {
         prompt: String
     ) -> Data {
         var body = Data()
-        appendFormField(name: "model", value: deploymentName.trimmingCharacters(in: .whitespacesAndNewlines), boundary: boundary, to: &body)
+        appendFormField(
+            name: "model",
+            value: deploymentName.trimmingCharacters(in: .whitespacesAndNewlines),
+            boundary: boundary,
+            to: &body
+        )
         appendFormField(name: "language", value: languageCode, boundary: boundary, to: &body)
         appendFormField(name: "prompt", value: prompt, boundary: boundary, to: &body)
         appendFormField(name: "response_format", value: "json", boundary: boundary, to: &body)
@@ -367,24 +387,37 @@ actor AzureOpenAIRealtimeTranscriptionService {
         return wav
     }
 
-    private static func transcriptionPrompt(for configuration: AzureOpenAIRealtimeTranscriptionConfiguration) -> String {
+    private static func transcriptionPrompt(
+        for configuration: AzureOpenAIRealtimeTranscriptionConfiguration
+    ) -> String {
         var lines: [String] = []
         if let languagePrompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
             lines.append(languagePrompt)
         }
         if configuration.inputLanguage == .english,
-           let promptDescription = configuration.speakerIdentity?.transcriptionPromptDescription
-        {
-            lines.append("The speaker identity is \(promptDescription). Account for accent-influenced English pronunciation when choosing the transcript, but only use a word or spelling when it is supported by the audio and surrounding source-language context.")
+           let promptDescription = configuration.speakerIdentity?.transcriptionPromptDescription {
+            lines.append(
+                "The speaker identity is \(promptDescription). "
+                    + "Account for accent-influenced English pronunciation when choosing the transcript, "
+                    + "but only use a word or spelling when it is supported by the audio "
+                    + "and surrounding source-language context."
+            )
         }
-        lines.append("Transcribe only the speech that was heard. Preserve the heard language form when the speaker code-switches. Do not add content, polish wording, summarize, or formalize spoken language.")
+        lines.append(
+            "Transcribe only the speech that was heard. "
+                + "Preserve the heard language form when the speaker code-switches. "
+                + "Do not add content, polish wording, summarize, or formalize spoken language."
+        )
 
         let phraseHints = configuration.phraseHints
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
         if !phraseHints.isEmpty {
-            lines.append("Use likely vocabulary as canonical spelling only when the audio sounds like it; preserve Latin spelling and capitalization without translation or localization.")
+            lines.append(
+                "Use likely vocabulary as canonical spelling only when the audio sounds like it; "
+                    + "preserve Latin spelling and capitalization without translation or localization."
+            )
             lines.append("Likely vocabulary: \(phraseHints.joined(separator: ", ")).")
         }
 
@@ -468,9 +501,13 @@ private extension InputLanguage {
     nonisolated var azureOpenAIRealtimePrompt: String? {
         switch self {
         case .mandarin:
-            "Transcribe Mandarin in Taiwan Traditional Chinese. Do not output Simplified Chinese. Mandarin speech may code-switch into English; preserve the heard language form, and do not convert code-switched speech into phonetically similar words in another language."
+            "Transcribe Mandarin in Taiwan Traditional Chinese. Do not output Simplified Chinese. "
+                + "Mandarin speech may code-switch into English; preserve the heard language form, "
+                + "and do not convert code-switched speech into phonetically similar words in another language."
         case .english:
-            "Transcribe English in English. If the English speaker briefly code-switches into Mandarin or Chinese, translate that Chinese speech into English for the transcript."
+            "Transcribe English in English. "
+                + "If the English speaker briefly code-switches into Mandarin or Chinese, "
+                + "translate that Chinese speech into English for the transcript."
         }
     }
 }
