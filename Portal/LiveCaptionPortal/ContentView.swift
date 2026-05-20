@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var inputLanguage = InputLanguage.mandarin
+    @State private var speakerIdentity = SpeakerIdentity.chinese
     @StateObject private var audioInputController = AudioInputController()
     @StateObject private var speechRecognitionController = SpeechRecognitionController()
     @State private var isCaptionSessionActive = false
@@ -150,6 +151,7 @@ struct ContentView: View {
             captionPreviewState: speechRecognitionController.captionPreviewState,
             sessionTitle: $sessionTitle,
             inputLanguage: $inputLanguage,
+            speakerIdentity: $speakerIdentity,
             processingInputLanguage: isCaptionSessionActive ? currentProcessingInputLanguage : inputLanguage,
             subtitleFileSettings: $subtitleFileSettings,
             subtitleFileAccessStatus: $subtitleFileAccessStatus,
@@ -786,7 +788,10 @@ struct ContentView: View {
         let translationConfiguration = speechSettings.azureOpenAIRealtimeConfiguration(
             outputLanguages: targetLanguages
         )
-        let transcriptionConfiguration = speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(inputLanguage: inputLanguage)
+        let transcriptionConfiguration = speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(
+            inputLanguage: inputLanguage,
+            speakerIdentity: speakerIdentityPromptValue(for: inputLanguage)
+        )
 
         do {
             if restartsTranslation {
@@ -815,6 +820,14 @@ struct ContentView: View {
             )
             return false
         }
+    }
+
+    private func speakerIdentityPromptValue(for inputLanguage: InputLanguage) -> SpeakerIdentity? {
+        guard inputLanguage == .english else {
+            return nil
+        }
+
+        return speakerIdentity
     }
 
     private func stopAccurateCaptionSession() {

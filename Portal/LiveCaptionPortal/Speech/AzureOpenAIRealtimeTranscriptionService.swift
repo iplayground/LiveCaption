@@ -5,6 +5,7 @@ struct AzureOpenAIRealtimeTranscriptionConfiguration: Equatable, Sendable {
     let transcriptionDeploymentName: String
     let apiKey: String
     let inputLanguage: InputLanguage
+    let speakerIdentity: SpeakerIdentity?
     let phraseHints: [String]
 
     nonisolated var isConfigured: Bool {
@@ -370,6 +371,11 @@ actor AzureOpenAIRealtimeTranscriptionService {
         var lines: [String] = []
         if let languagePrompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {
             lines.append(languagePrompt)
+        }
+        if configuration.inputLanguage == .english,
+           let promptDescription = configuration.speakerIdentity?.transcriptionPromptDescription
+        {
+            lines.append("The speaker identity is \(promptDescription). Account for accent-influenced English pronunciation when choosing the transcript, but only use a word or spelling when it is supported by the audio and surrounding source-language context.")
         }
         lines.append("Transcribe only the speech that was heard. Preserve the heard language form when the speaker code-switches. Do not add content, polish wording, summarize, or formalize spoken language.")
 

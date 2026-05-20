@@ -223,6 +223,12 @@
 "speech.inputLanguage" = "Speech language";
 "speech.outputLanguageCount" = "%d languages";
 "speech.outputLanguages" = "Caption output";
+"speakerIdentity" = "Speaker identity";
+"speakerIdentity.chinese" = "Chinese";
+"speakerIdentity.indian" = "Indian";
+"speakerIdentity.japanese" = "Japanese";
+"speakerIdentity.korean" = "Korean";
+"speakerIdentity.other" = "Other";
 "speechAuthorization.authorized" = "Authorized";
 "speechAuthorization.failed" = "Authorization failed";
 "speechAuthorization.unauthorized" = "Unauthorized";

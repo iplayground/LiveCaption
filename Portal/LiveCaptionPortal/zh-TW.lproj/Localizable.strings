@@ -223,6 +223,12 @@
 "speech.inputLanguage" = "語音語言";
 "speech.outputLanguageCount" = "%d 種";
 "speech.outputLanguages" = "字幕輸出";
+"speakerIdentity" = "講者身份";
+"speakerIdentity.chinese" = "華人";
+"speakerIdentity.indian" = "印度";
+"speakerIdentity.japanese" = "日本";
+"speakerIdentity.korean" = "韓國";
+"speakerIdentity.other" = "其他";
 "speechAuthorization.authorized" = "已授權";
 "speechAuthorization.failed" = "授權失敗";
 "speechAuthorization.unauthorized" = "未授權";

@@ -23,6 +23,7 @@ struct ContentViewLayout: View {
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @Binding var sessionTitle: String
     @Binding var inputLanguage: InputLanguage
+    @Binding var speakerIdentity: SpeakerIdentity
     let processingInputLanguage: InputLanguage
     @Binding var subtitleFileSettings: SubtitleFileSettings
     @Binding var subtitleFileAccessStatus: SubtitleFileAccessStatus
@@ -112,6 +113,7 @@ struct ContentViewLayout: View {
             CaptionWorkspace(
                 sessionTitle: $sessionTitle,
                 inputLanguage: $inputLanguage,
+                speakerIdentity: $speakerIdentity,
                 processingInputLanguage: processingInputLanguage,
                 areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                 outputLanguages: speechSettings.portalVisibleOutputLanguages,

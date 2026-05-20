@@ -148,3 +148,5 @@ Azure OpenAI 連線測試失敗時，Portal 設定視窗只顯示適合操作端
 | `en-US` | 只套用 `en-US` 語音輸入。 |
 
 每次建立 Azure Speech Translation recognizer 時，Portal 會合併 `shared` 與目前語音輸入語言的詞彙，最多 250 筆，並以 `SPXPhraseListGrammar` 加入 recognizer。Phrase list weight 固定為 `2.0`，不提供 GUI 或 `UserDefaults` 設定。詞彙不應寫入 log、字幕事件、Relay request 或文件範例。
+
+Portal 主控板的講者身份不是部署或持久化設定。它只在語音輸入語言為 `English` 時顯示，選項為華人、日本、韓國、印度與其他；只有華人、日本、韓國、印度會在建立 Azure OpenAI transcription prompt 時作為通用口音線索使用。「其他」不產生講者身份或口音提示。此值不得寫入 `UserDefaults`、環境匯出檔、secrets 檔、log、字幕事件或 Relay request。

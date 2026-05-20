@@ -118,13 +118,15 @@ struct SpeechSettings: Equatable {
     }
 
     func azureOpenAIRealtimeTranscriptionConfiguration(
-        inputLanguage: InputLanguage
+        inputLanguage: InputLanguage,
+        speakerIdentity: SpeakerIdentity? = nil
     ) -> AzureOpenAIRealtimeTranscriptionConfiguration {
         AzureOpenAIRealtimeTranscriptionConfiguration(
             endpointURLString: azureOpenAIEndpointURLString,
             transcriptionDeploymentName: azureOpenAITranscriptionDeploymentName,
             apiKey: azureOpenAIAPIKey,
             inputLanguage: inputLanguage,
+            speakerIdentity: speakerIdentity,
             phraseHints: phraseHints(for: inputLanguage)
         )
     }

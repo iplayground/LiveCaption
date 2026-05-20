@@ -262,6 +262,7 @@ struct ControlSidebar: View {
 struct CaptionWorkspace: View {
     @Binding var sessionTitle: String
     @Binding var inputLanguage: InputLanguage
+    @Binding var speakerIdentity: SpeakerIdentity
     let processingInputLanguage: InputLanguage
     let areConfigurationControlsLocked: Bool
     let outputLanguages: [SpeechOutputLanguage]
@@ -339,22 +340,7 @@ struct CaptionWorkspace: View {
 
                 Spacer()
 
-                HStack(spacing: 4) {
-                    Text(L10n.text("speech.inputLanguage"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Picker(L10n.text("speech.inputLanguage"), selection: $inputLanguage) {
-                        ForEach(InputLanguage.allCases) { language in
-                            Text(language.nativeName).tag(language)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .disabled(areConfigurationControlsLocked)
-                }
-                .padding(.trailing, 8)
+                speechControlCluster
             }
             .frame(maxWidth: .infinity)
 
@@ -380,6 +366,44 @@ struct CaptionWorkspace: View {
         .onTapGesture {
             dismissSessionTitleFocus()
         }
+    }
+
+    private var speechControlCluster: some View {
+        HStack(spacing: 12) {
+            if inputLanguage == .english {
+                HStack(spacing: 4) {
+                    Text(L10n.text("speakerIdentity"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Picker(L10n.text("speakerIdentity"), selection: $speakerIdentity) {
+                        ForEach(SpeakerIdentity.allCases) { identity in
+                            Text(identity.title).tag(identity)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(areConfigurationControlsLocked)
+                }
+            }
+
+            HStack(spacing: 4) {
+                Text(L10n.text("speech.inputLanguage"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker(L10n.text("speech.inputLanguage"), selection: $inputLanguage) {
+                    ForEach(InputLanguage.allCases) { language in
+                        Text(language.nativeName).tag(language)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .fixedSize(horizontal: true, vertical: false)
+                .disabled(areConfigurationControlsLocked)
+            }
+        }
+        .padding(.trailing, 8)
     }
 
     private var scrollingCaptionContent: some View {
