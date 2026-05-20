@@ -56,9 +56,9 @@ Portal 的 Xcode 建置與診斷應優先減少冗長輸出與重複設定，讓
 - 若 Codex session 中可用 Apple Xcode MCP bridge（`xcode`，命令為 `xcrun mcpbridge`），應優先使用它取得 Xcode 目前開啟 workspace、scheme、build diagnostics、執行狀態與 logs，避免直接讀取完整 `xcodebuild` 大量輸出。
 - 若 Apple Xcode MCP 不可用，但 `xcodebuildmcp` 可用，且任務符合其 macOS build / diagnostics 能力，應優先使用 `xcodebuildmcp`；若它偏向 iOS simulator 工作流或無法乾淨支援 Portal macOS App，才退回 shell-first。
 - Xcode 的 Agent Activity 顯示 `Codex Inactive` 不代表設定失敗，只表示目前沒有 active Codex session 正在呼叫 Xcode MCP。若 `codex mcp list` 已顯示 `xcode` enabled，但 session 沒有露出 Xcode MCP tools，應提示重啟 Codex app 或開新 session 重新載入工具。
-- 使用 Xcode MCP 前，應確認 Xcode 已開啟 `Portal/LiveCaptionPortal.xcworkspace` 或正確 project；若 Xcode 未開啟目標 workspace，先提示使用者開啟或改用 shell-first 指定 workspace。
+- 使用 Xcode MCP 前，應確認 Xcode 已開啟 `Portal/LiveCaptionPortal.xcodeproj` 或正確 project；若 Xcode 未開啟目標 project，先提示使用者開啟或改用 shell-first 指定 project。
 - Xcode MCP 工具不可用、無法支援 macOS App 工作流或回傳資訊不足時，應立即退回 shell-first 流程，不得因等待 MCP 設定而阻塞工作。
-- 使用 shell-first `xcodebuild` 時，應優先用固定 workspace、scheme、configuration 與 `platform=macOS` destination；需要分析失敗時，先擷取最小必要錯誤片段，例如 `error:`、`warning:` 與第一個 failing command，避免把完整 build log 當成主要上下文。
+- 使用 shell-first `xcodebuild` 時，應優先用固定 project、scheme、configuration 與 `platform=macOS` destination；需要分析失敗時，先擷取最小必要錯誤片段，例如 `error:`、`warning:` 與第一個 failing command，避免把完整 build log 當成主要上下文。
 - 對 Portal 的例行驗證，除非正在診斷 Xcode 專案設定或簽署問題，回覆中只需摘要 build 是否成功、第一個錯誤與必要警告，不應貼上完整 `xcodebuild` 輸出。
 - 若使用 Xcode MCP 或 shell build 會啟動、停止或操作正在執行的 Portal App，需確認不會干擾使用者目前工作；必要時先說明即將操作的 app/process。
 

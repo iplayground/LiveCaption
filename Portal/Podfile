@@ -1,7 +1,0 @@
-platform :osx, '26.0'
-
-target 'LiveCaptionPortal' do
-  use_frameworks!
-
-  pod 'MicrosoftCognitiveServicesSpeech-macOS', '~> 1.49.0'
-end

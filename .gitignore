@@ -28,7 +28,7 @@ xcuserdata/
 .swiftpm/
 Package.resolved
 
-## CocoaPods / Carthage
+## Dependency manager generated artifacts
 Pods/
 Carthage/Build/
 

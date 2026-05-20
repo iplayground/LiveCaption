@@ -13,20 +13,12 @@ LiveCaption 是一套用於現場活動的即時語音辨識與翻譯系統。
 
 ### Portal
 
-Portal 使用 CocoaPods 管理 Azure Speech SDK。初次建置或 Podfile 更新後：
-
-```sh
-cd Portal
-bundle install
-bundle exec pod install
-```
-
-使用 CocoaPods 產生的 workspace 建置：
+Portal 使用 Swift Package Manager 管理 Azure Speech SDK。專案內的本地 package 會以 binary target 下載 Microsoft 提供的 `MicrosoftCognitiveServicesSpeech.xcframework`。此 package 使用 `swift-tools-version: 6.3` 與 macOS 26 deployment target，建置時需使用支援 SPM 6.3 的 Xcode。
 
 ```sh
 cd Portal
 xcodebuild -scheme LiveCaptionPortal \
-  -workspace LiveCaptionPortal.xcworkspace \
+  -project LiveCaptionPortal.xcodeproj \
   -destination platform=macOS \
   -derivedDataPath /tmp/LiveCaptionDerivedData \
   build
