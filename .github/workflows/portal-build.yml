@@ -28,6 +28,17 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: SwiftLint Portal
+        run: |
+          if command -v swiftlint >/dev/null; then
+            swiftlint lint --config Portal/.swiftlint.yml
+          elif command -v brew >/dev/null; then
+            brew install swiftlint
+            swiftlint lint --config Portal/.swiftlint.yml
+          else
+            echo "::warning::SwiftLint is not installed and Homebrew is unavailable; skipping Portal SwiftLint."
+          fi
+
       - name: Build Portal
         run: |
           xcodebuild \

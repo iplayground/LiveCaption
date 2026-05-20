@@ -65,6 +65,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = F28BC4DA2F9E030F008AD6B2 /* Build configuration list for PBXNativeTarget "LiveCaptionPortal" */;
 			buildPhases = (
+				8A61F35A2FAE130100E4C781 /* SwiftLint */,
 				F28BC4CB2F9E030B008AD6B2 /* Sources */,
 				F28BC4CC2F9E030B008AD6B2 /* Frameworks */,
 				F28BC4CD2F9E030B008AD6B2 /* Resources */,
@@ -130,6 +131,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		8A61F35A2FAE130100E4C781 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\n\nif command -v swiftlint >/dev/null; then\n  swiftlint --config \"${SRCROOT}/.swiftlint.yml\"\nelse\n  echo \"warning: SwiftLint not installed or not available to Xcode. Install with: brew install swiftlint\"\n  echo \"warning: Xcode PATH: ${PATH}\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		F28BC4CB2F9E030B008AD6B2 /* Sources */ = {

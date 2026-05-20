@@ -1,0 +1,39 @@
+included:
+  - LiveCaptionPortal
+
+cache_path: /tmp/livecaption-portal-swiftlint-cache
+
+excluded:
+  - Packages
+  - LiveCaptionPortal.xcodeproj
+  - DerivedData
+  - build
+
+line_length:
+  warning: 140
+  error: 1000
+  ignores_comments: true
+  ignores_urls: true
+
+file_length:
+  warning: 800
+  error: 2000
+
+type_body_length:
+  warning: 500
+  error: 2000
+
+function_body_length:
+  warning: 80
+  error: 300
+
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 40
+    error: 80
+
+trailing_comma:
+  mandatory_comma: true
