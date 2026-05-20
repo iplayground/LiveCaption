@@ -1,5 +1,8 @@
 # LiveCaption
 
+[![Portal](https://github.com/iplayground/LiveCaption/actions/workflows/portal-build.yml/badge.svg?branch=main)](https://github.com/iplayground/LiveCaption/actions/workflows/portal-build.yml)
+[![Relay Deploy](https://github.com/iplayground/LiveCaption/actions/workflows/deploy-relay-functions.yml/badge.svg?branch=main)](https://github.com/iplayground/LiveCaption/actions/workflows/deploy-relay-functions.yml)
+
 LiveCaption 是一套用於現場活動的即時語音辨識與翻譯系統。
 
 ## 元件
@@ -8,6 +11,11 @@ LiveCaption 是一套用於現場活動的即時語音辨識與翻譯系統。
 - `Relay/`：Python Azure Functions 後端，負責驗證 Portal 請求、整理字幕事件，並透過 Azure Web PubSub 發布給觀眾端。
 
 目前 Portal 可產生字幕事件並送往 Relay；Relay 可驗證 Portal 請求、發布字幕到 Azure Web PubSub，並提供觀眾端取得短效 Web PubSub 連線 URL 的 negotiate API。觀眾端 WebSocket 可接收字幕與控制事件，字幕模式與語言由 Viewer 本機自行過濾。
+
+## CI/CD 狀態
+
+- `Portal`：驗證 Portal macOS App 是否能在 GitHub Actions 上編譯成功；只在 push 或 PR 到 `main` 且 Portal 程式碼或 workflow 變更時執行。
+- `Relay Deploy`：部署 Relay Azure Function App，並以健康檢查確認正式 endpoint 已載入目標 commit。
 
 ## 快速開始
 

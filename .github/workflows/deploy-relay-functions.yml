@@ -1,4 +1,4 @@
-name: Deploy Relay Azure Function App
+name: Relay Deploy
 
 on:
   push:
