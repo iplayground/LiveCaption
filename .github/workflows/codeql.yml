@@ -8,7 +8,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '38 4 * * 6'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 permissions:
@@ -19,8 +19,60 @@ permissions:
   packages: read
 
 jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      swift: ${{ steps.filter.outputs.swift }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect Swift CodeQL inputs
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "swift=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${GITHUB_SHA}"
+          fi
+
+          if [[ -z "${base}" || "${base}" =~ ^0+$ ]]; then
+            echo "swift=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "${base}" || true
+          fi
+
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "swift=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "${base}" "${head}")"
+          if grep -E '^(Portal/|\.github/workflows/codeql\.yml$)' <<< "${changed_files}"; then
+            echo "swift=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "swift=false" >> "${GITHUB_OUTPUT}"
+          fi
+
   analyze-static:
     name: Analyze (${{ matrix.language }})
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -44,19 +96,37 @@ jobs:
 
   analyze-swift:
     name: Analyze (swift)
+    needs: detect-changes
+    if: github.event_name != 'push' && needs.detect-changes.outputs.swift == 'true'
     runs-on: macos-26
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Cache Portal Swift packages
+        uses: actions/cache@v5
+        with:
+          path: Portal/.codeql-derived-data/SourcePackages
+          key: ${{ runner.os }}-portal-spm-${{ hashFiles('Portal/Packages/**/Package.swift', 'Portal/LiveCaptionPortal.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-portal-spm-
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve Portal packages
+        run: |
+          xcodebuild \
+            -project Portal/LiveCaptionPortal.xcodeproj \
+            -scheme LiveCaptionPortal \
+            -derivedDataPath Portal/.codeql-derived-data \
+            -resolvePackageDependencies
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: swift
           build-mode: manual
-
-      - name: Show Xcode version
-        run: xcodebuild -version
 
       - name: Build Portal for CodeQL
         run: |
@@ -65,6 +135,7 @@ jobs:
             -scheme LiveCaptionPortal \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -derivedDataPath Portal/.codeql-derived-data \
             CODE_SIGNING_ALLOWED=NO \
             build
 
