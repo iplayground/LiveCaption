@@ -196,9 +196,10 @@ struct SpeechSettings: Equatable {
 
     static func load() -> SpeechSettings {
         var settings = SpeechSettings()
+        let credentials = SpeechCredentialStore.load()
 
         settings.region = userDefaults.string(forKey: UserDefaultsKey.region.rawValue) ?? ""
-        settings.speechKey = userDefaults.string(forKey: UserDefaultsKey.speechKey.rawValue) ?? ""
+        settings.speechKey = credentials.speechKey
         settings.isAccurateCaptionEnabled = userDefaults.bool(forKey: UserDefaultsKey.accurateCaptionEnabled.rawValue)
         settings.azureOpenAIEndpointURLString = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIEndpoint.rawValue) ?? ""
         let storedTranscriptionDeploymentName = userDefaults.string(
@@ -213,7 +214,7 @@ struct SpeechSettings: Equatable {
         settings.azureOpenAITranslationDeploymentName = storedTranslationDeploymentName == "realtime-translate"
             ? "accurate-translate"
             : storedTranslationDeploymentName
-        settings.azureOpenAIAPIKey = userDefaults.string(forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue) ?? ""
+        settings.azureOpenAIAPIKey = credentials.azureOpenAIAPIKey
         settings.phraseHintsByScope = loadPhraseHintsByScope()
 
         if let outputLanguageIDs = userDefaults.object(forKey: UserDefaultsKey.outputLanguageIDs.rawValue) as? [String] {
@@ -254,16 +255,12 @@ struct SpeechSettings: Equatable {
             forKey: UserDefaultsKey.sentenceSilenceTimeoutMilliseconds.rawValue
         )
         Self.savePhraseHintsByScope(phraseHintsByScope)
-        if speechKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Self.userDefaults.removeObject(forKey: UserDefaultsKey.speechKey.rawValue)
-        } else {
-            Self.userDefaults.set(speechKey, forKey: UserDefaultsKey.speechKey.rawValue)
-        }
-        if azureOpenAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Self.userDefaults.removeObject(forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue)
-        } else {
-            Self.userDefaults.set(azureOpenAIAPIKey, forKey: UserDefaultsKey.azureOpenAIAPIKey.rawValue)
-        }
+        SpeechCredentialStore.save(
+            SpeechCredentials(
+                speechKey: speechKey,
+                azureOpenAIAPIKey: azureOpenAIAPIKey
+            )
+        )
     }
 
     static func normalizedPhraseHintsByScope(
@@ -409,13 +406,11 @@ struct SpeechSettings: Equatable {
 
     private enum UserDefaultsKey: String {
         case region = "speech.region"
-        case speechKey = "speech.key"
         case accurateCaptionEnabled = "speech.accurateCaptionEnabled"
         case azureOpenAIEndpoint = "speech.azureOpenAI.endpoint"
         case azureOpenAIDeployment = "speech.azureOpenAI.deployment"
         case azureOpenAITranscriptionDeployment = "speech.azureOpenAI.transcriptionDeployment"
         case azureOpenAITranslationDeployment = "speech.azureOpenAI.translationDeployment"
-        case azureOpenAIAPIKey = "speech.azureOpenAI.apiKey"
         case outputLanguageIDs = "speech.outputLanguageIDs"
         case sentenceSilenceTimeoutMilliseconds = "speech.sentenceSilenceTimeoutMilliseconds"
     }

@@ -107,29 +107,33 @@ curl -X POST \
 
 ## Portal 本機設定
 
-Portal 使用 `UserDefaults` 保存短小的 Speech 與 Azure OpenAI 設定：
+Portal 使用 `UserDefaults` 保存短小且非機密的 Speech 與 Azure OpenAI 設定：
 
 | Key | 說明 |
 | --- | --- |
 | `speech.region` | Azure Speech region，例如 `japaneast`。 |
-| `speech.key` | Azure Speech key，只保存在本機。 |
 | `speech.azureOpenAI.endpoint` | Azure OpenAI endpoint，例如 `https://<resource>.openai.azure.com`。 |
 | `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI transcription deployment name，例如 `accurate-transcribe`，用於精準模式原始語言 draft。 |
 | `speech.azureOpenAI.translationDeployment` | Azure OpenAI text model deployment name，例如 `accurate-translate`，用於精準模式比對 OpenAI transcription 與 Azure Speech final 候選文字，產生校正原文與其他輸出語言 final 字幕。 |
-| `speech.azureOpenAI.apiKey` | Azure OpenAI API key，只保存在本機。 |
 | `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI 連線測試狀態。 |
 | `speech.outputLanguageIDs` | 字幕輸出語言清單。 |
 | `speech.sentenceSilenceTimeoutMilliseconds` | Speech 句子分段靜音時間，範圍 100 ms 到 5000 ms，預設 800 ms。 |
 | `speech.authorizationStatus` | 上次 Speech 授權測試狀態。 |
 
-`speech.key` 與 `speech.azureOpenAI.apiKey` 是機密，不得提交、不得寫入文件，也不得輸出到事件紀錄。若後續改由後端提供短效 token，Portal 應重新設計設定項與憑證保存方式，不沿用目前的本機 key 流程。
+Azure Speech key 與 Azure OpenAI API key 是機密，不存入 `UserDefaults`。Portal 會保存到 app sandbox 內固定的本機 secrets 設定檔：
+
+```text
+~/Library/Containers/io.iplayground.LiveCaptionPortal/Data/Library/Application Support/LiveCaptionPortal/speech-secrets.json
+```
+
+此檔案只供操作端本機保存與可信任電腦之間轉移，不得提交、不得寫入文件，也不得輸出到事件紀錄。檔案建立時 Portal 會盡量將權限收斂為使用者可讀寫。若後續改由後端提供短效 token，Portal 應重新設計設定項與憑證保存方式，不沿用目前的本機 key 流程。
 
 Azure OpenAI 連線測試失敗時，Portal 設定視窗只顯示適合操作端閱讀的錯誤摘要；事件紀錄可保存 Foundation / URLSession 可取得的診斷欄位，例如測試階段、deployment name、`NSError` domain / code、錯誤摘要，以及 Foundation 若有提供的 HTTP status。若底層 API 沒有提供 Azure response body，Portal 不得推測或硬填不存在的伺服器端細節。診斷事件不得包含 Azure OpenAI API key、完整 request / response body、HTTP headers、prompt、字幕文字、逐字稿或 session secret。
 
-辨識詞彙提示不放在 `UserDefaults`。Portal 啟動時會從 Application Support 讀取：
+辨識詞彙提示不放在 `UserDefaults`。Portal 啟動時會從 app sandbox 內的 Application Support 讀取：
 
 ```text
-~/Library/Application Support/LiveCaptionPortal/speech-phrase-hints.json
+~/Library/Containers/io.iplayground.LiveCaptionPortal/Data/Library/Application Support/LiveCaptionPortal/speech-phrase-hints.json
 ```
 
 若檔案不存在，Portal 使用預設詞彙設定：`shared` 只有 `iPlayground`。使用者透過 Speech 設定中的 GUI 編輯器更新詞彙後，Portal 會把內容寫回同一個 JSON 檔案。
