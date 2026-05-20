@@ -163,6 +163,10 @@
 "pubSub.caption.modeEmpty" = "No caption received for this mode yet.";
 "pubSub.caption.openAI" = "OpenAI Captions";
 "pubSub.caption.speech" = "Speech Captions";
+"pubSub.caption.status.connected" = "Receiving";
+"pubSub.caption.status.connecting" = "Connecting";
+"pubSub.caption.status.failed" = "Receive failed";
+"pubSub.caption.status.idle" = "Receive is idle";
 "relay.environment" = "Environment";
 "relay.captionEvents.accurate" = "Caption events (accurate)";
 "relay.captionEvents.fast" = "Caption events (fast)";

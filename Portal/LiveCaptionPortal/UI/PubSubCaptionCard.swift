@@ -24,25 +24,29 @@ struct PubSubCaptionCard: View {
         }
     }
 
+    private var statusTitle: String {
+        switch receiver.status {
+        case .idle:
+            L10n.text("pubSub.caption.status.idle")
+        case .negotiating:
+            L10n.text("pubSub.caption.status.connecting")
+        case .connected:
+            L10n.text("pubSub.caption.status.connected")
+        case .failed:
+            L10n.text("pubSub.caption.status.failed")
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(receiver.status.tint)
-                    .frame(width: 22)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(statusTitle)
+                    .font(.headline)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(receiver.status.title)
-                        .font(.headline)
-
-                    Text(statusDetail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
+                Text(statusDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()

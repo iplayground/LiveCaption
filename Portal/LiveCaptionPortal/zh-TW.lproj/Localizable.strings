@@ -163,6 +163,10 @@
 "pubSub.caption.modeEmpty" = "尚未收到此模式的字幕。";
 "pubSub.caption.openAI" = "OpenAI 字幕";
 "pubSub.caption.speech" = "Speech 字幕";
+"pubSub.caption.status.connected" = "接收中";
+"pubSub.caption.status.connecting" = "連線中";
+"pubSub.caption.status.failed" = "接收失敗";
+"pubSub.caption.status.idle" = "接收閒置中";
 "relay.environment" = "環境";
 "relay.captionEvents.accurate" = "字幕事件（accurate）";
 "relay.captionEvents.fast" = "字幕事件（fast）";

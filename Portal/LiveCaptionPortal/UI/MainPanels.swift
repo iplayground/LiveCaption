@@ -298,108 +298,133 @@ struct CaptionWorkspace: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .firstTextBaseline) {
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text(L10n.text("caption.previewTitle"))
-                                .font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: 0) {
+                workspaceHeader
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 18)
+                    .frame(width: geometry.size.width, alignment: .leading)
 
-                            StatusPill(
-                                title: captionPreviewState.state.title,
-                                systemImage: captionPreviewState.state.systemImage,
-                                tint: captionPreviewState.state.tint
-                            )
+                ScrollView {
+                    scrollingCaptionContent
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissSessionTitleFocus()
                         }
-
-                        Spacer()
-
-                        HStack(spacing: 4) {
-                            Text(L10n.text("speech.inputLanguage"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            Picker(L10n.text("speech.inputLanguage"), selection: $inputLanguage) {
-                                ForEach(InputLanguage.allCases) { language in
-                                    Text(language.nativeName).tag(language)
-                                }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.segmented)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .disabled(areConfigurationControlsLocked)
-                        }
-                        .padding(.trailing, 8)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(L10n.text("session.title"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        ClickFocusedTextField(
-                            placeholder: L10n.text("session.title.placeholder"),
-                            text: $sessionTitle
-                        ) {
-                            focusedField = nil
-                        }
-                        .focused($focusedField, equals: .sessionTitle)
-                        .frame(height: 28)
-                        .disabled(areConfigurationControlsLocked)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(title: L10n.text("caption.live"), systemImage: "waveform")
-
-                        LiveTranscriptCard(
-                            languageName: processingInputLanguage.name,
-                            languageNativeName: processingInputLanguage.transcriptNativeName,
-                            text: captionPreviewState.liveTranscript(for: processingInputLanguage)
-                        )
-
-                        if case let .failed(message) = captionPreviewState.state {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(title: L10n.text("caption.preview"), systemImage: "captions.bubble")
-
-                        VStack(spacing: 12) {
-                            ForEach(previewLanguages) { language in
-                                CaptionCard(
-                                    languageName: language.name,
-                                    languageNativeName: language.nativeName,
-                                    text: captionPreviewState.finalCaptionText(
-                                        for: language,
-                                        inputLanguage: processingInputLanguage
-                                    )
-                                )
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(title: L10n.text("pubSub.caption"), systemImage: "dot.radiowaves.left.and.right")
-
-                        PubSubCaptionCard(receiver: pubSubCaptionReceiver)
-                    }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                        .frame(width: geometry.size.width, alignment: .leading)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    dismissSessionTitleFocus()
-                }
-                .padding(24)
-                .frame(width: geometry.size.width, alignment: .leading)
+                .scrollIndicators(.visible)
             }
-            .scrollIndicators(.visible)
         }
         .onAppear {
             clearInitialFocus()
+        }
+    }
+
+    private var workspaceHeader: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(L10n.text("caption.previewTitle"))
+                        .font(.title2.weight(.semibold))
+
+                    StatusPill(
+                        title: captionPreviewState.state.title,
+                        systemImage: captionPreviewState.state.systemImage,
+                        tint: captionPreviewState.state.tint
+                    )
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text(L10n.text("speech.inputLanguage"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Picker(L10n.text("speech.inputLanguage"), selection: $inputLanguage) {
+                        ForEach(InputLanguage.allCases) { language in
+                            Text(language.nativeName).tag(language)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(areConfigurationControlsLocked)
+                }
+                .padding(.trailing, 8)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.text("session.title"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ClickFocusedTextField(
+                    placeholder: L10n.text("session.title.placeholder"),
+                    text: $sessionTitle
+                ) {
+                    focusedField = nil
+                }
+                .focused($focusedField, equals: .sessionTitle)
+                .frame(height: 28)
+                .disabled(areConfigurationControlsLocked)
+            }
+
+            liveTranscriptSection
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            dismissSessionTitleFocus()
+        }
+    }
+
+    private var scrollingCaptionContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(title: L10n.text("caption.preview"), systemImage: "captions.bubble")
+
+                VStack(spacing: 12) {
+                    ForEach(previewLanguages) { language in
+                        CaptionCard(
+                            languageName: language.name,
+                            languageNativeName: language.nativeName,
+                            text: captionPreviewState.finalCaptionText(
+                                for: language,
+                                inputLanguage: processingInputLanguage
+                            )
+                        )
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(title: L10n.text("pubSub.caption"), systemImage: "dot.radiowaves.left.and.right")
+
+                PubSubCaptionCard(receiver: pubSubCaptionReceiver)
+            }
+        }
+    }
+
+    private var liveTranscriptSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(title: L10n.text("caption.live"), systemImage: "waveform")
+
+            LiveTranscriptCard(
+                languageName: processingInputLanguage.name,
+                languageNativeName: processingInputLanguage.transcriptNativeName,
+                text: captionPreviewState.liveTranscript(for: processingInputLanguage)
+            )
+
+            if case let .failed(message) = captionPreviewState.state {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
