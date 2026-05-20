@@ -262,6 +262,7 @@ struct ControlSidebar: View {
 struct CaptionWorkspace: View {
     @Binding var sessionTitle: String
     @Binding var inputLanguage: InputLanguage
+    let processingInputLanguage: InputLanguage
     let areConfigurationControlsLocked: Bool
     let outputLanguages: [SpeechOutputLanguage]
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
@@ -274,7 +275,8 @@ struct CaptionWorkspace: View {
 
     private var previewLanguages: [SpeechOutputLanguage] {
         outputLanguages.filter { language in
-            language.id != inputLanguage.matchingOutputLanguageID
+            inputLanguage != processingInputLanguage
+                || language.id != processingInputLanguage.matchingOutputLanguageID
         }
     }
 
@@ -351,9 +353,9 @@ struct CaptionWorkspace: View {
                         SectionLabel(title: L10n.text("caption.live"), systemImage: "waveform")
 
                         LiveTranscriptCard(
-                            languageName: inputLanguage.name,
-                            languageNativeName: inputLanguage.transcriptNativeName,
-                            text: captionPreviewState.liveTranscript(for: inputLanguage)
+                            languageName: processingInputLanguage.name,
+                            languageNativeName: processingInputLanguage.transcriptNativeName,
+                            text: captionPreviewState.liveTranscript(for: processingInputLanguage)
                         )
 
                         if case let .failed(message) = captionPreviewState.state {
@@ -374,7 +376,7 @@ struct CaptionWorkspace: View {
                                     languageNativeName: language.nativeName,
                                     text: captionPreviewState.finalCaptionText(
                                         for: language,
-                                        inputLanguage: inputLanguage
+                                        inputLanguage: processingInputLanguage
                                     )
                                 )
                             }

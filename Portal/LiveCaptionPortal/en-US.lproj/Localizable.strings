@@ -57,6 +57,11 @@
 "caption.live" = "Live";
 "caption.preview" = "Preview";
 "caption.previewTitle" = "Speech Analysis Preview";
+"caption.enterSpeakerMode" = "Enter Speaker Mode";
+"caption.enterSpeakerMode.hint" = "After the opening, switch recognition and OpenAI caption analysis to the configured speech language";
+"caption.processingPhase.opening" = "Opening Mode";
+"caption.processingPhase.speaker" = "Speaker Mode";
+"caption.processingPhase.transitioning" = "Switching";
 "caption.projectionCapture" = "Projection Capture";
 "caption.projectionAppendMode" = "Append Caption Text";
 "caption.projectionAppendLineLimit" = "Retained Lines";
@@ -124,6 +129,7 @@
 "log.azureOpenAI.translationDiagnostic" = "Azure OpenAI translation event";
 "log.azureOpenAI.connectionTestSucceeded" = "Azure OpenAI connection test succeeded";
 "log.azureOpenAI.connectionTestFailed" = "Azure OpenAI connection test failed";
+"log.captionProcessing.speakerModeStarted" = "Speaker mode started";
 "log.speech.settingsTestFailed" = "Speech settings test failed";
 "log.speech.settingsTestSucceeded" = "Speech settings test succeeded";
 "log.srt.createFolderFailed" = "Failed to create SRT output folder";

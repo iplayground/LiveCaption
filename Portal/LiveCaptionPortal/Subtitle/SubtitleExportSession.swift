@@ -43,10 +43,10 @@ struct SubtitleExportSession {
         }
 
         if offsetBaselineTicksByMode[mode] == nil {
-            offsetBaselineTicksByMode[mode] = event.offsetTicks
+            offsetBaselineTicksByMode[mode] = event.sessionOffsetTicks
         }
 
-        let startTime = timeInterval(from: event.offsetTicks, mode: mode)
+        let startTime = timeInterval(from: event.sessionOffsetTicks, mode: mode)
         let duration = Self.timeInterval(fromTicks: event.durationTicks)
         let endTime = startTime + max(duration, Self.minimumCueDuration)
 
@@ -142,14 +142,6 @@ struct SubtitleExportSession {
     private mutating func appendCue(_ cue: SubtitleCue, mode: CaptionQualityMode, languageID: String) {
         var cues = cuesByModeAndLanguageID[mode, default: [:]][languageID, default: []]
 
-        if let lastCue = cues.last, lastCue.endTime > cue.startTime {
-            cues[cues.count - 1] = SubtitleCue(
-                startTime: lastCue.startTime,
-                endTime: cue.startTime,
-                text: lastCue.text
-            )
-        }
-
         cues.append(cue)
         cuesByModeAndLanguageID[mode, default: [:]][languageID] = cues
     }
@@ -165,7 +157,7 @@ struct SubtitleExportSession {
     }
 
     private static func renderSRT(cues: [SubtitleCue]) -> String {
-        cues.enumerated()
+        normalizedCues(cues).enumerated()
             .map { index, cue in
                 """
                 \(index + 1)
@@ -175,6 +167,31 @@ struct SubtitleExportSession {
             }
             .joined(separator: "\n\n")
             + "\n"
+    }
+
+    private static func normalizedCues(_ cues: [SubtitleCue]) -> [SubtitleCue] {
+        let sortedCues = cues.sorted {
+            if $0.startTime == $1.startTime {
+                return $0.endTime < $1.endTime
+            }
+
+            return $0.startTime < $1.startTime
+        }
+
+        var normalized: [SubtitleCue] = []
+        for cue in sortedCues {
+            if let lastCue = normalized.last, lastCue.endTime > cue.startTime {
+                normalized[normalized.count - 1] = SubtitleCue(
+                    startTime: lastCue.startTime,
+                    endTime: cue.startTime,
+                    text: lastCue.text
+                )
+            }
+
+            normalized.append(cue)
+        }
+
+        return normalized
     }
 
     private static func formatTimecode(_ timeInterval: TimeInterval) -> String {

@@ -102,6 +102,8 @@ Relay 事件；若翻譯缺失，該筆精準事件不得送往 Relay。`zh-Hant
 中文。Azure Speech final 只作為 Azure OpenAI text model 候選輸入與 fallback 參考；Portal 不會直接使用
 Azure Speech final 補入精準模式的語音輸入語言字幕文字：
 
+Portal 的現場操作可在同一個字幕 session 中先用開場階段處理語言，之後切到講者階段處理語言。這個切換不得反映成 Relay API 的額外狀態；Relay 仍只看到同一個 `sessionId` 的連續字幕事件。Portal 必須把每筆字幕的 `speech.inputLanguage` 設為該句實際使用的處理語言，並以同一條 session 時間軸送出 `speech.offsetTicks`。切換 recognizer 或 Azure OpenAI transcription session 後，`speech.offsetTicks` 不得重新從 0 開始。
+
 ```json
 {
   "roomName": "A101",
@@ -140,7 +142,7 @@ Azure Speech final 補入精準模式的語音輸入語言字幕文字：
 | `source.captionQualityMode` | 否 | final 字幕品質模式；快速為 `fast`，精準為 `accurate`。 |
 | `source.captionProvider` | 否 | 舊版診斷欄位；新請求應使用 top-level `captionProvider`。 |
 | `speech.inputLanguage` | 是 | 語音輸入語言，目前允許 `zh-TW` 或 `en-US`。 |
-| `speech.offsetTicks` | 是 | 字幕區段起點 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式使用 Azure Speech final 區段作為時間 anchor。 |
+| `speech.offsetTicks` | 是 | 字幕區段起點 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式使用 Azure Speech final 區段作為時間 anchor。若 Portal 在同一 session 內從開場階段切到講者階段，這裡仍必須是同一條 session 時間軸的 offset，不得因 recognizer 或 Azure OpenAI transcription session 重建而重置。 |
 | `speech.durationTicks` | 是 | 字幕區段長度 ticks，1 tick = 100 ns。快速模式來自 Azure Speech；精準模式使用 Azure Speech final 區段作為時間 anchor。 |
 | `speech.text` | 是 | 本筆事件的 final 原文。快速模式來自 Azure Speech final；精準模式來自 Azure OpenAI text model 對 OpenAI transcription draft、Azure Speech final 輔助候選與最近 OpenAI 原文上下文比對後產生的校正後原文。Relay 只供驗證、相容性與時序脈絡使用，不得完整寫入 log。 |
 | `captions` | 是 | 向後相容欄位，代表本筆 POST 的 final 字幕輸出語言 object。快速 POST 至少包含 `zh-Hant` 與 `en`；精準 POST 以 Azure OpenAI 校正後原文搭配 translation 結果，且 Portal 必須等選定的翻譯輸出語言都產出後才送出。 |
@@ -322,6 +324,8 @@ Portal 的 final 字幕品質模式分為：
 即時 recognizing / partial 解析一律由 Azure Speech 處理，不因 final 字幕品質模式而改變。
 Relay 不負責呼叫 Azure OpenAI 改寫字幕內容；Relay 只驗證並發布 Portal 傳入的 final 字幕。
 Portal 必須將 `fast` 與 `accurate` 分成兩筆事件送出；Relay 會拒絕同一筆事件同時包含兩種模式。
+Azure OpenAI 精準字幕可能晚於後續 Speech final 句段抵達；Portal 應以原本的 Speech final
+句段與 session offset 建立精準事件，不以 OpenAI response 抵達順序改變字幕時間或語言歸屬。
 
 精準模式不得新增未經允許的字幕輸出語言。Portal、Relay 與部署流程都不得把完整音訊內容、
 逐字稿、字幕文字、Azure OpenAI token 或 session secret 寫入 log。

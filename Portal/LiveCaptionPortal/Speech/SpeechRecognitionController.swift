@@ -73,7 +73,8 @@ final class SpeechRecognitionController: ObservableObject {
         settings: SpeechSettings,
         inputLanguage: InputLanguage,
         audioDeviceID: String?,
-        authorizationStatus: SpeechAuthorizationStatus
+        authorizationStatus: SpeechAuthorizationStatus,
+        processingGeneration: Int
     ) {
         let region = settings.region.trimmingCharacters(in: .whitespacesAndNewlines)
         let speechKey = settings.speechKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,7 +109,8 @@ final class SpeechRecognitionController: ObservableObject {
             audioDeviceID: audioDeviceID,
             outputLanguageIDs: outputLanguageIDs,
             phraseHints: phraseHints,
-            sentenceSilenceTimeoutMilliseconds: settings.sentenceSilenceTimeoutMilliseconds
+            sentenceSilenceTimeoutMilliseconds: settings.sentenceSilenceTimeoutMilliseconds,
+            processingGeneration: processingGeneration
         )
 
         guard request != activeRequest || recognizer == nil else {
@@ -144,7 +146,11 @@ final class SpeechRecognitionController: ObservableObject {
             )
 
             applyPhraseHints(phraseHints, to: translationRecognizer)
-            configureEventHandlers(for: translationRecognizer)
+            configureEventHandlers(
+                for: translationRecognizer,
+                inputLanguage: inputLanguage,
+                processingGeneration: request.processingGeneration
+            )
 
             try translationRecognizer.startContinuousRecognition()
 
@@ -188,7 +194,11 @@ final class SpeechRecognitionController: ObservableObject {
         }
     }
 
-    private func configureEventHandlers(for recognizer: SPXTranslationRecognizer) {
+    private func configureEventHandlers(
+        for recognizer: SPXTranslationRecognizer,
+        inputLanguage: InputLanguage,
+        processingGeneration: Int
+    ) {
         let interimGate = SpeechInterimUpdateGate(updateInterval: Self.interimUpdateInterval)
 
         recognizer.addRecognizingEventHandler { [weak self] _, event in
@@ -224,7 +234,9 @@ final class SpeechRecognitionController: ObservableObject {
                 text: text,
                 translations: translations,
                 offsetTicks: result.offset,
-                durationTicks: result.duration
+                durationTicks: result.duration,
+                inputLanguage: inputLanguage,
+                processingGeneration: processingGeneration
             )
 
             DispatchQueue.main.async { [weak self] in
@@ -234,7 +246,7 @@ final class SpeechRecognitionController: ObservableObject {
                     offsetTicks: result.offset
                 )
 
-                self?.deferCaptionEvent(captionEvent)
+                self?.deferCaptionEvent(captionEvent, processingGeneration: processingGeneration)
             }
         }
 
@@ -265,10 +277,14 @@ final class SpeechRecognitionController: ObservableObject {
         return normalizedTranslations
     }
 
-    private func deferCaptionEvent(_ event: RecognizedCaptionEvent) {
+    private func deferCaptionEvent(_ event: RecognizedCaptionEvent, processingGeneration: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) { [weak self] in
 
             guard let self else {
+                return
+            }
+
+            guard activeRequest?.processingGeneration == processingGeneration else {
                 return
             }
 

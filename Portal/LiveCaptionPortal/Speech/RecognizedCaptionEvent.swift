@@ -27,24 +27,35 @@ struct CaptionModeResult: Equatable, Sendable {
 }
 
 struct RecognizedCaptionEvent: Identifiable, Equatable, Sendable {
-    let id = UUID()
+    let id: UUID
     let text: String
     let translations: [String: String]
     let offsetTicks: UInt64
     let durationTicks: UInt64
+    let sessionOffsetTicks: UInt64
+    let inputLanguage: InputLanguage
+    let processingGeneration: Int
     let captionModes: [CaptionQualityMode: CaptionModeResult]
 
     init(
+        id: UUID = UUID(),
         text: String,
         translations: [String: String],
         offsetTicks: UInt64,
         durationTicks: UInt64,
+        sessionOffsetTicks: UInt64? = nil,
+        inputLanguage: InputLanguage,
+        processingGeneration: Int,
         captionModes: [CaptionQualityMode: CaptionModeResult] = [:]
     ) {
+        self.id = id
         self.text = text
         self.translations = translations
         self.offsetTicks = offsetTicks
         self.durationTicks = durationTicks
+        self.sessionOffsetTicks = sessionOffsetTicks ?? offsetTicks
+        self.inputLanguage = inputLanguage
+        self.processingGeneration = processingGeneration
 
         var normalizedModes = captionModes
         if normalizedModes[.fast] == nil {
@@ -61,10 +72,14 @@ struct RecognizedCaptionEvent: Identifiable, Equatable, Sendable {
         var updatedModes = captionModes
         updatedModes[mode] = result
         return RecognizedCaptionEvent(
+            id: id,
             text: text,
             translations: translations,
             offsetTicks: offsetTicks,
             durationTicks: durationTicks,
+            sessionOffsetTicks: sessionOffsetTicks,
+            inputLanguage: inputLanguage,
+            processingGeneration: processingGeneration,
             captionModes: updatedModes
         )
     }

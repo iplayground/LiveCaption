@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var captionSessionStatus = CaptionSessionStatus.notStarted
     @State private var captionSessionStartedAt: Date?
     @State private var captionSessionElapsedTime: TimeInterval = 0
+    @State private var captionProcessingPhase = CaptionProcessingPhase.opening
+    @State private var captionProcessingGeneration = 0
     @State private var speechSettings: SpeechSettings
     @State private var speechAuthorizationStatus: SpeechAuthorizationStatus
     @State private var azureOpenAIConnectionStatus: AzureOpenAIConnectionStatus
@@ -31,6 +33,9 @@ struct ContentView: View {
     @State private var subtitleExportSession: SubtitleExportSession?
     @State private var recognizedCaptionCount = 0
     @State private var relayPublishedCaptionCounts: [CaptionQualityMode: Int] = [:]
+    @State private var acceptedSpeechCaptionEventIDs: Set<RecognizedCaptionEvent.ID> = []
+    @State private var processingGenerationBaseOffsetTicks: UInt64 = 0
+    @State private var lastAcceptedSpeechSessionEndTicks: UInt64 = 0
     @State private var sessionTitle = ""
     @State private var subtitleFileAccessStatus = SubtitleFileAccessStatus.notConfigured
     @State private var isLogDrawerExpanded = false
@@ -145,6 +150,7 @@ struct ContentView: View {
             captionPreviewState: speechRecognitionController.captionPreviewState,
             sessionTitle: $sessionTitle,
             inputLanguage: $inputLanguage,
+            processingInputLanguage: isCaptionSessionActive ? currentProcessingInputLanguage : inputLanguage,
             subtitleFileSettings: $subtitleFileSettings,
             subtitleFileAccessStatus: $subtitleFileAccessStatus,
             speechSettings: $speechSettings,
@@ -158,7 +164,9 @@ struct ContentView: View {
             captionSessionStatus: captionSessionStatus,
             captionSessionStartedAt: captionSessionStartedAt,
             captionSessionElapsedTime: captionSessionElapsedTime,
+            captionProcessingPhase: captionProcessingPhase,
             canToggleCaptionSession: canToggleCaptionSession,
+            canEnterSpeakerCaptionMode: canEnterSpeakerCaptionMode,
             captionSessionDisabledReason: captionSessionDisabledReason,
             usesInlineProjectionCapture: usesInlineProjectionCapture,
             relayPublishedCaptionCounts: relayPublishedCaptionCounts,
@@ -167,6 +175,7 @@ struct ContentView: View {
             logEntries: logEntries,
             filteredLogEntries: filteredLogEntries,
             onToggleCaptionSession: toggleCaptionSession,
+            onEnterSpeakerCaptionMode: enterSpeakerCaptionMode,
             onRelayConnectionTested: handleRelayConnectionTested
         ) { level, title, detail in
             appendLog(level: level, title: title, detail: detail)
@@ -205,6 +214,9 @@ struct ContentView: View {
             .onChange(of: captionSessionStatus) {
                 refreshProjectionCaptureWindow()
             }
+            .onChange(of: captionProcessingPhase) {
+                refreshProjectionCaptureWindow()
+            }
             .onChange(of: audioInputController.isCapturing) {
                 handleAudioCaptureStateChange()
             }
@@ -214,7 +226,9 @@ struct ContentView: View {
             .onChange(of: inputLanguage) {
                 speechRecognitionController.captionPreviewState.clearLivePreviewAfterInputLanguageChange()
                 refreshProjectionCaptureWindow()
-                updateSpeechRecognition()
+                if captionProcessingPhase == .speaker {
+                    updateSpeechRecognition()
+                }
             }
             .onChange(of: speechSettings) {
                 refreshProjectionCaptureWindow()
@@ -351,6 +365,7 @@ struct ContentView: View {
             finishSubtitleExportSession()
             stopAccurateCaptionSession()
             isCaptionSessionActive = false
+            captionProcessingPhase = .opening
         } else {
             updateSpeechRecognition()
         }
@@ -364,6 +379,19 @@ struct ContentView: View {
         }
 
         return canStartCaptionSession
+    }
+
+    private var canEnterSpeakerCaptionMode: Bool {
+        isCaptionSessionActive && captionProcessingPhase == .opening
+    }
+
+    private var currentProcessingInputLanguage: InputLanguage {
+        switch captionProcessingPhase {
+        case .opening, .transitioningToSpeaker:
+            .mandarin
+        case .speaker:
+            inputLanguage
+        }
     }
 
     private var canStartCaptionSession: Bool {
@@ -409,11 +437,17 @@ struct ContentView: View {
             return
         }
 
+        guard captionProcessingPhase != .transitioningToSpeaker else {
+            speechRecognitionController.stopRecognition(keepsCurrentTranscript: true)
+            return
+        }
+
         speechRecognitionController.startRecognition(
             settings: speechSettings,
-            inputLanguage: inputLanguage,
+            inputLanguage: currentProcessingInputLanguage,
             audioDeviceID: audioInputController.selectedDeviceID,
-            authorizationStatus: speechAuthorizationStatus
+            authorizationStatus: speechAuthorizationStatus,
+            processingGeneration: captionProcessingGeneration
         )
     }
 
@@ -437,7 +471,7 @@ struct ContentView: View {
 
     private func refreshProjectionCaptureWindow() {
         projectionCaptureWindowPresenter.update(
-            inputLanguage: inputLanguage,
+            inputLanguage: isCaptionSessionActive ? currentProcessingInputLanguage : inputLanguage,
             outputLanguages: speechSettings.selectedOutputLanguages,
             captionPreviewState: speechRecognitionController.captionPreviewState,
             isPresented: !usesInlineProjectionCapture,
@@ -455,6 +489,7 @@ struct ContentView: View {
             stopAccurateCaptionSession()
             pubSubCaptionReceiver.disconnect(keepsLatestCaption: true)
             sleepPreventionController.stopPreventingSleep()
+            captionProcessingPhase = .opening
         } else {
             guard canStartCaptionSession else {
                 captionSessionStatus = .notStarted
@@ -466,6 +501,11 @@ struct ContentView: View {
             lastPublishedCaptionAvailability = nil
             relayPublishedCaptionCounts.removeAll()
             recognizedCaptionCount = 0
+            acceptedSpeechCaptionEventIDs.removeAll()
+            captionProcessingGeneration += 1
+            processingGenerationBaseOffsetTicks = 0
+            lastAcceptedSpeechSessionEndTicks = 0
+            captionProcessingPhase = .opening
             pubSubCaptionReceiver.disconnect()
             speechRecognitionController.resetCaptionSessionMetrics()
             let startedAt = Date()
@@ -486,7 +526,7 @@ struct ContentView: View {
 
     @MainActor
     private func startCaptionSessionAfterPreparingOutput() async {
-        guard await startAccurateCaptionSessionIfNeeded() else {
+        guard await startAccurateCaptionSessionIfNeeded(inputLanguage: .mandarin) else {
             subtitleExportSession = nil
             finishCaptionSessionTiming()
             sleepPreventionController.stopPreventingSleep()
@@ -500,6 +540,39 @@ struct ContentView: View {
         isCaptionSessionActive = true
         publishSessionStartedToRelay()
         publishCaptionAvailabilityToRelayIfNeeded()
+    }
+
+    private func enterSpeakerCaptionMode() {
+        guard canEnterSpeakerCaptionMode else {
+            return
+        }
+
+        Task { @MainActor in
+            captionProcessingPhase = .transitioningToSpeaker
+            processingGenerationBaseOffsetTicks = lastAcceptedSpeechSessionEndTicks
+            captionProcessingGeneration += 1
+            speechRecognitionController.stopRecognition(keepsCurrentTranscript: true)
+
+            guard await startAccurateCaptionSessionIfNeeded(inputLanguage: inputLanguage, restartsTranslation: false) else {
+                isCaptionSessionActive = false
+                publishSessionStoppedToRelayIfNeeded()
+                finishCaptionSessionTiming()
+                finishSubtitleExportSession()
+                captionSessionStatus = .failed
+                captionProcessingPhase = .opening
+                pubSubCaptionReceiver.disconnect(keepsLatestCaption: true)
+                sleepPreventionController.stopPreventingSleep()
+                return
+            }
+
+            captionProcessingPhase = .speaker
+            updateSpeechRecognition()
+            appendLog(
+                level: .info,
+                title: L10n.text("log.captionProcessing.speakerModeStarted"),
+                detail: inputLanguage.nativeName
+            )
+        }
     }
 
     private func configureAudioCallbacks() {
@@ -585,22 +658,54 @@ struct ContentView: View {
     }
 
     private func handleCaptionEvent(_ event: RecognizedCaptionEvent) {
-        appendCaptionToSubtitleExportSession(event, mode: .fast)
-        publishCaptionEventToRelay(event, mode: .fast)
+        guard event.processingGeneration == captionProcessingGeneration else {
+            return
+        }
+
+        let sessionEvent = RecognizedCaptionEvent(
+            id: event.id,
+            text: event.text,
+            translations: event.translations,
+            offsetTicks: event.offsetTicks,
+            durationTicks: event.durationTicks,
+            sessionOffsetTicks: processingGenerationBaseOffsetTicks + event.offsetTicks,
+            inputLanguage: event.inputLanguage,
+            processingGeneration: event.processingGeneration,
+            captionModes: event.captionModes
+        )
+        lastAcceptedSpeechSessionEndTicks = max(
+            lastAcceptedSpeechSessionEndTicks,
+            sessionEvent.sessionOffsetTicks + sessionEvent.durationTicks
+        )
+
+        if speechSettings.isAccurateCaptionEnabled {
+            acceptedSpeechCaptionEventIDs.insert(sessionEvent.id)
+        }
+        appendCaptionToSubtitleExportSession(sessionEvent, mode: .fast)
+        publishCaptionEventToRelay(sessionEvent, mode: .fast)
 
         Task { [accurateTranscriptionService] in
-            await accurateTranscriptionService.transcribeAudio(for: event)
+            await accurateTranscriptionService.transcribeAudio(for: sessionEvent)
         }
     }
 
     private func handleOpenAITranscriptionResult(_ result: AzureOpenAIRealtimeTranscriptionResult) {
         Task {
-            guard let textResult = await openAITextResult(for: result.transcriptDrafts) else {
+            guard acceptedSpeechCaptionEventIDs.contains(result.captionEventID) else {
+                return
+            }
+
+            guard let textResult = await openAITextResult(
+                for: result.transcriptDrafts,
+                inputLanguage: result.inputLanguage
+            ) else {
                 return
             }
 
             await MainActor.run {
-                guard isCaptionSessionActive else {
+                guard isCaptionSessionActive,
+                      acceptedSpeechCaptionEventIDs.contains(result.captionEventID)
+                else {
                     return
                 }
 
@@ -609,6 +714,9 @@ struct ContentView: View {
                     translations: textResult.translations,
                     offsetTicks: result.offsetTicks,
                     durationTicks: result.durationTicks,
+                    sessionOffsetTicks: result.sessionOffsetTicks,
+                    inputLanguage: result.inputLanguage,
+                    processingGeneration: result.processingGeneration,
                     captionModes: [
                         .accurate: CaptionModeResult(
                             providerID: CaptionQualityMode.accurate.providerID,
@@ -621,10 +729,13 @@ struct ContentView: View {
                 speechRecognitionController.captionPreviewState.setAccurateFinalCaption(
                     textResult.sourceText,
                     translations: textResult.translations,
-                    offsetTicks: result.offsetTicks
+                    offsetTicks: result.sessionOffsetTicks,
+                    inputLanguage: result.inputLanguage,
+                    processingGeneration: result.processingGeneration
                 )
                 appendCaptionToSubtitleExportSession(event, mode: .accurate)
                 publishCaptionEventToRelay(event, mode: .accurate)
+                acceptedSpeechCaptionEventIDs.remove(result.captionEventID)
             }
         }
     }
@@ -645,7 +756,10 @@ struct ContentView: View {
         )
     }
 
-    private func startAccurateCaptionSessionIfNeeded() async -> Bool {
+    private func startAccurateCaptionSessionIfNeeded(
+        inputLanguage: InputLanguage,
+        restartsTranslation: Bool = true
+    ) async -> Bool {
         guard speechSettings.isAccurateCaptionEnabled else {
             return true
         }
@@ -668,17 +782,16 @@ struct ContentView: View {
             return false
         }
 
-        let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
-        let targetLanguages = speechSettings.selectedOutputLanguages.filter { language in
-            language.id != inputLanguageOutputID
-        }
+        let targetLanguages = speechSettings.selectedOutputLanguages
         let translationConfiguration = speechSettings.azureOpenAIRealtimeConfiguration(
             outputLanguages: targetLanguages
         )
         let transcriptionConfiguration = speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(inputLanguage: inputLanguage)
 
         do {
-            try await accurateTranslationService.start(configuration: translationConfiguration)
+            if restartsTranslation {
+                try await accurateTranslationService.start(configuration: translationConfiguration)
+            }
             try await accurateTranscriptionService.start(configuration: transcriptionConfiguration)
             appendLog(
                 level: .info,
@@ -687,7 +800,9 @@ struct ContentView: View {
             )
             return true
         } catch {
-            await accurateTranslationService.stop()
+            if restartsTranslation {
+                await accurateTranslationService.stop()
+            }
             await accurateTranscriptionService.stop()
             let detail = (error as? AzureOpenAIRealtimeTranslationError)?.diagnosticDescription
                 ?? error.localizedDescription
@@ -709,7 +824,10 @@ struct ContentView: View {
         }
     }
 
-    private func openAITextResult(for transcriptDrafts: [AccurateCaptionTranscriptDraft]) async -> AzureOpenAIRealtimeTranslationResult? {
+    private func openAITextResult(
+        for transcriptDrafts: [AccurateCaptionTranscriptDraft],
+        inputLanguage: InputLanguage
+    ) async -> AzureOpenAIRealtimeTranslationResult? {
         guard speechSettings.isAccurateCaptionEnabled else {
             return nil
         }
@@ -718,18 +836,21 @@ struct ContentView: View {
             transcriptDrafts: transcriptDrafts,
             inputLanguage: inputLanguage,
             phraseHints: speechSettings.phraseHints(for: inputLanguage),
-            targetLanguageIDs: openAITranslationTargetLanguageIDs()
+            targetLanguageIDs: openAITranslationTargetLanguageIDs(inputLanguage: inputLanguage)
         )
     }
 
-    private func openAITranslationTargetLanguageIDs() -> Set<String> {
+    private func openAITranslationTargetLanguageIDs(inputLanguage: InputLanguage) -> Set<String> {
         let inputLanguageOutputID = inputLanguage.matchingOutputLanguageID
         return Set(speechSettings.selectedOutputLanguages.map(\.id))
             .filter { $0 != inputLanguageOutputID }
     }
 
-    private func missingOpenAITranslationLanguageIDs(in translations: [String: String]) -> [String] {
-        openAITranslationTargetLanguageIDs()
+    private func missingOpenAITranslationLanguageIDs(
+        in translations: [String: String],
+        inputLanguage: InputLanguage
+    ) -> [String] {
+        openAITranslationTargetLanguageIDs(inputLanguage: inputLanguage)
             .filter { translations[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false }
             .sorted()
     }
@@ -739,7 +860,7 @@ struct ContentView: View {
             return
         }
 
-        subtitleExportSession.append(event: event, inputLanguage: inputLanguage, mode: mode)
+        subtitleExportSession.append(event: event, inputLanguage: event.inputLanguage, mode: mode)
         self.subtitleExportSession = subtitleExportSession
     }
 
@@ -752,7 +873,10 @@ struct ContentView: View {
 
         if mode == .accurate {
             let translations = event.captionModes[mode]?.translations ?? [:]
-            let missingLanguageIDs = missingOpenAITranslationLanguageIDs(in: translations)
+            let missingLanguageIDs = missingOpenAITranslationLanguageIDs(
+                in: translations,
+                inputLanguage: event.inputLanguage
+            )
             guard missingLanguageIDs.isEmpty else {
                 appendOpenAITranslationDiagnostic(
                     AzureOpenAIRealtimeTranslationDiagnostic(
@@ -772,7 +896,7 @@ struct ContentView: View {
             event: event,
             mode: mode,
             sessionID: relayCaptionSessionID,
-            inputLanguage: inputLanguage,
+            inputLanguage: event.inputLanguage,
             outputLanguages: speechSettings.selectedOutputLanguages
         ) else {
             return

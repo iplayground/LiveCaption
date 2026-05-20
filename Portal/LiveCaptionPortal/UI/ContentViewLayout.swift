@@ -1,11 +1,29 @@
 import SwiftUI
 
+enum CaptionProcessingPhase: Equatable {
+    case opening
+    case transitioningToSpeaker
+    case speaker
+
+    var title: String {
+        switch self {
+        case .opening:
+            L10n.text("caption.processingPhase.opening")
+        case .transitioningToSpeaker:
+            L10n.text("caption.processingPhase.transitioning")
+        case .speaker:
+            L10n.text("caption.processingPhase.speaker")
+        }
+    }
+}
+
 struct ContentViewLayout: View {
     @State private var logDrawerContentHeight = WindowLayout.defaultLogDrawerContentHeight
     @ObservedObject var audioInputController: AudioInputController
     @ObservedObject var captionPreviewState: SpeechCaptionPreviewState
     @Binding var sessionTitle: String
     @Binding var inputLanguage: InputLanguage
+    let processingInputLanguage: InputLanguage
     @Binding var subtitleFileSettings: SubtitleFileSettings
     @Binding var subtitleFileAccessStatus: SubtitleFileAccessStatus
     @Binding var speechSettings: SpeechSettings
@@ -19,7 +37,9 @@ struct ContentViewLayout: View {
     let captionSessionStatus: CaptionSessionStatus
     let captionSessionStartedAt: Date?
     let captionSessionElapsedTime: TimeInterval
+    let captionProcessingPhase: CaptionProcessingPhase
     let canToggleCaptionSession: Bool
+    let canEnterSpeakerCaptionMode: Bool
     let captionSessionDisabledReason: String?
     let usesInlineProjectionCapture: Bool
     let relayPublishedCaptionCounts: [CaptionQualityMode: Int]
@@ -28,6 +48,7 @@ struct ContentViewLayout: View {
     let logEntries: [LogEntry]
     let filteredLogEntries: [LogEntry]
     let onToggleCaptionSession: () -> Void
+    let onEnterSpeakerCaptionMode: () -> Void
     let onRelayConnectionTested: (RelayConnectionTestResult) -> Void
     let onLogEvent: (LogLevel, String, String) -> Void
 
@@ -55,15 +76,18 @@ struct ContentViewLayout: View {
             isCaptionSessionActive: isCaptionSessionActive,
             captionSessionStartedAt: captionSessionStartedAt,
             captionSessionElapsedTime: captionSessionElapsedTime,
+            captionProcessingPhase: captionProcessingPhase,
             canToggleCaptionSession: canToggleCaptionSession,
+            canEnterSpeakerCaptionMode: canEnterSpeakerCaptionMode,
             captionSessionDisabledReason: captionSessionDisabledReason,
-            onToggleCaptionSession: onToggleCaptionSession
+            onToggleCaptionSession: onToggleCaptionSession,
+            onEnterSpeakerCaptionMode: onEnterSpeakerCaptionMode
         )
     }
 
     private var projectionCapture: some View {
         ProjectionCaptureSection(
-            inputLanguage: inputLanguage,
+            inputLanguage: processingInputLanguage,
             outputLanguages: speechSettings.selectedOutputLanguages,
             captionPreviewState: captionPreviewState
         )
@@ -88,6 +112,7 @@ struct ContentViewLayout: View {
             CaptionWorkspace(
                 sessionTitle: $sessionTitle,
                 inputLanguage: $inputLanguage,
+                processingInputLanguage: processingInputLanguage,
                 areConfigurationControlsLocked: captionSessionStatus.locksConfigurationControls,
                 outputLanguages: speechSettings.selectedOutputLanguages,
                 captionPreviewState: captionPreviewState,

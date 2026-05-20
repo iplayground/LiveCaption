@@ -23,10 +23,14 @@ struct AzureOpenAIRealtimeTranscriptionConfiguration: Equatable, Sendable {
 }
 
 struct AzureOpenAIRealtimeTranscriptionResult: Equatable, Sendable {
+    let captionEventID: RecognizedCaptionEvent.ID
     let openAIText: String
     let speechText: String
     let offsetTicks: UInt64
     let durationTicks: UInt64
+    let sessionOffsetTicks: UInt64
+    let inputLanguage: InputLanguage
+    let processingGeneration: Int
 
     var transcriptDrafts: [AccurateCaptionTranscriptDraft] {
         [
@@ -176,10 +180,14 @@ actor AzureOpenAIRealtimeTranscriptionService {
 
         onTranscription?(
             AzureOpenAIRealtimeTranscriptionResult(
+                captionEventID: event.id,
                 openAIText: openAIText,
                 speechText: speechText,
                 offsetTicks: event.offsetTicks,
-                durationTicks: event.durationTicks
+                durationTicks: event.durationTicks,
+                sessionOffsetTicks: event.sessionOffsetTicks,
+                inputLanguage: event.inputLanguage,
+                processingGeneration: event.processingGeneration
             )
         )
     }

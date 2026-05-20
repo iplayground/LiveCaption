@@ -4,9 +4,12 @@ struct HeaderView: View {
     let isCaptionSessionActive: Bool
     let captionSessionStartedAt: Date?
     let captionSessionElapsedTime: TimeInterval
+    let captionProcessingPhase: CaptionProcessingPhase
     let canToggleCaptionSession: Bool
+    let canEnterSpeakerCaptionMode: Bool
     let captionSessionDisabledReason: String?
     let onToggleCaptionSession: () -> Void
+    let onEnterSpeakerCaptionMode: () -> Void
 
     private var captionButtonTitle: String {
         isCaptionSessionActive ? L10n.text("caption.stop") : L10n.text("caption.start")
@@ -29,6 +32,15 @@ struct HeaderView: View {
             Spacer()
 
             CaptionSessionTimer(startedAt: captionSessionStartedAt, elapsedTime: captionSessionElapsedTime)
+
+            Button {
+                onEnterSpeakerCaptionMode()
+            } label: {
+                Label(L10n.text("caption.enterSpeakerMode"), systemImage: "person.wave.2")
+            }
+            .controlSize(.large)
+            .disabled(!canEnterSpeakerCaptionMode)
+            .help(L10n.text("caption.enterSpeakerMode.hint"))
 
             Button {
                 onToggleCaptionSession()

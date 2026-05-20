@@ -57,6 +57,11 @@
 "caption.live" = "即時";
 "caption.preview" = "預覽";
 "caption.previewTitle" = "語音分析預覽";
+"caption.enterSpeakerMode" = "進入講者模式";
+"caption.enterSpeakerMode.hint" = "開場結束後，切換為語音語言設定進行辨識與 OpenAI 字幕分析";
+"caption.processingPhase.opening" = "開場模式";
+"caption.processingPhase.speaker" = "講者模式";
+"caption.processingPhase.transitioning" = "切換中";
 "caption.projectionCapture" = "投影截取";
 "caption.projectionAppendMode" = "累加字幕內容";
 "caption.projectionAppendLineLimit" = "保留字幕筆數";
@@ -124,6 +129,7 @@
 "log.azureOpenAI.translationDiagnostic" = "Azure OpenAI 翻譯事件";
 "log.azureOpenAI.connectionTestSucceeded" = "Azure OpenAI 連線測試成功";
 "log.azureOpenAI.connectionTestFailed" = "Azure OpenAI 連線測試失敗";
+"log.captionProcessing.speakerModeStarted" = "已切換講者模式";
 "log.speech.settingsTestFailed" = "Speech 設定測試失敗";
 "log.speech.settingsTestSucceeded" = "Speech 設定測試成功";
 "log.srt.createFolderFailed" = "建立 SRT 輸出資料夾失敗";
