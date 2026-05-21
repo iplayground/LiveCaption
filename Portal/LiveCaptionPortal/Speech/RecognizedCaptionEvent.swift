@@ -18,12 +18,6 @@ struct CaptionModeResult: Equatable, Sendable {
     let providerID: String
     let text: String
     let translations: [String: String]
-
-    init(providerID: String, text: String, translations: [String: String]) {
-        self.providerID = providerID
-        self.text = text
-        self.translations = translations
-    }
 }
 
 struct RecognizedCaptionEvent: Identifiable, Equatable, Sendable {

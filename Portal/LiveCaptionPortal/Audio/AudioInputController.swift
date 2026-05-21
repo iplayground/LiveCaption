@@ -82,7 +82,11 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
     var microphoneActionTitle: String {
         switch microphonePermission {
         case .authorized:
-            isCapturing ? L10n.text("audio.capturing") : L10n.text("audio.readyToCapture")
+            if isCapturing {
+                L10n.text("audio.capturing")
+            } else {
+                L10n.text("audio.readyToCapture")
+            }
         case .notDetermined:
             L10n.text("audio.needsAuthorization")
         case .denied:

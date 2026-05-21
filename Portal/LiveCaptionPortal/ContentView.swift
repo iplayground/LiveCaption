@@ -748,7 +748,7 @@ struct ContentView: View {
                             providerID: CaptionQualityMode.accurate.providerID,
                             text: textResult.sourceText,
                             translations: textResult.translations
-                        )
+                        ),
                     ]
                 )
 

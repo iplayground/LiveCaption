@@ -67,6 +67,12 @@ actor AzureOpenAIRealtimeTranscriptionService {
     private static let bytesPerSample = MemoryLayout<Int16>.size
     private static let audioPaddingMilliseconds: UInt64 = 250
     private static let apiVersion = "2025-04-01-preview"
+    private struct MultipartFileField {
+        let name: String
+        let filename: String
+        let contentType: String
+        let data: Data
+    }
     private var configuration: AzureOpenAITranscriptionConfig?
     private var audioBuffer = Data()
     private var bufferedAudioMilliseconds: UInt64 = 0
@@ -352,10 +358,12 @@ actor AzureOpenAIRealtimeTranscriptionService {
         appendFormField(name: "response_format", value: "json", boundary: boundary, to: &body)
         appendFormField(name: "temperature", value: "0", boundary: boundary, to: &body)
         appendFileField(
-            name: "file",
-            filename: "caption-segment.wav",
-            contentType: "audio/wav",
-            data: wavAudio,
+            MultipartFileField(
+                name: "file",
+                filename: "caption-segment.wav",
+                contentType: "audio/wav",
+                data: wavAudio
+            ),
             boundary: boundary,
             to: &body
         )
@@ -369,18 +377,11 @@ actor AzureOpenAIRealtimeTranscriptionService {
         body.append("\(value)\r\n")
     }
 
-    private static func appendFileField(
-        name: String,
-        filename: String,
-        contentType: String,
-        data: Data,
-        boundary: String,
-        to body: inout Data
-    ) {
+    private static func appendFileField(_ field: MultipartFileField, boundary: String, to body: inout Data) {
         body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n")
-        body.append("Content-Type: \(contentType)\r\n\r\n")
-        body.append(data)
+        body.append("Content-Disposition: form-data; name=\"\(field.name)\"; filename=\"\(field.filename)\"\r\n")
+        body.append("Content-Type: \(field.contentType)\r\n\r\n")
+        body.append(field.data)
         body.append("\r\n")
     }
 

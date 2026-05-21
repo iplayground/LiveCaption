@@ -560,8 +560,8 @@ struct SpeechSegmentationTimeoutControl: View {
     var body: some View {
         let range = ClosedRange(
             uncheckedBounds: (
-                lower: SpeechSettings.minimumSentenceSilenceTimeoutMilliseconds,
-                upper: SpeechSettings.maximumSentenceSilenceTimeoutMilliseconds
+                lower: SpeechSettings.minimumSentenceSilenceTimeoutMillis,
+                upper: SpeechSettings.maximumSentenceSilenceTimeoutMillis
             )
         )
 

@@ -21,13 +21,5 @@ function_body_length:
   warning: 80
   error: 300
 
-identifier_name:
-  min_length:
-    warning: 2
-    error: 1
-  max_length:
-    warning: 40
-    error: 80
-
 trailing_comma:
   mandatory_comma: true

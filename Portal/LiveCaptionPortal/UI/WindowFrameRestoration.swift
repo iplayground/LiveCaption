@@ -82,7 +82,7 @@ enum WindowFrameRestoration {
 
     private static func bestScreen(for frame: NSRect) -> NSScreen? {
         let frameCenter = NSPoint(x: frame.midX, y: frame.midY)
-        if let containingScreen = NSScreen.screens.first(where: { NSPointInRect(frameCenter, $0.visibleFrame) }) {
+        if let containingScreen = NSScreen.screens.first(where: { $0.visibleFrame.contains(frameCenter) }) {
             return containingScreen
         }
 
@@ -142,7 +142,7 @@ struct WindowFrameRestorationBridge: NSViewRepresentable {
                 NSWindow.didMoveNotification,
                 NSWindow.didResizeNotification,
                 NSWindow.didChangeScreenNotification,
-                NSWindow.willCloseNotification
+                NSWindow.willCloseNotification,
             ]
 
             observers = notifications.map { notification in

@@ -575,7 +575,7 @@ private struct ProjectionWindowSizeSync: NSViewRepresentable {
             }
 
             let adjustedFrame = WindowFrameRestoration.adjustedFrame(frame, visibleFrame: visibleFrame)
-            if needsResize || !NSEqualRects(window.frame, adjustedFrame) {
+            if needsResize || window.frame != adjustedFrame {
                 window.setFrame(adjustedFrame, display: true)
             }
         }

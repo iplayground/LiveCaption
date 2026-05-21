@@ -56,14 +56,14 @@ struct SpeechSettings: Equatable {
     static let maximumPhraseHintsPerRecognition = 250
     static let defaultPhraseHintsByScope: [SpeechPhraseHintScope: [SpeechPhraseHint]] = [
         .shared: [
-            SpeechPhraseHint(text: "iPlayground")
+            SpeechPhraseHint(text: "iPlayground"),
         ],
         .mandarin: [],
-        .english: []
+        .english: [],
     ]
-    static let minimumSentenceSilenceTimeoutMilliseconds = 100
-    static let maximumSentenceSilenceTimeoutMilliseconds = 5_000
-    static let defaultSentenceSilenceTimeoutMilliseconds = 800
+    static let minimumSentenceSilenceTimeoutMillis = 100
+    static let maximumSentenceSilenceTimeoutMillis = 5_000
+    static let defaultSentenceSilenceTimeoutMillis = 800
     private static let userDefaults = UserDefaults.standard
 
     var region = ""
@@ -74,7 +74,7 @@ struct SpeechSettings: Equatable {
     var azureOpenAITranslationDeploymentName = "accurate-translate"
     var azureOpenAIAPIKey = ""
     var phraseHintsByScope = defaultPhraseHintsByScope
-    var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMilliseconds {
+    var sentenceSilenceTimeoutMilliseconds = defaultSentenceSilenceTimeoutMillis {
         didSet {
             sentenceSilenceTimeoutMilliseconds = Self.clampedSentenceSilenceTimeoutMilliseconds(
                 sentenceSilenceTimeoutMilliseconds
@@ -440,8 +440,8 @@ struct SpeechSettings: Equatable {
 
     private static func clampedSentenceSilenceTimeoutMilliseconds(_ value: Int) -> Int {
         min(
-            max(value, minimumSentenceSilenceTimeoutMilliseconds),
-            maximumSentenceSilenceTimeoutMilliseconds
+            max(value, minimumSentenceSilenceTimeoutMillis),
+            maximumSentenceSilenceTimeoutMillis
         )
     }
 
@@ -606,6 +606,6 @@ let availableSpeechOutputLanguages = [
         code: "ko",
         name: "Korean",
         nativeName: "한국어",
-        previewText: "오늘 행사에 오신 것을 환영합니다. 자막 시스템이 준비되었습니다."
-    )
+        previewText: "오늘 행사에 오신 것을 환영합니다. 자막 시스템이 준비되었습니다.",
+    ),
 ]

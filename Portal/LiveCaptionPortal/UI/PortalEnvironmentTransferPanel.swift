@@ -125,7 +125,7 @@ private final class PortalEnvironmentImportSelectionPanel {
             titleLabel,
             messageLabel,
             accessory.view,
-            footerStack
+            footerStack,
         ])
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
@@ -142,7 +142,7 @@ private final class PortalEnvironmentImportSelectionPanel {
             contentStack.topAnchor.constraint(equalTo: contentView.topAnchor),
             contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             contentView.widthAnchor.constraint(equalToConstant: 480),
-            buttonStack.widthAnchor.constraint(equalToConstant: 220)
+            buttonStack.widthAnchor.constraint(equalToConstant: 220),
         ])
 
         return contentView
@@ -241,7 +241,7 @@ private final class PortalEnvironmentSelectionAccessory: NSObject {
             azureOpenAISettingsButton,
             captionOutputAndSegmentationButton,
             phraseHintsButton,
-            relayURLButton
+            relayURLButton,
         ])
         stackView.orientation = .vertical
         stackView.alignment = .leading

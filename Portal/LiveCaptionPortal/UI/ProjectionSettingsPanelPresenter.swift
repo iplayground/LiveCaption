@@ -128,13 +128,13 @@ final class ProjectionSettingsPanelPresenter: NSObject, NSWindowDelegate {
             max(storedHeight == 0 ? 180 : storedHeight, WindowLayout.projectionCaptureMinimumHeight),
             WindowLayout.projectionCaptureMaximumHeight
         )
-        let x = contentFrame.minX + WindowLayout.projectionCaptureHorizontalPadding
-        let y = contentFrame.maxY
+        let originX = contentFrame.minX + WindowLayout.projectionCaptureHorizontalPadding
+        let originY = contentFrame.maxY
             - WindowLayout.headerEstimatedHeight
             - WindowLayout.projectionCaptureVerticalPadding
             - height
 
-        return NSRect(x: x, y: y, width: width, height: height)
+        return NSRect(x: originX, y: originY, width: width, height: height)
     }
 
     private func preferredPanelHeight(avoiding projectionFrame: NSRect, on screenFrame: NSRect) -> CGFloat {
@@ -169,7 +169,7 @@ final class ProjectionSettingsPanelPresenter: NSObject, NSWindowDelegate {
             NSPoint(x: preferredX, y: projectionFrame.minY - panelSize.height - panelMargin),
             NSPoint(x: projectionFrame.maxX + panelMargin, y: sideY),
             NSPoint(x: projectionFrame.minX - panelSize.width - panelMargin, y: sideY),
-            NSPoint(x: preferredX, y: screenFrame.minY + panelMargin)
+            NSPoint(x: preferredX, y: screenFrame.minY + panelMargin),
         ]
     }
 

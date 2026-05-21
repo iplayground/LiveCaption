@@ -63,7 +63,7 @@ final class SleepPreventionController {
 
         assertionIDs = [
             createAssertion(type: kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString),
-            createAssertion(type: kIOPMAssertionTypePreventUserIdleSystemSleep as CFString)
+            createAssertion(type: kIOPMAssertionTypePreventUserIdleSystemSleep as CFString),
         ].compactMap { $0 }
     }
 

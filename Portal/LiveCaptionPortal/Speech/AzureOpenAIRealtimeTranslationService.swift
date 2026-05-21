@@ -58,6 +58,14 @@ actor AzureOpenAIRealtimeTranslationService {
     private static let apiVersion = "2025-04-01-preview"
     private static let maximumRequestAttempts = 5
     private static let maximumPreviousSourceTextCount = 5
+    private struct TranslationRequestContext {
+        let transcriptDrafts: [AccurateCaptionTranscriptDraft]
+        let previousSourceTexts: [String]
+        let inputLanguage: InputLanguage
+        let phraseHints: [String]
+        let targetLanguages: [SpeechOutputLanguage]
+        let configuration: AzureOpenAITranslationConfig
+    }
     private var configuration: AzureOpenAITranslationConfig?
     private var queuedTranslationTask: Task<AzureOpenAIRealtimeTranslationResult?, Never>?
     private var recentSourceTexts: [String] = []
@@ -116,11 +124,14 @@ actor AzureOpenAIRealtimeTranslationService {
             }
 
             return await self.performNormalizeAndTranslate(
-                transcriptDrafts: normalizedTranscriptDrafts,
-                inputLanguage: inputLanguage,
-                phraseHints: phraseHints,
-                targetLanguages: targetLanguages,
-                configuration: configuration
+                requestContext: TranslationRequestContext(
+                    transcriptDrafts: normalizedTranscriptDrafts,
+                    previousSourceTexts: [],
+                    inputLanguage: inputLanguage,
+                    phraseHints: phraseHints,
+                    targetLanguages: targetLanguages,
+                    configuration: configuration
+                )
             )
         }
         queuedTranslationTask = currentTask
@@ -128,34 +139,32 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     private func performNormalizeAndTranslate(
-        transcriptDrafts: [AccurateCaptionTranscriptDraft],
-        inputLanguage: InputLanguage,
-        phraseHints: [String],
-        targetLanguages: [SpeechOutputLanguage],
-        configuration: AzureOpenAITranslationConfig
+        requestContext initialContext: TranslationRequestContext
     ) async -> AzureOpenAIRealtimeTranslationResult? {
         do {
-            let previousSourceTexts = recentSourceTexts
+            let requestContext = TranslationRequestContext(
+                transcriptDrafts: initialContext.transcriptDrafts,
+                previousSourceTexts: recentSourceTexts,
+                inputLanguage: initialContext.inputLanguage,
+                phraseHints: initialContext.phraseHints,
+                targetLanguages: initialContext.targetLanguages,
+                configuration: initialContext.configuration
+            )
             let result = try await requestNormalizationAndTranslationsWithRetry(
-                transcriptDrafts: transcriptDrafts,
-                previousSourceTexts: previousSourceTexts,
-                inputLanguage: inputLanguage,
-                phraseHints: phraseHints,
-                targetLanguages: targetLanguages,
-                configuration: configuration
+                requestContext: requestContext
             )
             let sourceText = result.sourceText
             let translations = result.translations
             appendRecentSourceText(sourceText)
 
-            let missingLanguageIDs = targetLanguages
+            let missingLanguageIDs = requestContext.targetLanguages
                 .map(\.id)
                 .filter { translations[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false }
             if !missingLanguageIDs.isEmpty {
                 emitDiagnostic(
                     level: .warning,
                     detail: Self.translationMissingLanguagesDetail(
-                        targetLanguages: targetLanguages.map(\.id),
+                        targetLanguages: requestContext.targetLanguages.map(\.id),
                         returnedLanguages: Array(translations.keys),
                         missingLanguages: missingLanguageIDs
                     )
@@ -170,24 +179,14 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     private func requestNormalizationAndTranslationsWithRetry(
-        transcriptDrafts: [AccurateCaptionTranscriptDraft],
-        previousSourceTexts: [String],
-        inputLanguage: InputLanguage,
-        phraseHints: [String],
-        targetLanguages: [SpeechOutputLanguage],
-        configuration: AzureOpenAITranslationConfig
+        requestContext: TranslationRequestContext
     ) async throws -> AzureOpenAIRealtimeTranslationResult {
         var lastError: Error?
 
         for attempt in 1...Self.maximumRequestAttempts {
             do {
                 return try await requestNormalizationAndTranslations(
-                    transcriptDrafts: transcriptDrafts,
-                    previousSourceTexts: previousSourceTexts,
-                    inputLanguage: inputLanguage,
-                    phraseHints: phraseHints,
-                    targetLanguages: targetLanguages,
-                    configuration: configuration
+                    requestContext: requestContext
                 )
             } catch {
                 lastError = error
@@ -216,13 +215,9 @@ actor AzureOpenAIRealtimeTranslationService {
     }
 
     private func requestNormalizationAndTranslations(
-        transcriptDrafts: [AccurateCaptionTranscriptDraft],
-        previousSourceTexts: [String],
-        inputLanguage: InputLanguage,
-        phraseHints: [String],
-        targetLanguages: [SpeechOutputLanguage],
-        configuration: AzureOpenAITranslationConfig
+        requestContext: TranslationRequestContext
     ) async throws -> AzureOpenAIRealtimeTranslationResult {
+        let configuration = requestContext.configuration
         var request = URLRequest(url: try Self.requestURL(for: configuration))
         request.httpMethod = "POST"
         request.setValue(
@@ -237,16 +232,16 @@ actor AzureOpenAIRealtimeTranslationService {
                 [
                     "role": "system",
                     "content": Self.systemPrompt(
-                        inputLanguage: inputLanguage,
-                        phraseHints: phraseHints,
-                        targetLanguages: targetLanguages
+                        inputLanguage: requestContext.inputLanguage,
+                        phraseHints: requestContext.phraseHints,
+                        targetLanguages: requestContext.targetLanguages
                     ),
                 ],
                 [
                     "role": "user",
                     "content": try Self.userContent(
-                        transcriptDrafts: transcriptDrafts,
-                        previousSourceTexts: previousSourceTexts
+                        transcriptDrafts: requestContext.transcriptDrafts,
+                        previousSourceTexts: requestContext.previousSourceTexts
                     ),
                 ],
             ],
@@ -409,7 +404,10 @@ actor AzureOpenAIRealtimeTranslationService {
             "transcriptCandidates": candidates,
         ]
         let data = try JSONSerialization.data(withJSONObject: payload)
-        return String(decoding: data, as: UTF8.self)
+        guard let content = String(bytes: data, encoding: .utf8) else {
+            throw AzureOpenAITextTranslationError.invalidResponse(detail: "reason=invalidUserContentEncoding")
+        }
+        return content
     }
 
     private static func normalizedPreviousSourceTexts(_ sourceTexts: [String]) -> [String] {

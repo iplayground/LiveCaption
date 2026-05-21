@@ -73,7 +73,7 @@ final class ProjectionCaptionDrawingView: NSView {
             attributes: [
                 .font: font,
                 .foregroundColor: NSColor.black,
-                .paragraphStyle: paragraphStyle
+                .paragraphStyle: paragraphStyle,
             ]
         )
 
