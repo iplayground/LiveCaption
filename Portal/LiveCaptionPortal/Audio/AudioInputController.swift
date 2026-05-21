@@ -69,6 +69,9 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
         }
     }
 
+}
+
+extension AudioInputController {
     var selectedDeviceName: String {
         guard let selectedDeviceID,
               let device = devices.first(where: { $0.id == selectedDeviceID })

@@ -95,6 +95,9 @@ struct SpeechSettings: Equatable {
         }
     }
 
+}
+
+extension SpeechSettings {
     var hasAuthorizationMaterial: Bool {
         !speechKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

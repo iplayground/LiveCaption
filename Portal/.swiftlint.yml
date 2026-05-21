@@ -13,10 +13,6 @@ file_length:
   warning: 800
   error: 2000
 
-type_body_length:
-  warning: 500
-  error: 2000
-
 function_body_length:
   warning: 80
   error: 300

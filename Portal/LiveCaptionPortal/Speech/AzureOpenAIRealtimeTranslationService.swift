@@ -72,6 +72,9 @@ actor AzureOpenAIRealtimeTranslationService {
     private var isStarted = false
     var onDiagnostic: (@Sendable (AzureOpenAIRealtimeTranslationDiagnostic) -> Void)?
 
+}
+
+extension AzureOpenAIRealtimeTranslationService {
     func setOnDiagnostic(_ handler: (@Sendable (AzureOpenAIRealtimeTranslationDiagnostic) -> Void)?) {
         onDiagnostic = handler
     }

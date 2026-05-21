@@ -17,7 +17,9 @@ struct SpeechSettingsSheet: View {
     @State private var activeAzureOpenAIConnectionTestID: UUID?
     @State private var selectedPhraseHintScope = SpeechPhraseHintScope.shared
     @State private var newPhraseHintText = ""
+}
 
+extension SpeechSettingsSheet {
     private var canTestConnection: Bool {
         settings.hasAuthorizationMaterial && !settings.region.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

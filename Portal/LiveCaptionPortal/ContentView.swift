@@ -83,7 +83,9 @@ struct ContentView: View {
         _shouldVerifyRelayConnectionOnLaunch = State(initialValue: shouldVerifyRelayConnectionOnLaunch)
         _subtitleFileSettings = State(initialValue: subtitleFileSettings)
     }
+}
 
+extension ContentView {
     private var filteredLogEntries: [LogEntry] {
         guard selectedLogLevel != .all else {
             return logEntries

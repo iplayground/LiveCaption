@@ -78,6 +78,9 @@ actor AzureOpenAIRealtimeTranscriptionService {
     private var bufferedAudioMilliseconds: UInt64 = 0
     private var isStarted = false
 
+}
+
+extension AzureOpenAIRealtimeTranscriptionService {
     func setOnTranscription(_ handler: (@Sendable (AzureOpenAIRealtimeTranscriptionResult) -> Void)?) {
         onTranscription = handler
     }

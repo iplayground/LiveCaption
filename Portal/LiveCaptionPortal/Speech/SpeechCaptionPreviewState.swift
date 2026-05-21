@@ -48,7 +48,9 @@ final class SpeechCaptionPreviewState: ObservableObject {
     private static let maximumRetainedHistoryCount = 10
 
     private var snapshot = SpeechCaptionPreviewSnapshot()
+}
 
+extension SpeechCaptionPreviewState {
     var state: SpeechRecognitionState {
         snapshot.state
     }

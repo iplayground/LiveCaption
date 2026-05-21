@@ -23,7 +23,9 @@ struct ProjectionCaptureSettingsInspector: View {
     @AppStorage("projectionCapture.paddingHorizontal") private var projectionCapturePaddingHorizontal = 28.0
     @AppStorage("projectionCapture.verticalPlacement")
     private var projectionCaptureVerticalPlacement = ProjectionCaptionVerticalPlacement.bottom.rawValue
+}
 
+extension ProjectionCaptureSettingsInspector {
     private var usesWideLayout: Bool {
         preferredWidth == nil
     }

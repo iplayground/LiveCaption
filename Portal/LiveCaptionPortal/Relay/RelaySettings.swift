@@ -194,6 +194,9 @@ struct RelaySettings: Equatable {
     var roomName = ""
     var trackNumber = 1
 
+}
+
+extension RelaySettings {
     var relayURLSummary: String {
         normalizedRelayURLString.isEmpty ? L10n.text("common.notConfigured") : normalizedRelayURLString
     }

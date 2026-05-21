@@ -21,7 +21,9 @@ struct StatusSidebar: View {
     @State private var isRelaySettingsPresented = false
     @AppStorage("projectionCapture.displayMode")
     private var projectionCaptureDisplayMode = ProjectionPreviewDisplayMode.inline.rawValue
+}
 
+extension StatusSidebar {
     private var areProjectionSettingsLocked: Bool {
         areConfigurationControlsLocked
     }
