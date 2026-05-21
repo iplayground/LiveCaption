@@ -65,6 +65,9 @@ final class SpeechRecognitionController: ObservableObject {
     private var activeRequest: SpeechRecognitionRequest?
     private var recognizedCaptionCount = 0
 
+}
+
+extension SpeechRecognitionController {
     func resetCaptionSessionMetrics() {
         recognizedCaptionCount = 0
         onCaptionCountChanged?(recognizedCaptionCount)
@@ -77,42 +80,15 @@ final class SpeechRecognitionController: ObservableObject {
         authorizationStatus: SpeechAuthorizationStatus,
         processingGeneration: Int
     ) {
-        let region = settings.region.trimmingCharacters(in: .whitespacesAndNewlines)
-        let speechKey = settings.speechKey.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard authorizationStatus == .authorized else {
-            stopRecognition(resetTranscript: false)
-            captionPreviewState.setFailure(L10n.text("speechRecognition.error.notAuthorized"))
-            return
-        }
-
-        guard !region.isEmpty, !speechKey.isEmpty else {
-            stopRecognition(resetTranscript: false)
-            captionPreviewState.setFailure(L10n.text("speechRecognition.error.missingRegionOrKey"))
-            return
-        }
-
-        guard let audioDeviceID, !audioDeviceID.isEmpty else {
-            stopRecognition(resetTranscript: false)
-            captionPreviewState.setFailure(L10n.text("speechRecognition.error.noAudioSourceSelected"))
-            return
-        }
-
-        let outputLanguageIDs = settings.selectedOutputLanguages
-            .map(\.id)
-            .sorted()
-        let phraseHints = settings.phraseHints(for: inputLanguage)
-
-        let request = SpeechRecognitionRequest(
-            region: region,
-            speechKey: speechKey,
-            inputLocale: inputLanguage.speechLocale,
+        guard let request = makeRecognitionRequest(
+            settings: settings,
+            inputLanguage: inputLanguage,
             audioDeviceID: audioDeviceID,
-            outputLanguageIDs: outputLanguageIDs,
-            phraseHints: phraseHints,
-            sentenceSilenceTimeoutMilliseconds: settings.sentenceSilenceTimeoutMilliseconds,
+            authorizationStatus: authorizationStatus,
             processingGeneration: processingGeneration
-        )
+        ) else {
+            return
+        }
 
         guard request != activeRequest || recognizer == nil else {
             return
@@ -123,8 +99,8 @@ final class SpeechRecognitionController: ObservableObject {
 
         do {
             let translationConfiguration = try SPXSpeechTranslationConfiguration(
-                subscription: speechKey,
-                region: region
+                subscription: request.speechKey,
+                region: request.region
             )
 
             translationConfiguration.speechRecognitionLanguage = inputLanguage.speechLocale
@@ -133,7 +109,7 @@ final class SpeechRecognitionController: ObservableObject {
                 "\(settings.sentenceSilenceTimeoutMilliseconds)",
                 by: SPXPropertyId(rawValue: 9_002)!
             )
-            outputLanguageIDs
+            request.outputLanguageIDs
                 .filter { $0 != inputLanguage.matchingOutputLanguageID }
                 .forEach { translationConfiguration.addTargetLanguage($0) }
 
@@ -146,7 +122,7 @@ final class SpeechRecognitionController: ObservableObject {
                 audioConfiguration: audioConfiguration
             )
 
-            applyPhraseHints(phraseHints, to: translationRecognizer)
+            applyPhraseHints(request.phraseHints, to: translationRecognizer)
             configureEventHandlers(
                 for: translationRecognizer,
                 inputLanguage: inputLanguage,
@@ -162,6 +138,65 @@ final class SpeechRecognitionController: ObservableObject {
             recognizer = nil
             captionPreviewState.setFailure(error.localizedDescription)
         }
+    }
+
+    private func makeRecognitionRequest(
+        settings: SpeechSettings,
+        inputLanguage: InputLanguage,
+        audioDeviceID: String?,
+        authorizationStatus: SpeechAuthorizationStatus,
+        processingGeneration: Int
+    ) -> SpeechRecognitionRequest? {
+        let region = settings.region.trimmingCharacters(in: .whitespacesAndNewlines)
+        let speechKey = settings.speechKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard validateAuthorizationStatus(authorizationStatus),
+              validateAuthorizationMaterial(region: region, speechKey: speechKey),
+              let audioDeviceID = validatedAudioDeviceID(audioDeviceID)
+        else {
+            return nil
+        }
+
+        return SpeechRecognitionRequest(
+            region: region,
+            speechKey: speechKey,
+            inputLocale: inputLanguage.speechLocale,
+            audioDeviceID: audioDeviceID,
+            outputLanguageIDs: settings.selectedOutputLanguages.map(\.id).sorted(),
+            phraseHints: settings.phraseHints(for: inputLanguage),
+            sentenceSilenceTimeoutMilliseconds: settings.sentenceSilenceTimeoutMilliseconds,
+            processingGeneration: processingGeneration
+        )
+    }
+
+    private func validateAuthorizationStatus(_ authorizationStatus: SpeechAuthorizationStatus) -> Bool {
+        guard authorizationStatus == .authorized else {
+            stopRecognition(resetTranscript: false)
+            captionPreviewState.setFailure(L10n.text("speechRecognition.error.notAuthorized"))
+            return false
+        }
+
+        return true
+    }
+
+    private func validateAuthorizationMaterial(region: String, speechKey: String) -> Bool {
+        guard !region.isEmpty, !speechKey.isEmpty else {
+            stopRecognition(resetTranscript: false)
+            captionPreviewState.setFailure(L10n.text("speechRecognition.error.missingRegionOrKey"))
+            return false
+        }
+
+        return true
+    }
+
+    private func validatedAudioDeviceID(_ audioDeviceID: String?) -> String? {
+        guard let audioDeviceID, !audioDeviceID.isEmpty else {
+            stopRecognition(resetTranscript: false)
+            captionPreviewState.setFailure(L10n.text("speechRecognition.error.noAudioSourceSelected"))
+            return nil
+        }
+
+        return audioDeviceID
     }
 
     private func applyPhraseHints(_ phraseHints: [String], to recognizer: SPXTranslationRecognizer) {
@@ -202,54 +237,12 @@ final class SpeechRecognitionController: ObservableObject {
     ) {
         let interimGate = SpeechInterimUpdateGate(updateInterval: Self.interimUpdateInterval)
 
-        recognizer.addRecognizingEventHandler { [weak self] _, event in
-            guard let text = event.result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty,
-                  interimGate.shouldPublish(text)
-            else {
-                return
-            }
-
-            let translations = Self.normalizedTranslations(from: event.result.translations)
-
-            DispatchQueue.main.async { [weak self] in
-                self?.captionPreviewState.setRecognizingTranscript(
-                    text,
-                    translations: translations,
-                    offsetTicks: event.result.offset
-                )
-            }
-        }
-
-        recognizer.addRecognizedEventHandler { [weak self] _, event in
-            let result = event.result
-            guard result.reason == .translatedSpeech,
-                  let text = result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty
-            else {
-                return
-            }
-
-            let translations = Self.normalizedTranslations(from: result.translations)
-            let captionEvent = RecognizedCaptionEvent(
-                text: text,
-                translations: translations,
-                offsetTicks: result.offset,
-                durationTicks: result.duration,
-                inputLanguage: inputLanguage,
-                processingGeneration: processingGeneration
-            )
-
-            DispatchQueue.main.async { [weak self] in
-                self?.captionPreviewState.setFinalTranscript(
-                    text,
-                    translations: translations,
-                    offsetTicks: result.offset
-                )
-
-                self?.deferCaptionEvent(captionEvent, processingGeneration: processingGeneration)
-            }
-        }
+        configureRecognizingEventHandler(for: recognizer, interimGate: interimGate)
+        configureRecognizedEventHandler(
+            for: recognizer,
+            inputLanguage: inputLanguage,
+            processingGeneration: processingGeneration
+        )
 
         recognizer.addCanceledEventHandler { [weak self] _, event in
             let message = event.errorDetails?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -271,6 +264,55 @@ final class SpeechRecognitionController: ObservableObject {
         }
     }
 
+    private func configureRecognizingEventHandler(
+        for recognizer: SPXTranslationRecognizer,
+        interimGate: SpeechInterimUpdateGate
+    ) {
+        recognizer.addRecognizingEventHandler { [weak self] _, event in
+            guard let text = event.result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty,
+                  interimGate.shouldPublish(text)
+            else {
+                return
+            }
+
+            let translations = Self.normalizedTranslations(from: event.result.translations)
+            DispatchQueue.main.async { [weak self] in
+                self?.captionPreviewState.setRecognizingTranscript(
+                    text,
+                    translations: translations,
+                    offsetTicks: event.result.offset
+                )
+            }
+        }
+    }
+
+    private func configureRecognizedEventHandler(
+        for recognizer: SPXTranslationRecognizer,
+        inputLanguage: InputLanguage,
+        processingGeneration: Int
+    ) {
+        recognizer.addRecognizedEventHandler { [weak self] _, event in
+            guard let captionEvent = Self.captionEvent(
+                from: event.result,
+                inputLanguage: inputLanguage,
+                processingGeneration: processingGeneration
+            ) else {
+                return
+            }
+
+            let translations = Self.normalizedTranslations(from: event.result.translations)
+            DispatchQueue.main.async { [weak self] in
+                self?.captionPreviewState.setFinalTranscript(
+                    captionEvent.text,
+                    translations: translations,
+                    offsetTicks: event.result.offset
+                )
+                self?.deferCaptionEvent(captionEvent, processingGeneration: processingGeneration)
+            }
+        }
+    }
+
     private static func normalizedTranslations(from translations: [AnyHashable: Any]) -> [String: String] {
         var normalizedTranslations: [String: String] = [:]
 
@@ -288,6 +330,28 @@ final class SpeechRecognitionController: ObservableObject {
         }
 
         return normalizedTranslations
+    }
+
+    private static func captionEvent(
+        from result: SPXTranslationRecognitionResult,
+        inputLanguage: InputLanguage,
+        processingGeneration: Int
+    ) -> RecognizedCaptionEvent? {
+        guard result.reason == .translatedSpeech,
+              let text = result.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty
+        else {
+            return nil
+        }
+
+        return RecognizedCaptionEvent(
+            text: text,
+            translations: normalizedTranslations(from: result.translations),
+            offsetTicks: result.offset,
+            durationTicks: result.duration,
+            inputLanguage: inputLanguage,
+            processingGeneration: processingGeneration
+        )
     }
 
     private func deferCaptionEvent(_ event: RecognizedCaptionEvent, processingGeneration: Int) {

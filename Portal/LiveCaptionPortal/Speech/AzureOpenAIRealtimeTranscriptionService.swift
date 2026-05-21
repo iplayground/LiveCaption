@@ -73,6 +73,12 @@ actor AzureOpenAIRealtimeTranscriptionService {
         let contentType: String
         let data: Data
     }
+    private struct AudioSegment {
+        let startMilliseconds: UInt64
+        let durationMilliseconds: UInt64
+        let paddedStartMilliseconds: UInt64
+        let paddedEndMilliseconds: UInt64
+    }
     private var configuration: AzureOpenAITranscriptionConfig?
     private var audioBuffer = Data()
     private var bufferedAudioMilliseconds: UInt64 = 0
@@ -125,45 +131,19 @@ extension AzureOpenAIRealtimeTranscriptionService {
         }
 
         let speechText = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let segmentStartMilliseconds = event.offsetTicks / Self.ticksPerMillisecond
-        let segmentDurationMilliseconds = max(event.durationTicks / Self.ticksPerMillisecond, 1)
-        let paddedStartMilliseconds = segmentStartMilliseconds > Self.audioPaddingMilliseconds
-            ? segmentStartMilliseconds - Self.audioPaddingMilliseconds
-            : 0
-        let paddedEndMilliseconds = min(
-            bufferedAudioMilliseconds,
-            segmentStartMilliseconds + segmentDurationMilliseconds + Self.audioPaddingMilliseconds
-        )
+        let segment = audioSegment(for: event)
 
-        guard paddedEndMilliseconds > paddedStartMilliseconds else {
-            emitDiagnostic(
-                level: .warning,
-                detail: [
-                    "phase=transcriptionSkipped",
-                    "reason=missingAudio",
-                    "audioStartMs=\(segmentStartMilliseconds)",
-                    "audioDurationMs=\(segmentDurationMilliseconds)",
-                    "bufferedAudioMs=\(bufferedAudioMilliseconds)",
-                ].joined(separator: "; ")
-            )
+        guard segment.paddedEndMilliseconds > segment.paddedStartMilliseconds else {
+            emitSkippedAudioDiagnostic(reason: "missingAudio", segment: segment)
             return
         }
 
         let audio = audioSlice(
-            startMilliseconds: paddedStartMilliseconds,
-            endMilliseconds: paddedEndMilliseconds
+            startMilliseconds: segment.paddedStartMilliseconds,
+            endMilliseconds: segment.paddedEndMilliseconds
         )
         guard !audio.isEmpty else {
-            emitDiagnostic(
-                level: .warning,
-                detail: [
-                    "phase=transcriptionSkipped",
-                    "reason=emptyAudioSlice",
-                    "audioStartMs=\(segmentStartMilliseconds)",
-                    "audioDurationMs=\(segmentDurationMilliseconds)",
-                    "bufferedAudioMs=\(bufferedAudioMilliseconds)",
-                ].joined(separator: "; ")
-            )
+            emitSkippedAudioDiagnostic(reason: "emptyAudioSlice", segment: segment)
             return
         }
 
@@ -173,36 +153,11 @@ extension AzureOpenAIRealtimeTranscriptionService {
                 configuration: configuration
             )
             let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            let safeOpenAIText: String
-            let isPromptVocabularyLeak = Self.isLikelyVocabularyListLeak(
+            let safeOpenAIText = safeTranscriptionText(
                 normalizedText,
-                phraseHints: configuration.phraseHints
+                configuration: configuration,
+                segment: segment
             )
-            if isPromptVocabularyLeak {
-                emitDiagnostic(
-                    level: .warning,
-                    detail: [
-                        "phase=transcriptionCompleted",
-                        "endpoint=audioTranscriptions",
-                        "issue=promptVocabularyLeak",
-                        "transcriptChars=\(normalizedText.count)",
-                        "phraseHintCount=\(configuration.phraseHints.count)",
-                        "audioStartMs=\(segmentStartMilliseconds)",
-                        "audioEndMs=\(segmentStartMilliseconds + segmentDurationMilliseconds)",
-                    ].joined(separator: "; ")
-                )
-                safeOpenAIText = ""
-            } else {
-                safeOpenAIText = normalizedText
-            }
-            if !isPromptVocabularyLeak {
-                emitTranscriptDiagnostic(
-                    text: safeOpenAIText,
-                    audioStartMilliseconds: segmentStartMilliseconds,
-                    audioEndMilliseconds: segmentStartMilliseconds + segmentDurationMilliseconds
-                )
-            }
-
             guard !safeOpenAIText.isEmpty else {
                 publishTranscriptionResult(openAIText: safeOpenAIText, speechText: speechText, event: event)
                 return
@@ -213,6 +168,78 @@ extension AzureOpenAIRealtimeTranscriptionService {
             emitDiagnostic(level: .error, detail: Self.errorDetail(error, phase: "transcriptionRequest"))
             publishTranscriptionResult(openAIText: "", speechText: speechText, event: event)
         }
+    }
+
+    private func audioSegment(for event: RecognizedCaptionEvent) -> AudioSegment {
+        let startMilliseconds = event.offsetTicks / Self.ticksPerMillisecond
+        let durationMilliseconds = max(event.durationTicks / Self.ticksPerMillisecond, 1)
+        let paddedStartMilliseconds = startMilliseconds > Self.audioPaddingMilliseconds
+            ? startMilliseconds - Self.audioPaddingMilliseconds
+            : 0
+        let paddedEndMilliseconds = min(
+            bufferedAudioMilliseconds,
+            startMilliseconds + durationMilliseconds + Self.audioPaddingMilliseconds
+        )
+        return AudioSegment(
+            startMilliseconds: startMilliseconds,
+            durationMilliseconds: durationMilliseconds,
+            paddedStartMilliseconds: paddedStartMilliseconds,
+            paddedEndMilliseconds: paddedEndMilliseconds
+        )
+    }
+
+    private func emitSkippedAudioDiagnostic(reason: String, segment: AudioSegment) {
+        emitDiagnostic(
+            level: .warning,
+            detail: [
+                "phase=transcriptionSkipped",
+                "reason=\(reason)",
+                "audioStartMs=\(segment.startMilliseconds)",
+                "audioDurationMs=\(segment.durationMilliseconds)",
+                "bufferedAudioMs=\(bufferedAudioMilliseconds)",
+            ].joined(separator: "; ")
+        )
+    }
+
+    private func safeTranscriptionText(
+        _ normalizedText: String,
+        configuration: AzureOpenAITranscriptionConfig,
+        segment: AudioSegment
+    ) -> String {
+        guard Self.isLikelyVocabularyListLeak(normalizedText, phraseHints: configuration.phraseHints) else {
+            emitTranscriptDiagnostic(
+                text: normalizedText,
+                audioStartMilliseconds: segment.startMilliseconds,
+                audioEndMilliseconds: segment.startMilliseconds + segment.durationMilliseconds
+            )
+            return normalizedText
+        }
+
+        emitPromptVocabularyLeakDiagnostic(
+            normalizedText: normalizedText,
+            phraseHintCount: configuration.phraseHints.count,
+            segment: segment
+        )
+        return ""
+    }
+
+    private func emitPromptVocabularyLeakDiagnostic(
+        normalizedText: String,
+        phraseHintCount: Int,
+        segment: AudioSegment
+    ) {
+        emitDiagnostic(
+            level: .warning,
+            detail: [
+                "phase=transcriptionCompleted",
+                "endpoint=audioTranscriptions",
+                "issue=promptVocabularyLeak",
+                "transcriptChars=\(normalizedText.count)",
+                "phraseHintCount=\(phraseHintCount)",
+                "audioStartMs=\(segment.startMilliseconds)",
+                "audioEndMs=\(segment.startMilliseconds + segment.durationMilliseconds)",
+            ].joined(separator: "; ")
+        )
     }
 
     private func publishTranscriptionResult(

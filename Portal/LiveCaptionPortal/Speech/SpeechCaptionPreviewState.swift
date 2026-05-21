@@ -396,16 +396,11 @@ extension SpeechCaptionPreviewState {
         }
 
         updateSnapshot { snapshot in
-            let shouldUpdateLatest: Bool
-            if let lastGeneration = snapshot.lastAccurateFinalProcessingGeneration {
-                shouldUpdateLatest = processingGeneration > lastGeneration
-                    || (
-                        processingGeneration == lastGeneration
-                            && offsetTicks > (snapshot.lastAccurateFinalOffsetTicks ?? 0)
-                    )
-            } else {
-                shouldUpdateLatest = true
-            }
+            let shouldUpdateLatest = Self.shouldUpdateLatestAccurateFinalCaption(
+                offsetTicks: offsetTicks,
+                processingGeneration: processingGeneration,
+                snapshot: snapshot
+            )
 
             if shouldUpdateLatest {
                 snapshot.accurateFinalTranscript = normalizedText
@@ -448,6 +443,22 @@ extension SpeechCaptionPreviewState {
                 )
             }
         }
+    }
+
+    private static func shouldUpdateLatestAccurateFinalCaption(
+        offsetTicks: UInt64,
+        processingGeneration: Int,
+        snapshot: SpeechCaptionPreviewSnapshot
+    ) -> Bool {
+        guard let lastGeneration = snapshot.lastAccurateFinalProcessingGeneration else {
+            return true
+        }
+
+        return processingGeneration > lastGeneration
+            || (
+                processingGeneration == lastGeneration
+                    && offsetTicks > (snapshot.lastAccurateFinalOffsetTicks ?? 0)
+            )
     }
 
     func setFailure(_ message: String) {

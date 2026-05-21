@@ -802,50 +802,70 @@ extension ContentView {
         }
 
         guard speechSettings.hasAzureOpenAIRealtimeConfiguration else {
-            appendLog(
-                level: .warning,
-                title: L10n.text("log.azureOpenAI.realtimeSkipped"),
-                detail: L10n.text("azureOpenAI.error.incompleteConfiguration")
-            )
+            appendAccurateCaptionSkippedLog(detail: L10n.text("azureOpenAI.error.incompleteConfiguration"))
             return false
         }
 
-        let targetLanguages = speechSettings.selectedOutputLanguages
-        let translationConfiguration = speechSettings.azureOpenAIRealtimeConfiguration(
-            outputLanguages: targetLanguages
-        )
-        let transcriptionConfiguration = speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(
-            inputLanguage: inputLanguage,
-            speakerIdentity: speakerIdentityPromptValue(for: inputLanguage)
-        )
+        let configurations = accurateCaptionConfigurations(inputLanguage: inputLanguage)
 
         do {
             if restartsTranslation {
-                try await accurateTranslationService.start(configuration: translationConfiguration)
+                try await accurateTranslationService.start(configuration: configurations.translation)
             }
-            try await accurateTranscriptionService.start(configuration: transcriptionConfiguration)
-            appendLog(
-                level: .info,
-                title: L10n.text("log.azureOpenAI.realtimeStarted"),
-                detail: transcriptionConfiguration.normalizedEndpointURLString
-            )
+            try await accurateTranscriptionService.start(configuration: configurations.transcription)
+            appendAccurateCaptionStartedLog(endpointURLString: configurations.transcription.normalizedEndpointURLString)
             return true
         } catch {
-            if restartsTranslation {
-                await accurateTranslationService.stop()
-            }
-            await accurateTranscriptionService.stop()
-            let detail = (error as? AzureOpenAIRealtimeTranslationError)?.diagnosticDescription
-                ?? error.localizedDescription
-            azureOpenAIConnectionStatus = .failed
-            azureOpenAIConnectionStatus.save()
-            appendLog(
-                level: .error,
-                title: L10n.text("log.azureOpenAI.realtimeFailed"),
-                detail: detail
-            )
+            await handleAccurateCaptionStartFailure(error, restartsTranslation: restartsTranslation)
             return false
         }
+    }
+
+    private func accurateCaptionConfigurations(
+        inputLanguage: InputLanguage
+    ) -> (
+        translation: AzureOpenAITranslationConfig,
+        transcription: AzureOpenAITranscriptionConfig
+    ) {
+        let targetLanguages = speechSettings.selectedOutputLanguages
+        return (
+            translation: speechSettings.azureOpenAIRealtimeConfiguration(outputLanguages: targetLanguages),
+            transcription: speechSettings.azureOpenAIRealtimeTranscriptionConfiguration(
+                inputLanguage: inputLanguage,
+                speakerIdentity: speakerIdentityPromptValue(for: inputLanguage)
+            )
+        )
+    }
+
+    private func appendAccurateCaptionStartedLog(endpointURLString: String) {
+        appendLog(
+            level: .info,
+            title: L10n.text("log.azureOpenAI.realtimeStarted"),
+            detail: endpointURLString
+        )
+    }
+
+    private func appendAccurateCaptionSkippedLog(detail: String) {
+        appendLog(
+            level: .warning,
+            title: L10n.text("log.azureOpenAI.realtimeSkipped"),
+            detail: detail
+        )
+    }
+
+    private func handleAccurateCaptionStartFailure(
+        _ error: Error,
+        restartsTranslation: Bool
+    ) async {
+        if restartsTranslation {
+            await accurateTranslationService.stop()
+        }
+        await accurateTranscriptionService.stop()
+        let detail = (error as? AzureOpenAIRealtimeTranslationError)?.diagnosticDescription
+            ?? error.localizedDescription
+        azureOpenAIConnectionStatus = .failed
+        azureOpenAIConnectionStatus.save()
+        appendLog(level: .error, title: L10n.text("log.azureOpenAI.realtimeFailed"), detail: detail)
     }
 
     private func speakerIdentityPromptValue(for inputLanguage: InputLanguage) -> SpeakerIdentity? {
@@ -910,25 +930,8 @@ extension ContentView {
             return
         }
 
-        if mode == .accurate {
-            let translations = event.captionModes[mode]?.translations ?? [:]
-            let missingLanguageIDs = missingOpenAITranslationLanguageIDs(
-                in: translations,
-                inputLanguage: event.inputLanguage
-            )
-            guard missingLanguageIDs.isEmpty else {
-                appendOpenAITranslationDiagnostic(
-                    AzureOpenAIRealtimeTranslationDiagnostic(
-                        level: .warning,
-                        detail: [
-                            "phase=relaySkipped",
-                            "reason=missingTranslations",
-                            "missingLanguages=\(missingLanguageIDs.joined(separator: ","))",
-                        ].joined(separator: "; ")
-                    )
-                )
-                return
-            }
+        guard canPublishCaptionEventToRelay(event, mode: mode) else {
+            return
         }
 
         guard let relayInput = RelayCaptionPublishInput(
@@ -966,6 +969,37 @@ extension ContentView {
                 }
             }
         }
+    }
+
+    private func canPublishCaptionEventToRelay(_ event: RecognizedCaptionEvent, mode: CaptionQualityMode) -> Bool {
+        guard mode == .accurate else {
+            return true
+        }
+
+        let translations = event.captionModes[mode]?.translations ?? [:]
+        let missingLanguageIDs = missingOpenAITranslationLanguageIDs(
+            in: translations,
+            inputLanguage: event.inputLanguage
+        )
+        guard missingLanguageIDs.isEmpty else {
+            appendMissingOpenAITranslationDiagnostic(missingLanguageIDs)
+            return false
+        }
+
+        return true
+    }
+
+    private func appendMissingOpenAITranslationDiagnostic(_ missingLanguageIDs: [String]) {
+        appendOpenAITranslationDiagnostic(
+            AzureOpenAIRealtimeTranslationDiagnostic(
+                level: .warning,
+                detail: [
+                    "phase=relaySkipped",
+                    "reason=missingTranslations",
+                    "missingLanguages=\(missingLanguageIDs.joined(separator: ","))",
+                ].joined(separator: "; ")
+            )
+        )
     }
 
     private func publishPortalStatusToRelay(_ status: String) {

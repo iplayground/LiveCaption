@@ -220,8 +220,14 @@ extension AzureOpenAIRealtimeTranslationService {
     private func requestNormalizationAndTranslations(
         requestContext: TranslationRequestContext
     ) async throws -> AzureOpenAIRealtimeTranslationResult {
+        let request = try Self.request(for: requestContext)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return try Self.translationResult(from: data, response: response)
+    }
+
+    private static func request(for requestContext: TranslationRequestContext) throws -> URLRequest {
         let configuration = requestContext.configuration
-        var request = URLRequest(url: try Self.requestURL(for: configuration))
+        var request = URLRequest(url: try requestURL(for: configuration))
         request.httpMethod = "POST"
         request.setValue(
             configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -229,12 +235,16 @@ extension AzureOpenAIRealtimeTranslationService {
         )
         request.setValue("LiveCaptionPortal", forHTTPHeaderField: "OpenAI-Safety-Identifier")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody(for: requestContext))
+        return request
+    }
 
-        let body: [String: Any] = [
+    private static func requestBody(for requestContext: TranslationRequestContext) throws -> [String: Any] {
+        [
             "messages": [
                 [
                     "role": "system",
-                    "content": Self.systemPrompt(
+                    "content": systemPrompt(
                         inputLanguage: requestContext.inputLanguage,
                         phraseHints: requestContext.phraseHints,
                         targetLanguages: requestContext.targetLanguages
@@ -242,7 +252,7 @@ extension AzureOpenAIRealtimeTranslationService {
                 ],
                 [
                     "role": "user",
-                    "content": try Self.userContent(
+                    "content": try userContent(
                         transcriptDrafts: requestContext.transcriptDrafts,
                         previousSourceTexts: requestContext.previousSourceTexts
                     ),
@@ -253,10 +263,12 @@ extension AzureOpenAIRealtimeTranslationService {
                 "type": "json_object",
             ],
         ]
+    }
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-
+    private static func translationResult(
+        from data: Data,
+        response: URLResponse
+    ) throws -> AzureOpenAIRealtimeTranslationResult {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AzureOpenAITextTranslationError.invalidResponse(detail: "reason=missingHTTPResponse")
         }
@@ -264,8 +276,8 @@ extension AzureOpenAIRealtimeTranslationService {
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw AzureOpenAITextTranslationError.httpError(
                 statusCode: httpResponse.statusCode,
-                detail: Self.responseErrorDetail(from: data),
-                retryAfterSeconds: Self.retryAfterSeconds(from: httpResponse)
+                detail: responseErrorDetail(from: data),
+                retryAfterSeconds: retryAfterSeconds(from: httpResponse)
             )
         }
 
@@ -281,7 +293,7 @@ extension AzureOpenAIRealtimeTranslationService {
               let content = message["content"] as? String
         else {
             throw AzureOpenAITextTranslationError.invalidResponse(
-                detail: Self.invalidResponseDetail(payload: payload, contentChars: nil)
+                detail: invalidResponseDetail(payload: payload, contentChars: nil)
             )
         }
 
@@ -291,7 +303,7 @@ extension AzureOpenAIRealtimeTranslationService {
               let translationsPayload = contentPayload["translations"] as? [String: String]
         else {
             throw AzureOpenAITextTranslationError.invalidResponse(
-                detail: Self.invalidResponseDetail(payload: payload, contentChars: content.count)
+                detail: invalidResponseDetail(payload: payload, contentChars: content.count)
             )
         }
 
@@ -348,6 +360,28 @@ extension AzureOpenAIRealtimeTranslationService {
             : normalizedPhraseHints.joined(separator: ", ")
 
         return """
+        \(sourceTextGuidance(inputLanguage: inputLanguage))
+        Return only a JSON object with this shape:
+        {
+          "sourceText": "corrected source-language subtitle",
+          "translations": {
+            "language-id": "translated subtitle"
+          }
+        }
+        The translations object must use only the exact language IDs listed below.
+        Keep translations concise and suitable for event subtitles.
+        For zh-Hant, use Taiwan Traditional Chinese and Taiwan terminology. Never output Simplified Chinese.
+
+        Vocabulary hints:
+        \(phraseHintText)
+
+        Languages:
+        \(languageList)
+        """
+    }
+
+    private static func sourceTextGuidance(inputLanguage: InputLanguage) -> String {
+        """
         Produce one faithful source-language subtitle in \(inputLanguage.azureOpenAITextNormalizationName)
         as sourceText,
         then translate sourceText into the requested languages.
@@ -373,22 +407,6 @@ extension AzureOpenAIRealtimeTranslationService {
         Do not add content the speaker did not say, copy from previousSourceTexts, beautify wording,
         formalize spoken language, paraphrase, summarize, expand, or censor.
         If uncertain, keep the most reliable candidate wording.
-        Return only a JSON object with this shape:
-        {
-          "sourceText": "corrected source-language subtitle",
-          "translations": {
-            "language-id": "translated subtitle"
-          }
-        }
-        The translations object must use only the exact language IDs listed below.
-        Keep translations concise and suitable for event subtitles.
-        For zh-Hant, use Taiwan Traditional Chinese and Taiwan terminology. Never output Simplified Chinese.
-
-        Vocabulary hints:
-        \(phraseHintText)
-
-        Languages:
-        \(languageList)
         """
     }
 

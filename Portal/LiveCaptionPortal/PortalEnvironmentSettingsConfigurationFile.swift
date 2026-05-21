@@ -159,50 +159,9 @@ private struct PortalEnvironmentConfigFile: Codable {
 
         var speechSettings = currentSettings.speechSettings
         var relaySettings = currentSettings.relaySettings
-        let availableSections = try includedSections()
-        let appliedSections = PortalEnvironmentExportSelection(
-            includesAzureSpeechAuthorization: availableSections.includesAzureSpeechAuthorization
-                && selection.includesAzureSpeechAuthorization,
-            includesAzureOpenAISettings: availableSections.includesAzureOpenAISettings
-                && selection.includesAzureOpenAISettings,
-            includesCaptionOutputAndSegmentation: availableSections.includesCaptionOutputAndSegmentation
-                && selection.includesCaptionOutputAndSegmentation,
-            includesPhraseHints: availableSections.includesPhraseHints
-                && selection.includesPhraseHints,
-            includesRelayURL: availableSections.includesRelayURL && selection.includesRelayURL
-        )
-
-        if appliedSections.includesAzureSpeechAuthorization {
-            if let azureSpeechAuthorization {
-                azureSpeechAuthorization.apply(to: &speechSettings)
-            } else {
-                speech?.applyAzureSpeechAuthorization(to: &speechSettings)
-            }
-        }
-        if appliedSections.includesAzureOpenAISettings {
-            if let azureOpenAI {
-                azureOpenAI.apply(to: &speechSettings)
-            } else {
-                speech?.applyAzureOpenAISettings(to: &speechSettings)
-            }
-        }
-        if appliedSections.includesCaptionOutputAndSegmentation {
-            if let captionOutputAndSegmentation {
-                captionOutputAndSegmentation.apply(to: &speechSettings)
-            } else {
-                speech?.applyCaptionOutputAndSegmentation(to: &speechSettings)
-            }
-        }
-        if appliedSections.includesPhraseHints {
-            if let phraseHints {
-                phraseHints.apply(to: &speechSettings)
-            } else {
-                speech?.applyPhraseHints(to: &speechSettings)
-            }
-        }
-        if appliedSections.includesRelayURL {
-            relay?.apply(to: &relaySettings)
-        }
+        let appliedSections = try appliedSections(for: selection)
+        applySpeechSettingsSections(appliedSections, to: &speechSettings)
+        applyRelaySettingsSections(appliedSections, to: &relaySettings)
 
         return PortalEnvironmentSettings(
             speechSettings: speechSettings,
@@ -223,6 +182,53 @@ private struct PortalEnvironmentConfigFile: Codable {
             includesPhraseHints: phraseHints != nil || speech != nil,
             includesRelayURL: relay != nil
         )
+    }
+
+    private func appliedSections(
+        for selection: PortalEnvironmentExportSelection
+    ) throws -> PortalEnvironmentExportSelection {
+        let availableSections = try includedSections()
+        return PortalEnvironmentExportSelection(
+            includesAzureSpeechAuthorization: availableSections.includesAzureSpeechAuthorization
+                && selection.includesAzureSpeechAuthorization,
+            includesAzureOpenAISettings: availableSections.includesAzureOpenAISettings
+                && selection.includesAzureOpenAISettings,
+            includesCaptionOutputAndSegmentation: availableSections.includesCaptionOutputAndSegmentation
+                && selection.includesCaptionOutputAndSegmentation,
+            includesPhraseHints: availableSections.includesPhraseHints && selection.includesPhraseHints,
+            includesRelayURL: availableSections.includesRelayURL && selection.includesRelayURL
+        )
+    }
+
+    private func applySpeechSettingsSections(
+        _ appliedSections: PortalEnvironmentExportSelection,
+        to speechSettings: inout SpeechSettings
+    ) {
+        if appliedSections.includesAzureSpeechAuthorization {
+            azureSpeechAuthorization?.apply(to: &speechSettings)
+                ?? speech?.applyAzureSpeechAuthorization(to: &speechSettings)
+        }
+        if appliedSections.includesAzureOpenAISettings {
+            azureOpenAI?.apply(to: &speechSettings)
+                ?? speech?.applyAzureOpenAISettings(to: &speechSettings)
+        }
+        if appliedSections.includesCaptionOutputAndSegmentation {
+            captionOutputAndSegmentation?.apply(to: &speechSettings)
+                ?? speech?.applyCaptionOutputAndSegmentation(to: &speechSettings)
+        }
+        if appliedSections.includesPhraseHints {
+            phraseHints?.apply(to: &speechSettings)
+                ?? speech?.applyPhraseHints(to: &speechSettings)
+        }
+    }
+
+    private func applyRelaySettingsSections(
+        _ appliedSections: PortalEnvironmentExportSelection,
+        to relaySettings: inout RelaySettings
+    ) {
+        if appliedSections.includesRelayURL {
+            relay?.apply(to: &relaySettings)
+        }
     }
 }
 

@@ -152,6 +152,10 @@ final class AudioSampleBufferDelegate: NSObject, AVCaptureAudioDataOutputSampleB
 
 enum RealtimeAudioPCMConverter {
     private static let targetSampleRate = 24_000.0
+    private struct RetainedAudioBufferList {
+        let pointer: UnsafeMutableRawPointer
+        let blockBuffer: CMBlockBuffer?
+    }
 
     static func pcm16Mono24k(from sampleBuffer: CMSampleBuffer) -> Data? {
         guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
@@ -166,51 +170,17 @@ enum RealtimeAudioPCMConverter {
             return nil
         }
 
-        var audioBufferListSize = 0
-        var blockBuffer: CMBlockBuffer?
-        let sizeStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer,
-            bufferListSizeNeededOut: &audioBufferListSize,
-            bufferListOut: nil,
-            bufferListSize: 0,
-            blockBufferAllocator: nil,
-            blockBufferMemoryAllocator: nil,
-            flags: 0,
-            blockBufferOut: &blockBuffer
-        )
-
-        guard sizeStatus == noErr, audioBufferListSize > 0 else {
+        guard let retainedBufferList = retainedAudioBufferList(from: sampleBuffer) else {
             return nil
         }
-
-        let audioBufferListPointer = UnsafeMutableRawPointer.allocate(
-            byteCount: audioBufferListSize,
-            alignment: MemoryLayout<AudioBufferList>.alignment
-        )
         defer {
-            audioBufferListPointer.deallocate()
+            retainedBufferList.pointer.deallocate()
         }
 
-        let audioBufferList = audioBufferListPointer.bindMemory(
-            to: AudioBufferList.self,
-            capacity: 1
+        _ = retainedBufferList.blockBuffer
+        let buffers = UnsafeMutableAudioBufferListPointer(
+            retainedBufferList.pointer.bindMemory(to: AudioBufferList.self, capacity: 1)
         )
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: audioBufferList,
-            bufferListSize: audioBufferListSize,
-            blockBufferAllocator: nil,
-            blockBufferMemoryAllocator: nil,
-            flags: 0,
-            blockBufferOut: &blockBuffer
-        )
-
-        guard status == noErr else {
-            return nil
-        }
-
-        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
         let sampleRate = description.mSampleRate > 0 ? description.mSampleRate : 48_000.0
         let isFloat = description.mFormatFlags & kAudioFormatFlagIsFloat != 0
         let isSignedInteger = description.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0
@@ -237,6 +207,61 @@ enum RealtimeAudioPCMConverter {
         }
 
         return pcm16Data(from: resampled(monoSamples, sourceSampleRate: sampleRate))
+    }
+
+    private static func retainedAudioBufferList(from sampleBuffer: CMSampleBuffer) -> RetainedAudioBufferList? {
+        var audioBufferListSize = 0
+        var blockBuffer: CMBlockBuffer?
+        let sizeStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: &audioBufferListSize,
+            bufferListOut: nil,
+            bufferListSize: 0,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+
+        guard sizeStatus == noErr, audioBufferListSize > 0 else {
+            return nil
+        }
+
+        let pointer = UnsafeMutableRawPointer.allocate(
+            byteCount: audioBufferListSize,
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        guard fillAudioBufferList(
+            pointer,
+            size: audioBufferListSize,
+            sampleBuffer: sampleBuffer,
+            blockBuffer: &blockBuffer
+        ) else {
+            pointer.deallocate()
+            return nil
+        }
+
+        return RetainedAudioBufferList(pointer: pointer, blockBuffer: blockBuffer)
+    }
+
+    private static func fillAudioBufferList(
+        _ pointer: UnsafeMutableRawPointer,
+        size: Int,
+        sampleBuffer: CMSampleBuffer,
+        blockBuffer: inout CMBlockBuffer?
+    ) -> Bool {
+        let audioBufferList = pointer.bindMemory(to: AudioBufferList.self, capacity: 1)
+        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: audioBufferList,
+            bufferListSize: size,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+        return status == noErr
     }
 
     private static func floatMonoSamples(
