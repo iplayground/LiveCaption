@@ -164,18 +164,42 @@ actor AzureOpenAIRealtimeTranscriptionService {
                 configuration: configuration
             )
             let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            emitTranscriptDiagnostic(
-                text: normalizedText,
-                audioStartMilliseconds: segmentStartMilliseconds,
-                audioEndMilliseconds: segmentStartMilliseconds + segmentDurationMilliseconds
+            let safeOpenAIText: String
+            let isPromptVocabularyLeak = Self.isLikelyVocabularyListLeak(
+                normalizedText,
+                phraseHints: configuration.phraseHints
             )
+            if isPromptVocabularyLeak {
+                emitDiagnostic(
+                    level: .warning,
+                    detail: [
+                        "phase=transcriptionCompleted",
+                        "endpoint=audioTranscriptions",
+                        "issue=promptVocabularyLeak",
+                        "transcriptChars=\(normalizedText.count)",
+                        "phraseHintCount=\(configuration.phraseHints.count)",
+                        "audioStartMs=\(segmentStartMilliseconds)",
+                        "audioEndMs=\(segmentStartMilliseconds + segmentDurationMilliseconds)",
+                    ].joined(separator: "; ")
+                )
+                safeOpenAIText = ""
+            } else {
+                safeOpenAIText = normalizedText
+            }
+            if !isPromptVocabularyLeak {
+                emitTranscriptDiagnostic(
+                    text: safeOpenAIText,
+                    audioStartMilliseconds: segmentStartMilliseconds,
+                    audioEndMilliseconds: segmentStartMilliseconds + segmentDurationMilliseconds
+                )
+            }
 
-            guard !normalizedText.isEmpty else {
-                publishTranscriptionResult(openAIText: normalizedText, speechText: speechText, event: event)
+            guard !safeOpenAIText.isEmpty else {
+                publishTranscriptionResult(openAIText: safeOpenAIText, speechText: speechText, event: event)
                 return
             }
 
-            publishTranscriptionResult(openAIText: normalizedText, speechText: speechText, event: event)
+            publishTranscriptionResult(openAIText: safeOpenAIText, speechText: speechText, event: event)
         } catch {
             emitDiagnostic(level: .error, detail: Self.errorDetail(error, phase: "transcriptionRequest"))
             publishTranscriptionResult(openAIText: "", speechText: speechText, event: event)
@@ -418,10 +442,53 @@ actor AzureOpenAIRealtimeTranscriptionService {
                 "Use likely vocabulary as canonical spelling only when the audio sounds like it; "
                     + "preserve Latin spelling and capitalization without translation or localization."
             )
+            lines.append("Never output the likely vocabulary list itself as the transcript.")
             lines.append("Likely vocabulary: \(phraseHints.joined(separator: ", ")).")
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    private static func isLikelyVocabularyListLeak(_ text: String, phraseHints: [String]) -> Bool {
+        let normalizedPhraseHints = phraseHints
+            .map(normalizedVocabularyTerm)
+            .filter { !$0.isEmpty }
+
+        guard normalizedPhraseHints.count > 1 else {
+            return false
+        }
+
+        return vocabularyTerms(from: text) == normalizedPhraseHints
+    }
+
+    private static func vocabularyTerms(from text: String) -> [String] {
+        var candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercasedCandidate = candidate.lowercased()
+        let prefix = "likely vocabulary:"
+        if lowercasedCandidate.hasPrefix(prefix) {
+            candidate = String(candidate.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        while let lastScalar = candidate.unicodeScalars.last,
+              CharacterSet(charactersIn: ".。").contains(lastScalar) {
+            candidate.removeLast()
+            candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return candidate
+            .split { character in
+                character == "," || character == "，"
+            }
+            .map { normalizedVocabularyTerm(String($0)) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func normalizedVocabularyTerm(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private static func responseErrorDetail(from data: Data) -> String {
