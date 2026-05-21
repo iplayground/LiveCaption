@@ -181,17 +181,26 @@ struct SubtitleExportSession {
         var normalized: [SubtitleCue] = []
         for cue in sortedCues {
             if let lastCue = normalized.last, lastCue.endTime > cue.startTime {
-                normalized[normalized.count - 1] = SubtitleCue(
+                let truncatedLastCue = SubtitleCue(
                     startTime: lastCue.startTime,
                     endTime: cue.startTime,
                     text: lastCue.text
                 )
+                if isDisplayableCue(truncatedLastCue) {
+                    normalized[normalized.count - 1] = truncatedLastCue
+                } else {
+                    normalized.removeLast()
+                }
             }
 
             normalized.append(cue)
         }
 
         return normalized
+    }
+
+    private static func isDisplayableCue(_ cue: SubtitleCue) -> Bool {
+        cue.endTime - cue.startTime >= minimumCueDuration
     }
 
     private static func formatTimecode(_ timeInterval: TimeInterval) -> String {

@@ -117,7 +117,7 @@ Portal 再把同一段 OpenAI transcription draft 與 Azure Speech final
 Portal 不會直接用 Azure Speech final 補入精準模式的原始語言文字。
 校正原始語言字幕時，Portal 要求 Azure OpenAI 保留候選文字或最近前文支持的外語 code-switch，不得把外語片段替換成來源語言的近音詞；模糊候選若會改變當前主題，必須有當前候選明確支持才可採用。
 
-精準字幕的顯示與輸出順序以 Speech final 的 session offset 為準，而不是以 Azure OpenAI response 抵達順序為準。SRT 輸出也必須依時間碼排序並處理相鄰 cue 的重疊，避免晚回來的第一句被寫在較早抵達的第二句後面。
+精準字幕的顯示與輸出順序以 Speech final 的 session offset 為準，而不是以 Azure OpenAI response 抵達順序為準。SRT 輸出也必須依時間碼排序並處理相鄰 cue 的重疊，避免晚回來的第一句被寫在較早抵達的第二句後面。若某筆 cue 為避免與下一筆重疊而被截短到低於最短可讀時間，Portal 不應輸出該 cue。
 
 ## Speech 辨識詞彙提示
 
