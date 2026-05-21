@@ -57,6 +57,7 @@ final class SpeechRecognitionController: ObservableObject {
     let captionPreviewState = SpeechCaptionPreviewState()
     var onCaptionEvent: ((RecognizedCaptionEvent) -> Void)?
     var onCaptionCountChanged: ((Int) -> Void)?
+    var onLogEvent: ((PortalWorkflowLog) -> Void)?
 
     private static let interimUpdateInterval: TimeInterval = 1.0 / 12.0
     private static let phraseListWeight = 2.0
@@ -253,10 +254,18 @@ final class SpeechRecognitionController: ObservableObject {
         recognizer.addCanceledEventHandler { [weak self] _, event in
             let message = event.errorDetails?.trimmingCharacters(in: .whitespacesAndNewlines)
             DispatchQueue.main.async { [weak self] in
+                let detail = message?.isEmpty == false
+                    ? message!
+                    : L10n.text("speechRecognition.cancelled")
                 self?.captionPreviewState.setFailure(
-                    message?.isEmpty == false
-                        ? message!
-                        : L10n.text("speechRecognition.cancelled")
+                    detail
+                )
+                self?.onLogEvent?(
+                    PortalWorkflowLog(
+                        level: .error,
+                        title: L10n.text("log.speech.recognitionCanceled"),
+                        detail: detail
+                    )
                 )
             }
         }

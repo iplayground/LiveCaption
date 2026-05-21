@@ -650,6 +650,14 @@ struct ContentView: View {
             handleCaptionEvent(event)
         }
 
+        speechRecognitionController.onLogEvent = { log in
+            appendLog(log)
+        }
+
+        pubSubCaptionReceiver.onLogEvent = { log in
+            appendLog(log)
+        }
+
         Task { [accurateTranscriptionService, accurateTranslationService] in
             await accurateTranscriptionService.setOnTranscription { result in
                 Task { @MainActor in

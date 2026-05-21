@@ -115,6 +115,8 @@
 "log.relay.connectionTestSucceededDetail" = "Relay URL：%@\n軌道：%d\nViewer access code：%@";
 "log.relay.publishFailed" = "Relay 字幕發佈失敗";
 "log.relay.publishFailedDetail" = "第 %d/%d 次嘗試失敗：%@";
+"log.pubSub.receiveFailed" = "PubSub 接收失敗";
+"log.speech.recognitionCanceled" = "Speech 辨識中斷";
 "log.speech.reauthorizationFailed" = "Speech 授權重新驗證失敗";
 "log.speech.reauthorizationSucceeded" = "Speech 授權重新驗證成功";
 "log.portalEnvironment.settingsExported" = "Portal 環境設定已匯出";

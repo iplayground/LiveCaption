@@ -115,6 +115,8 @@
 "log.relay.connectionTestSucceededDetail" = "Relay URL: %@\nTrack: %d\nViewer access code: %@";
 "log.relay.publishFailed" = "Relay caption publish failed";
 "log.relay.publishFailedDetail" = "Attempt %d/%d failed: %@";
+"log.pubSub.receiveFailed" = "PubSub receive failed";
+"log.speech.recognitionCanceled" = "Speech recognition canceled";
 "log.speech.reauthorizationFailed" = "Speech authorization revalidation failed";
 "log.speech.reauthorizationSucceeded" = "Speech authorization revalidated";
 "log.portalEnvironment.settingsExported" = "Portal environment settings exported";

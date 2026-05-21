@@ -55,6 +55,8 @@ final class PubSubCaptionReceiver: ObservableObject {
     @Published private(set) var status = PubSubCaptionConnectionStatus.idle
     @Published private(set) var latestCaptions: [CaptionQualityMode: PubSubCaptionEvent] = [:]
 
+    var onLogEvent: ((PortalWorkflowLog) -> Void)?
+
     private var webSocketTask: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
     private var connectionID = UUID()
@@ -86,7 +88,7 @@ final class PubSubCaptionReceiver: ObservableObject {
                         return
                     }
 
-                    self.status = .failed(error.localizedDescription)
+                    self.handleFailure(error.localizedDescription)
                 }
             }
         }
@@ -146,11 +148,40 @@ final class PubSubCaptionReceiver: ObservableObject {
                         return
                     }
 
-                    self.status = .failed(error.localizedDescription)
+                    self.handleFailure(
+                        Self.webSocketFailureDetail(error: error, task: task)
+                    )
                 }
                 return
             }
         }
+    }
+
+    private func handleFailure(_ detail: String) {
+        status = .failed(detail)
+        onLogEvent?(
+            PortalWorkflowLog(
+                level: .error,
+                title: L10n.text("log.pubSub.receiveFailed"),
+                detail: detail
+            )
+        )
+    }
+
+    nonisolated private static func webSocketFailureDetail(
+        error: Error,
+        task: URLSessionWebSocketTask
+    ) -> String {
+        var parts = ["error=\(error.localizedDescription)"]
+        if task.closeCode != .invalid {
+            parts.append("closeCode=\(task.closeCode.rawValue)")
+        }
+        if let reason = task.closeReason,
+           let reasonText = String(data: reason, encoding: .utf8),
+           !reasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("closeReason=\(reasonText)")
+        }
+        return parts.joined(separator: "; ")
     }
 
     nonisolated private static func captionEvent(
