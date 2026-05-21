@@ -2,56 +2,6 @@ import SwiftUI
 import Combine
 import MicrosoftCognitiveServicesSpeech
 
-struct SpeechConnectionTestResult {
-    let region: String
-}
-
-enum SpeechRecognitionState: Equatable {
-    case idle
-    case listening
-    case recognizing
-    case failed(String)
-
-    var title: String {
-        switch self {
-        case .idle:
-            L10n.text("speechRecognition.state.idle")
-        case .listening:
-            L10n.text("speechRecognition.state.listening")
-        case .recognizing:
-            L10n.text("speechRecognition.state.recognizing")
-        case .failed:
-            L10n.text("speechRecognition.state.failed")
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .idle:
-            "pause.circle"
-        case .listening:
-            "ear"
-        case .recognizing:
-            "waveform.badge.magnifyingglass"
-        case .failed:
-            "exclamationmark.triangle"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .idle:
-            .secondary
-        case .listening:
-            .blue
-        case .recognizing:
-            .green
-        case .failed:
-            .red
-        }
-    }
-}
-
 @MainActor
 final class SpeechRecognitionController: ObservableObject {
     let captionPreviewState = SpeechCaptionPreviewState()
@@ -368,43 +318,6 @@ extension SpeechRecognitionController {
             recognizedCaptionCount += 1
             onCaptionCountChanged?(recognizedCaptionCount)
             onCaptionEvent?(event)
-        }
-    }
-}
-
-private final class SpeechInterimUpdateGate: @unchecked Sendable {
-    private let updateInterval: TimeInterval
-    private let lock = NSLock()
-    private var lastUpdate = Date.distantPast
-    private var lastText = ""
-
-    init(updateInterval: TimeInterval) {
-        self.updateInterval = updateInterval
-    }
-
-    func shouldPublish(_ text: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let now = Date()
-        guard text != lastText,
-              now.timeIntervalSince(lastUpdate) >= updateInterval else {
-            return false
-        }
-
-        lastText = text
-        lastUpdate = now
-        return true
-    }
-}
-
-enum SpeechRecognitionError: LocalizedError {
-    case audioConfigurationFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .audioConfigurationFailed:
-            L10n.text("speechRecognition.error.audioConfigurationFailed")
         }
     }
 }

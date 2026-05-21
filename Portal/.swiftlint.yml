@@ -9,9 +9,5 @@ excluded:
   - DerivedData
   - build
 
-file_length:
-  warning: 800
-  error: 2000
-
 trailing_comma:
   mandatory_comma: true

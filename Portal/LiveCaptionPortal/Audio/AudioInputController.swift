@@ -4,19 +4,6 @@ import AVFoundation
 import Combine
 
 @MainActor
-final class AudioLevelState: ObservableObject {
-    @Published fileprivate(set) var level: Float = 0
-    @Published fileprivate(set) var peakLevel: Float = 0
-    @Published fileprivate(set) var decibels: Float = AudioInputController.minimumDecibels
-
-    fileprivate func reset() {
-        level = 0
-        peakLevel = 0
-        decibels = AudioInputController.minimumDecibels
-    }
-}
-
-@MainActor
 final class AudioInputController: ObservableObject, @unchecked Sendable {
     @Published private(set) var devices: [AudioInputDevice] = []
     @Published private(set) var selectedDeviceID: String?
@@ -36,7 +23,7 @@ final class AudioInputController: ObservableObject, @unchecked Sendable {
     private static let selectedDeviceDefaultsKey = "audioInput.selectedDeviceID"
     private static let selectedDeviceWasUserChosenDefaultsKey = "audioInput.selectedDeviceWasUserChosen"
     private static let automaticNoiseCalibrationDefaultsKey = "audioInput.automaticNoiseCalibrationEnabled"
-    fileprivate static let minimumDecibels: Float = -80
+    static let minimumDecibels: Float = -80
     private static let noiseCalibrationDuration: TimeInterval = 1.5
     private static let noiseGateMarginDecibels: Float = 10
     private static let minimumAutomaticNoiseGateDecibels: Float = -70
