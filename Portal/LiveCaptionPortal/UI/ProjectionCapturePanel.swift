@@ -441,7 +441,7 @@ struct ProjectionCaptureWindowContent: View {
         }
         .frame(minWidth: minimumContentSize.width, minHeight: minimumContentSize.height)
         .background(ProjectionCaptureWindowScreenWidthReader(maximumContentWidth: $screenMaximumContentWidth))
-        .background(ProjectionCaptureWindowMinimumSizeSynchronizer(minimumContentSize: minimumContentSize))
+        .background(ProjectionWindowSizeSync(minimumContentSize: minimumContentSize))
     }
 }
 
@@ -537,7 +537,7 @@ private struct ProjectionCaptureLanguageStackView: View {
     }
 }
 
-private struct ProjectionCaptureWindowMinimumSizeSynchronizer: NSViewRepresentable {
+private struct ProjectionWindowSizeSync: NSViewRepresentable {
     let minimumContentSize: CGSize
 
     func makeNSView(context: Context) -> NSView {

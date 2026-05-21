@@ -1,6 +1,6 @@
 import Foundation
 
-struct AzureOpenAIRealtimeTranscriptionConfiguration: Equatable, Sendable {
+struct AzureOpenAITranscriptionConfig: Equatable, Sendable {
     let endpointURLString: String
     let transcriptionDeploymentName: String
     let apiKey: String
@@ -47,7 +47,7 @@ struct AzureOpenAIRealtimeTranscriptionResult: Equatable, Sendable {
     }
 }
 
-struct AzureOpenAIRealtimeTranscriptionDiagnostic: Equatable, Sendable {
+struct AzureOpenAITranscriptionDiagnostic: Equatable, Sendable {
     enum Level: Equatable, Sendable {
         case info
         case warning
@@ -60,14 +60,14 @@ struct AzureOpenAIRealtimeTranscriptionDiagnostic: Equatable, Sendable {
 
 actor AzureOpenAIRealtimeTranscriptionService {
     var onTranscription: (@Sendable (AzureOpenAIRealtimeTranscriptionResult) -> Void)?
-    var onDiagnostic: (@Sendable (AzureOpenAIRealtimeTranscriptionDiagnostic) -> Void)?
+    var onDiagnostic: (@Sendable (AzureOpenAITranscriptionDiagnostic) -> Void)?
 
     private static let ticksPerMillisecond: UInt64 = 10_000
     private static let sampleRate = 24_000
     private static let bytesPerSample = MemoryLayout<Int16>.size
     private static let audioPaddingMilliseconds: UInt64 = 250
     private static let apiVersion = "2025-04-01-preview"
-    private var configuration: AzureOpenAIRealtimeTranscriptionConfiguration?
+    private var configuration: AzureOpenAITranscriptionConfig?
     private var audioBuffer = Data()
     private var bufferedAudioMilliseconds: UInt64 = 0
     private var isStarted = false
@@ -76,11 +76,11 @@ actor AzureOpenAIRealtimeTranscriptionService {
         onTranscription = handler
     }
 
-    func setOnDiagnostic(_ handler: (@Sendable (AzureOpenAIRealtimeTranscriptionDiagnostic) -> Void)?) {
+    func setOnDiagnostic(_ handler: (@Sendable (AzureOpenAITranscriptionDiagnostic) -> Void)?) {
         onDiagnostic = handler
     }
 
-    func start(configuration: AzureOpenAIRealtimeTranscriptionConfiguration) async throws {
+    func start(configuration: AzureOpenAITranscriptionConfig) async throws {
         await stop()
 
         guard configuration.isConfigured else {
@@ -241,7 +241,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
 
     private func transcribe(
         wavAudio: Data,
-        configuration: AzureOpenAIRealtimeTranscriptionConfiguration
+        configuration: AzureOpenAITranscriptionConfig
     ) async throws -> String {
         var request = URLRequest(url: try Self.requestURL(for: configuration))
         let boundary = "LiveCaptionBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
@@ -304,11 +304,11 @@ actor AzureOpenAIRealtimeTranscriptionService {
         emitDiagnostic(level: .warning, detail: detailParts.joined(separator: "; "))
     }
 
-    private func emitDiagnostic(level: AzureOpenAIRealtimeTranscriptionDiagnostic.Level, detail: String) {
-        onDiagnostic?(AzureOpenAIRealtimeTranscriptionDiagnostic(level: level, detail: detail))
+    private func emitDiagnostic(level: AzureOpenAITranscriptionDiagnostic.Level, detail: String) {
+        onDiagnostic?(AzureOpenAITranscriptionDiagnostic(level: level, detail: detail))
     }
 
-    private static func requestURL(for configuration: AzureOpenAIRealtimeTranscriptionConfiguration) throws -> URL {
+    private static func requestURL(for configuration: AzureOpenAITranscriptionConfig) throws -> URL {
         let endpoint = configuration.normalizedEndpointURLString
         let deploymentName = configuration.transcriptionDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -412,7 +412,7 @@ actor AzureOpenAIRealtimeTranscriptionService {
     }
 
     private static func transcriptionPrompt(
-        for configuration: AzureOpenAIRealtimeTranscriptionConfiguration
+        for configuration: AzureOpenAITranscriptionConfig
     ) -> String {
         var lines: [String] = []
         if let languagePrompt = configuration.inputLanguage.azureOpenAIRealtimePrompt {

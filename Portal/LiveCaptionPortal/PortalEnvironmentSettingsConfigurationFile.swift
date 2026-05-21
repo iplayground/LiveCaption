@@ -1,6 +1,6 @@
 import Foundation
 
-enum PortalEnvironmentSettingsConfigurationFileError: LocalizedError {
+enum PortalEnvironmentConfigFileError: LocalizedError {
     case unsupportedVersion(Int)
     case noExportSelection
     case noImportSelection
@@ -60,7 +60,7 @@ struct PortalEnvironmentSettings {
 
     func writeConfiguration(to fileURL: URL, selection: PortalEnvironmentExportSelection) throws {
         guard selection.includesAnySection else {
-            throw PortalEnvironmentSettingsConfigurationFileError.noExportSelection
+            throw PortalEnvironmentConfigFileError.noExportSelection
         }
 
         do {
@@ -68,13 +68,13 @@ struct PortalEnvironmentSettings {
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(
-                PortalEnvironmentSettingsConfigurationFile(settings: self, selection: selection)
+                PortalEnvironmentConfigFile(settings: self, selection: selection)
             )
             try data.write(to: fileURL, options: [.atomic])
-        } catch let error as PortalEnvironmentSettingsConfigurationFileError {
+        } catch let error as PortalEnvironmentConfigFileError {
             throw error
         } catch {
-            throw PortalEnvironmentSettingsConfigurationFileError.unwritableFile(error.localizedDescription)
+            throw PortalEnvironmentConfigFileError.unwritableFile(error.localizedDescription)
         }
     }
 
@@ -84,7 +84,7 @@ struct PortalEnvironmentSettings {
         selection: PortalEnvironmentExportSelection
     ) throws -> PortalEnvironmentSettings {
         guard selection.includesAnySection else {
-            throw PortalEnvironmentSettingsConfigurationFileError.noImportSelection
+            throw PortalEnvironmentConfigFileError.noImportSelection
         }
 
         let configuration = try decodedConfiguration(from: fileURL)
@@ -98,35 +98,35 @@ struct PortalEnvironmentSettings {
         try decodedConfiguration(from: fileURL).includedSections()
     }
 
-    private static func decodedConfiguration(from fileURL: URL) throws -> PortalEnvironmentSettingsConfigurationFile {
+    private static func decodedConfiguration(from fileURL: URL) throws -> PortalEnvironmentConfigFile {
         let data: Data
 
         do {
             data = try Data(contentsOf: fileURL)
         } catch {
-            throw PortalEnvironmentSettingsConfigurationFileError.unreadableFile(error.localizedDescription)
+            throw PortalEnvironmentConfigFileError.unreadableFile(error.localizedDescription)
         }
 
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(PortalEnvironmentSettingsConfigurationFile.self, from: data)
-        } catch let error as PortalEnvironmentSettingsConfigurationFileError {
+            return try decoder.decode(PortalEnvironmentConfigFile.self, from: data)
+        } catch let error as PortalEnvironmentConfigFileError {
             throw error
         } catch {
-            throw PortalEnvironmentSettingsConfigurationFileError.invalidFile(error.localizedDescription)
+            throw PortalEnvironmentConfigFileError.invalidFile(error.localizedDescription)
         }
     }
 }
 
-private struct PortalEnvironmentSettingsConfigurationFile: Codable {
+private struct PortalEnvironmentConfigFile: Codable {
     private static let currentVersion = 1
 
     var version: Int
     var exportedAt: Date
     var azureSpeechAuthorization: AzureSpeechAuthorizationConfiguration?
     var azureOpenAI: AzureOpenAISettingsConfiguration?
-    var captionOutputAndSegmentation: CaptionOutputAndSegmentationConfiguration?
+    var captionOutputAndSegmentation: CaptionOutputConfiguration?
     var phraseHints: PhraseHintsConfiguration?
     var speech: LegacySpeechSettingsConfiguration?
     var relay: RelaySettingsConfiguration?
@@ -141,7 +141,7 @@ private struct PortalEnvironmentSettingsConfigurationFile: Codable {
             ? AzureOpenAISettingsConfiguration(settings: settings.speechSettings)
             : nil
         captionOutputAndSegmentation = selection.includesCaptionOutputAndSegmentation
-            ? CaptionOutputAndSegmentationConfiguration(settings: settings.speechSettings)
+            ? CaptionOutputConfiguration(settings: settings.speechSettings)
             : nil
         phraseHints = selection.includesPhraseHints
             ? PhraseHintsConfiguration(settings: settings.speechSettings)
@@ -154,7 +154,7 @@ private struct PortalEnvironmentSettingsConfigurationFile: Codable {
         selection: PortalEnvironmentExportSelection
     ) throws -> PortalEnvironmentSettings {
         guard version == Self.currentVersion else {
-            throw PortalEnvironmentSettingsConfigurationFileError.unsupportedVersion(version)
+            throw PortalEnvironmentConfigFileError.unsupportedVersion(version)
         }
 
         var speechSettings = currentSettings.speechSettings
@@ -213,7 +213,7 @@ private struct PortalEnvironmentSettingsConfigurationFile: Codable {
 
     func includedSections() throws -> PortalEnvironmentExportSelection {
         guard version == Self.currentVersion else {
-            throw PortalEnvironmentSettingsConfigurationFileError.unsupportedVersion(version)
+            throw PortalEnvironmentConfigFileError.unsupportedVersion(version)
         }
 
         return PortalEnvironmentExportSelection(
@@ -278,7 +278,7 @@ private struct AzureOpenAISettingsConfiguration: Codable {
     }
 }
 
-private struct CaptionOutputAndSegmentationConfiguration: Codable {
+private struct CaptionOutputConfiguration: Codable {
     var sentenceSilenceTimeoutMilliseconds: Int
     var selectedOutputLanguageIDs: [String]
     var portalVisibleOutputLanguageIDs: [String]?

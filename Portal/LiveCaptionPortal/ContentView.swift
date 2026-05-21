@@ -766,7 +766,7 @@ struct ContentView: View {
         }
     }
 
-    private func appendOpenAITranscriptionDiagnostic(_ diagnostic: AzureOpenAIRealtimeTranscriptionDiagnostic) {
+    private func appendOpenAITranscriptionDiagnostic(_ diagnostic: AzureOpenAITranscriptionDiagnostic) {
         appendLog(
             level: diagnostic.level.logLevel,
             title: L10n.text("log.azureOpenAI.transcriptionDiagnostic"),
@@ -1152,7 +1152,7 @@ private struct RelayCaptionAvailability: Equatable {
     }
 }
 
-private extension AzureOpenAIRealtimeTranscriptionDiagnostic.Level {
+private extension AzureOpenAITranscriptionDiagnostic.Level {
     var logLevel: LogLevel {
         switch self {
         case .info:

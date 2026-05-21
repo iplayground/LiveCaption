@@ -1,6 +1,6 @@
 import Foundation
 
-struct AzureOpenAIRealtimeTranslationConfiguration: Equatable, Sendable {
+struct AzureOpenAITranslationConfig: Equatable, Sendable {
     let endpointURLString: String
     let translationDeploymentName: String
     let apiKey: String
@@ -58,7 +58,7 @@ actor AzureOpenAIRealtimeTranslationService {
     private static let apiVersion = "2025-04-01-preview"
     private static let maximumRequestAttempts = 5
     private static let maximumPreviousSourceTextCount = 5
-    private var configuration: AzureOpenAIRealtimeTranslationConfiguration?
+    private var configuration: AzureOpenAITranslationConfig?
     private var queuedTranslationTask: Task<AzureOpenAIRealtimeTranslationResult?, Never>?
     private var recentSourceTexts: [String] = []
     private var isStarted = false
@@ -68,7 +68,7 @@ actor AzureOpenAIRealtimeTranslationService {
         onDiagnostic = handler
     }
 
-    func start(configuration: AzureOpenAIRealtimeTranslationConfiguration) async throws {
+    func start(configuration: AzureOpenAITranslationConfig) async throws {
         await stop()
 
         guard configuration.isConfigured else {
@@ -132,7 +132,7 @@ actor AzureOpenAIRealtimeTranslationService {
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
-        configuration: AzureOpenAIRealtimeTranslationConfiguration
+        configuration: AzureOpenAITranslationConfig
     ) async -> AzureOpenAIRealtimeTranslationResult? {
         do {
             let previousSourceTexts = recentSourceTexts
@@ -175,7 +175,7 @@ actor AzureOpenAIRealtimeTranslationService {
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
-        configuration: AzureOpenAIRealtimeTranslationConfiguration
+        configuration: AzureOpenAITranslationConfig
     ) async throws -> AzureOpenAIRealtimeTranslationResult {
         var lastError: Error?
 
@@ -221,7 +221,7 @@ actor AzureOpenAIRealtimeTranslationService {
         inputLanguage: InputLanguage,
         phraseHints: [String],
         targetLanguages: [SpeechOutputLanguage],
-        configuration: AzureOpenAIRealtimeTranslationConfiguration
+        configuration: AzureOpenAITranslationConfig
     ) async throws -> AzureOpenAIRealtimeTranslationResult {
         var request = URLRequest(url: try Self.requestURL(for: configuration))
         request.httpMethod = "POST"
@@ -309,7 +309,7 @@ actor AzureOpenAIRealtimeTranslationService {
         return AzureOpenAIRealtimeTranslationResult(sourceText: normalizedSourceText, translations: translations)
     }
 
-    private static func requestURL(for configuration: AzureOpenAIRealtimeTranslationConfiguration) throws -> URL {
+    private static func requestURL(for configuration: AzureOpenAITranslationConfig) throws -> URL {
         let endpoint = configuration.normalizedEndpointURLString
         let deploymentName = configuration.translationDeploymentName.trimmingCharacters(in: .whitespacesAndNewlines)
 

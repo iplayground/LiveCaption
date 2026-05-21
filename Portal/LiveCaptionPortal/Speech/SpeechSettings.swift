@@ -108,8 +108,8 @@ struct SpeechSettings: Equatable {
 
     func azureOpenAIRealtimeConfiguration(
         outputLanguages: [SpeechOutputLanguage]
-    ) -> AzureOpenAIRealtimeTranslationConfiguration {
-        AzureOpenAIRealtimeTranslationConfiguration(
+    ) -> AzureOpenAITranslationConfig {
+        AzureOpenAITranslationConfig(
             endpointURLString: azureOpenAIEndpointURLString,
             translationDeploymentName: azureOpenAITranslationDeploymentName,
             apiKey: azureOpenAIAPIKey,
@@ -120,8 +120,8 @@ struct SpeechSettings: Equatable {
     func azureOpenAIRealtimeTranscriptionConfiguration(
         inputLanguage: InputLanguage,
         speakerIdentity: SpeakerIdentity? = nil
-    ) -> AzureOpenAIRealtimeTranscriptionConfiguration {
-        AzureOpenAIRealtimeTranscriptionConfiguration(
+    ) -> AzureOpenAITranscriptionConfig {
+        AzureOpenAITranscriptionConfig(
             endpointURLString: azureOpenAIEndpointURLString,
             transcriptionDeploymentName: azureOpenAITranscriptionDeploymentName,
             apiKey: azureOpenAIAPIKey,
