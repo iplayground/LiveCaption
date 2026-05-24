@@ -65,6 +65,7 @@ Relay 本機固定使用 port `7071`。
 - [Relay 架構與資料流](docs/architecture/relay.md)
 - [字幕事件 API](docs/api/caption-events.md)
 - [觀眾端連線 API](docs/api/viewer-negotiate.md)
+- [Viewer 使用 Relay 整合指南](docs/api/viewer-relay-usage.md)
 - [Relay 健康檢查 API](docs/api/health.md)
 - [Azure Speech 資源設定](docs/deployment/azure-speech.md)
 - [Relay Azure Functions 部署](docs/deployment/relay-functions.md)
