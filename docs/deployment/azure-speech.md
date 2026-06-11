@@ -113,7 +113,7 @@ Portal 使用 `UserDefaults` 保存短小且非機密的 Speech 與 Azure OpenAI
 | --- | --- |
 | `speech.region` | Azure Speech region，例如 `japaneast`。 |
 | `speech.azureOpenAI.endpoint` | Azure OpenAI endpoint，例如 `https://<resource>.openai.azure.com`。 |
-| `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI transcription deployment name，例如 `accurate-transcribe`，用於精準模式原始語言 draft。 |
+| `speech.azureOpenAI.transcriptionDeployment` | Azure OpenAI transcription deployment name，例如 `realtime-whisper`，用於精準模式原始語言 draft。 |
 | `speech.azureOpenAI.translationDeployment` | Azure OpenAI text model deployment name，例如 `accurate-translate`，用於精準模式比對 OpenAI transcription 與 Azure Speech final 候選文字，產生校正原文與其他輸出語言 final 字幕。 |
 | `speech.azureOpenAI.connectionStatus` | 上次 Azure OpenAI 連線測試狀態。 |
 | `speech.outputLanguageIDs` | 需要分析、翻譯、Relay 發布與 SRT 輸出的字幕語言清單。台灣繁體中文與英文會強制包含。 |

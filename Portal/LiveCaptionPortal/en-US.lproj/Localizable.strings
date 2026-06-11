@@ -30,7 +30,7 @@
 "azureOpenAI.connection.message.testing" = "Testing Azure OpenAI connection.";
 "azureOpenAI.connectionTest" = "Azure OpenAI Connection Test";
 "azureOpenAI.transcriptionDeployment" = "Transcription Deployment";
-"azureOpenAI.transcriptionDeployment.placeholder" = "accurate-transcribe";
+"azureOpenAI.transcriptionDeployment.placeholder" = "realtime-whisper";
 "azureOpenAI.translationDeployment" = "Translation Deployment";
 "azureOpenAI.translationDeployment.placeholder" = "accurate-translate";
 "azureOpenAI.endpoint" = "Endpoint";

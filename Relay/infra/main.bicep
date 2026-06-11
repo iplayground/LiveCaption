@@ -74,13 +74,13 @@ param azureOpenAITranslationModelName string = 'gpt-5.4-mini'
 param azureOpenAITranslationModelVersion string = '2026-03-17'
 
 @description('Azure OpenAI transcription deployment name used by Portal source-language accurate captions.')
-param azureOpenAITranscriptionDeploymentName string = 'accurate-transcribe'
+param azureOpenAITranscriptionDeploymentName string = 'realtime-whisper'
 
 @description('Azure OpenAI transcription base model name for source-language accurate captions.')
-param azureOpenAITranscriptionModelName string = 'gpt-4o-mini-transcribe'
+param azureOpenAITranscriptionModelName string = 'gpt-realtime-whisper'
 
 @description('Azure OpenAI transcription base model version. Confirm region availability before production deployment.')
-param azureOpenAITranscriptionModelVersion string = '2025-12-15'
+param azureOpenAITranscriptionModelVersion string = '2026-03-17'
 
 @description('Azure OpenAI deployment SKU name.')
 @allowed([

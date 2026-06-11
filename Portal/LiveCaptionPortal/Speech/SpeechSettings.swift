@@ -14,13 +14,15 @@ struct SpeechSettings: Equatable {
     static let minimumSentenceSilenceTimeoutMillis = 100
     static let maximumSentenceSilenceTimeoutMillis = 5_000
     static let defaultSentenceSilenceTimeoutMillis = 800
+    static let defaultAzureOpenAITranscriptionDeploymentName = "realtime-whisper"
+    static let legacyAzureOpenAITranscriptionDeploymentName = "accurate-transcribe"
     private static let userDefaults = UserDefaults.standard
 
     var region = ""
     var speechKey = ""
     var isAccurateCaptionEnabled = false
     var azureOpenAIEndpointURLString = ""
-    var azureOpenAITranscriptionDeploymentName = "accurate-transcribe"
+    var azureOpenAITranscriptionDeploymentName = defaultAzureOpenAITranscriptionDeploymentName
     var azureOpenAITranslationDeploymentName = "accurate-translate"
     var azureOpenAIAPIKey = ""
     var phraseHintsByScope = defaultPhraseHintsByScope
@@ -137,9 +139,9 @@ extension SpeechSettings {
         ) ?? ""
         let storedTranscriptionDeploymentName = userDefaults.string(
             forKey: UserDefaultsKey.azureOpenAITranscriptionDeployment.rawValue
-        ) ?? "accurate-transcribe"
-        settings.azureOpenAITranscriptionDeploymentName = storedTranscriptionDeploymentName == "realtime-whisper"
-            ? "accurate-transcribe"
+        ) ?? defaultAzureOpenAITranscriptionDeploymentName
+        settings.azureOpenAITranscriptionDeploymentName = storedTranscriptionDeploymentName == legacyAzureOpenAITranscriptionDeploymentName
+            ? defaultAzureOpenAITranscriptionDeploymentName
             : storedTranscriptionDeploymentName
         let legacyTranslationDeploymentName = userDefaults.string(
             forKey: UserDefaultsKey.azureOpenAIDeployment.rawValue

@@ -103,21 +103,21 @@ az deployment group create \
 與 quota。Portal 精準 final 字幕流程只依 deployment name 呼叫 Azure OpenAI：transcription
 deployment 產生原始語言 draft，text model deployment 比對 OpenAI transcription 與 Azure Speech
 final 候選文字，產生校正後原始語言字幕與其他輸出語言字幕。目前範例參數的預設模型為
-`gpt-4o-mini-transcribe` 與 `gpt-5.4-mini`；若模型只在特定 region 可用，Azure OpenAI resource
+`gpt-realtime-whisper` 與 `gpt-5.4-mini`；若模型只在特定 region 可用，Azure OpenAI resource
 需部署在同時支援這兩個模型的 region。
 
 | 參數 | 預設值 | 說明 |
 | --- | --- | --- |
 | `azureOpenAILocation` | `southindia` | 目前用於 accurate transcription / text model 校正與翻譯的 Azure OpenAI region。 |
 | `azureOpenAIDisableLocalAuth` | `false` | 是否停用 Azure OpenAI local key authentication。Portal 目前直接使用 Azure OpenAI API key，因此正式活動設定需維持 `false`。 |
-| `azureOpenAITranscriptionDeploymentName` | `accurate-transcribe` | Portal 精準模式原始語言 draft 使用的 Azure OpenAI transcription deployment name。 |
-| `azureOpenAITranscriptionModelName` | `gpt-4o-mini-transcribe` | 精準模式原始語言 draft 目標模型。 |
-| `azureOpenAITranscriptionModelVersion` | `2025-12-15` | 目前 South India 已驗證可部署的 transcription model version。 |
+| `azureOpenAITranscriptionDeploymentName` | `realtime-whisper` | Portal 精準模式原始語言 draft 使用的 Azure OpenAI transcription deployment name。 |
+| `azureOpenAITranscriptionModelName` | `gpt-realtime-whisper` | 精準模式原始語言 draft 目標模型。 |
+| `azureOpenAITranscriptionModelVersion` | `2026-03-17` | 範例使用的 transcription model version；正式部署前需確認目標 region 可用。 |
 | `azureOpenAITranslationDeploymentName` | `accurate-translate` | Portal 精準模式校正原文與翻譯字幕使用的 Azure OpenAI text model deployment name。 |
 | `azureOpenAITranslationModelName` | `gpt-5.4-mini` | 精準 final 校正原文與翻譯字幕目標模型。 |
 | `azureOpenAITranslationModelVersion` | `2026-03-17` | 目前 South India 已驗證可部署的 text model version。 |
 | `azureOpenAITranscriptionDeploymentSkuName` / `azureOpenAITranslationDeploymentSkuName` | `GlobalStandard` | 目前 South India 已驗證可部署的 deployment SKU。 |
-| `azureOpenAITranscriptionDeploymentCapacity` | `10` | `gpt-4o-mini-transcribe` 的 GlobalStandard capacity；目前對應 1000 requests/min 與 10k tokens/min。 |
+| `azureOpenAITranscriptionDeploymentCapacity` | `10` | `gpt-realtime-whisper` 的 GlobalStandard capacity；實際速率限制需依 Azure OpenAI region 與 quota 頁面確認。 |
 | `azureOpenAITranslationDeploymentCapacity` | `100` | `gpt-5.4-mini` 的 GlobalStandard capacity；目前對應 100 requests/min 與 100k tokens/min，用來支援 Portal 精準字幕每段同時送 OpenAI transcription 與 Azure Speech 候選文字比對。 |
 
 Azure OpenAI resource 與 deployment 由 Bicep 管理。Portal 目前使用 Azure OpenAI API key
