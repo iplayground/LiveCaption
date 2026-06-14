@@ -49,18 +49,11 @@ extension AzureOpenAIRealtimeTranslationService {
         or clearly damaged.
         Use previousSourceTexts and vocabulary hints only as conservative source-language context for homophones,
         near-sound words, segmentation, code-switching, topic continuity, spelling, capitalization, punctuation,
-        and Traditional Chinese normalization.
-        Treat previousSourceTexts as source-language context, not translated evidence. Preserve the current talk topic
-        across adjacent subtitles when resolving ambiguous candidates.
+        and Traditional Chinese normalization. Treat previousSourceTexts as source-language context, not translated evidence.
         Preserve the heard language form in sourceText when it is supported by the candidates or previousSourceTexts.
-        Do not replace code-switched text with phonetically similar words in another language.
-        If a candidate phrase is unnatural in the source language and a homophone or near-sound alternative is supported
-        by context, use the natural source-language alternative.
-        If a code-switch phrase is unnatural in the surrounding source-language context, and a near-sound code-switch
-        phrase is supported by context, use the contextual phrase.
-        For Mandarin sourceText, be especially careful when speech includes English code-switching. Do not normalize
-        an ambiguous candidate into a meaning that changes the current topic unless the current candidates clearly
-        support that topic shift.
+        Do not replace code-switched text with phonetically similar words in another language unless the current candidates
+        and source-language context clearly support that correction.
+        Do not normalize an ambiguous candidate into a topic shift unless the current candidates clearly support it.
         Do not add content the speaker did not say, copy from previousSourceTexts, beautify wording,
         formalize spoken language, paraphrase, summarize, expand, or censor.
         If uncertain, keep the most reliable candidate wording.

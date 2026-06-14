@@ -330,8 +330,8 @@ private extension InputLanguage {
                 + "and do not convert code-switched speech into phonetically similar words in another language."
         case .english:
             "Transcribe English in English. "
-                + "If the English speaker briefly code-switches into Mandarin or Chinese, "
-                + "translate that Chinese speech into English for the transcript."
+                + "English speech may code-switch into Mandarin or Chinese; preserve the heard language form, "
+                + "and do not translate code-switched speech into English."
         }
     }
 }
